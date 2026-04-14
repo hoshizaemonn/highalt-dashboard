@@ -16,7 +16,6 @@ export async function GET() {
         role: true,
         storeName: true,
         displayName: true,
-        createdAt: true,
       },
       orderBy: { id: "asc" },
     });
@@ -77,7 +76,6 @@ export async function POST(request: NextRequest) {
           role: user.role,
           storeName: user.storeName,
           displayName: user.displayName,
-          createdAt: user.createdAt,
         },
       },
       { status: 201 },
