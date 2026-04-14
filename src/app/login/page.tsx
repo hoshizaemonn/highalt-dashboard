@@ -43,10 +43,11 @@ export default function LoginPage() {
         <div className="bg-white rounded-lg shadow-md p-8">
           {/* Header */}
           <div className="text-center mb-8">
-            <div className="inline-block bg-[#567FC0] text-white px-6 py-3 rounded-lg mb-4">
-              <h1 className="text-lg font-bold">ハイアルチ</h1>
-              <p className="text-sm opacity-90">駅前高地トレーニング</p>
-            </div>
+            <img
+              src="/logo.png"
+              alt="ハイアルチ 駅前高地™トレーニング"
+              className="mx-auto w-40 rounded-lg mb-4"
+            />
             <h2 className="text-xl font-bold text-gray-800 mt-4">
               業績ダッシュボード
             </h2>

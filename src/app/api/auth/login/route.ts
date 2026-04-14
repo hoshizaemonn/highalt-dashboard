@@ -44,9 +44,10 @@ export async function POST(request: Request) {
         displayName: user.displayName,
       },
     });
-  } catch {
+  } catch (e) {
+    console.error("Login error:", e);
     return NextResponse.json(
-      { error: "サーバーエラーが発生しました" },
+      { error: "サーバーエラーが発生しました", detail: e instanceof Error ? e.message : String(e) },
       { status: 500 }
     );
   }

@@ -16,7 +16,6 @@ model User {
   role        String   @default("store_manager")
   storeName   String?  @map("store_name")
   displayName String?  @map("display_name")
-  createdAt   DateTime @default(now()) @map("created_at")
 
   uploadLogs  UploadLog[]
 

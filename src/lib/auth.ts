@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { createHash } from "crypto";
 import { cookies } from "next/headers";
 
 const SESSION_COOKIE = "highalt_session";
@@ -18,9 +19,15 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(
   password: string,
-  hash: string
+  storedHash: string
 ): Promise<boolean> {
-  return bcrypt.compare(password, hash);
+  // Support both bcrypt ($2a$/$2b$ prefix) and legacy SHA-256 hashes
+  if (storedHash.startsWith("$2a$") || storedHash.startsWith("$2b$")) {
+    return bcrypt.compare(password, storedHash);
+  }
+  // Legacy SHA-256 hash (from Streamlit app)
+  const sha256 = createHash("sha256").update(password).digest("hex");
+  return sha256 === storedHash;
 }
 
 export async function createSession(
