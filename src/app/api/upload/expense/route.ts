@@ -1,0 +1,170 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { decodeFileBuffer, parseCSV, safeFloat } from "@/lib/csv-utils";
+
+/**
+ * Classify a transaction description using expense_rules table.
+ * Returns { category, isRevenue }.
+ */
+function classifyExpense(
+  description: string,
+  rules: { keyword: string; category: string }[],
+): { category: string | null; isRevenue: boolean } {
+  if (!description) return { category: null, isRevenue: false };
+
+  const descUpper = description.toUpperCase();
+
+  for (const rule of rules) {
+    const keyUpper = rule.keyword.toUpperCase();
+    if (keyUpper && descUpper.includes(keyUpper)) {
+      if (rule.category === "_収入") {
+        return { category: "_収入", isRevenue: true };
+      }
+      return { category: rule.category, isRevenue: false };
+    }
+    // Also try exact match (for full-width chars)
+    if (rule.keyword && description.includes(rule.keyword)) {
+      if (rule.category === "_収入") {
+        return { category: "_収入", isRevenue: true };
+      }
+      return { category: rule.category, isRevenue: false };
+    }
+  }
+
+  return { category: null, isRevenue: false };
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const formData = await request.formData();
+    const file = formData.get("file") as File | null;
+    const store = formData.get("store") as string;
+    const year = parseInt(formData.get("year") as string, 10);
+    const month = parseInt(formData.get("month") as string, 10);
+
+    if (!file || !store || isNaN(year) || isNaN(month)) {
+      return NextResponse.json(
+        { error: "file, store, year, month are required" },
+        { status: 400 },
+      );
+    }
+
+    const buffer = await file.arrayBuffer();
+    // PayPay bank CSV is typically cp932/shift_jis
+    const text = decodeFileBuffer(buffer, "shift_jis");
+    const allRows = parseCSV(text);
+
+    if (allRows.length < 2) {
+      return NextResponse.json(
+        { error: "CSVにデータ行がありません" },
+        { status: 400 },
+      );
+    }
+
+    // Load expense rules once
+    const rules = await prisma.expenseRule.findMany();
+
+    const dataRows = allRows.slice(1);
+    let classified = 0;
+    let unclassified = 0;
+
+    interface ExpenseRecord {
+      year: number;
+      month: number;
+      day: number;
+      storeName: string;
+      description: string;
+      amount: number;
+      deposit: number;
+      category: string | null;
+      isRevenue: number;
+      breakdown: string;
+    }
+
+    const records: ExpenseRecord[] = [];
+
+    for (const row of dataRows) {
+      if (row.length < 12) continue;
+
+      const rowYear = parseInt(row[0], 10);
+      const rowMonth = parseInt(row[1], 10);
+      const day = parseInt(row[2], 10);
+
+      if (isNaN(day)) continue;
+
+      const description = row[7]?.trim() || "";
+      const amount = safeFloat(row[8]);
+      const deposit = safeFloat(row[9]);
+
+      const { category, isRevenue } = classifyExpense(
+        description,
+        rules,
+      );
+
+      if (category) {
+        classified++;
+      } else {
+        unclassified++;
+      }
+
+      records.push({
+        year: isNaN(rowYear) ? year : rowYear,
+        month: isNaN(rowMonth) ? month : rowMonth,
+        day,
+        storeName: store,
+        description,
+        amount,
+        deposit,
+        category: category || null,
+        isRevenue: isRevenue ? 1 : 0,
+        breakdown: "",
+      });
+    }
+
+    // Delete existing expense data for this year/month/store, then insert
+    await prisma.$transaction(async (tx) => {
+      await tx.expenseData.deleteMany({
+        where: { year, month, storeName: store },
+      });
+
+      if (records.length > 0) {
+        await tx.expenseData.createMany({ data: records });
+      }
+
+      await tx.uploadLog.create({
+        data: {
+          userId: session.userId,
+          userName: session.displayName || session.storeName || "ユーザー",
+          dataType: "expense",
+          storeName: store,
+          year,
+          month,
+          fileName: file.name,
+          recordCount: records.length,
+          note: `分類済み ${classified}件 / 未分類 ${unclassified}件`,
+        },
+      });
+    });
+
+    return NextResponse.json({
+      records: records.length,
+      classified,
+      unclassified,
+    });
+  } catch (error) {
+    console.error("Expense upload error:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Internal server error",
+      },
+      { status: 500 },
+    );
+  }
+}

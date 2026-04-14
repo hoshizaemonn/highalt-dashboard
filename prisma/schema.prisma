@@ -1,0 +1,281 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Users & Auth ───────────────────────────────────────────
+
+model User {
+  id          Int      @id @default(autoincrement())
+  username    String   @unique
+  password    String   @map("password_hash")
+  role        String   @default("store_manager")
+  storeName   String?  @map("store_name")
+  displayName String?  @map("display_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  uploadLogs  UploadLog[]
+
+  @@map("users")
+}
+
+// ─── Upload History ─────────────────────────────────────────
+
+model UploadLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  userName    String   @map("user_name")
+  dataType    String   @map("data_type")
+  storeName   String?  @map("store_name")
+  year        Int?
+  month       Int?
+  fileName    String?  @map("file_name")
+  recordCount Int      @default(0) @map("record_count")
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@map("upload_logs")
+}
+
+// ─── Store Overrides ────────────────────────────────────────
+
+model StoreOverride {
+  id         Int    @id @default(autoincrement())
+  employeeId Int    @map("employee_id")
+  storeName  String @map("store_name")
+  ratio      Int    @default(100)
+
+  @@unique([employeeId, storeName])
+  @@map("store_overrides")
+}
+
+// ─── Expense Rules ──────────────────────────────────────────
+
+model ExpenseRule {
+  id       Int    @id @default(autoincrement())
+  keyword  String @unique
+  category String
+
+  @@map("expense_rules")
+}
+
+// ─── Payroll Data ───────────────────────────────────────────
+
+model PayrollData {
+  id                    Int    @id @default(autoincrement())
+  year                  Int
+  month                 Int
+  employeeId            String @map("employee_id")
+  employeeName          String? @map("employee_name")
+  contractType          String? @map("contract_type")
+  storeName             String @map("store_name")
+  ratio                 Int    @default(100)
+  workDaysWeekday       Float  @default(0) @map("work_days_weekday")
+  workDaysHoliday       Float  @default(0) @map("work_days_holiday")
+  scheduledHours        Float  @default(0) @map("scheduled_hours")
+  overtimeHours         Float  @default(0) @map("overtime_hours")
+  lateNightHours        Float  @default(0) @map("late_night_hours")
+  holidayHours          Float  @default(0) @map("holiday_hours")
+  basicSalary           Float  @default(0) @map("basic_salary")
+  positionAllowance     Float  @default(0) @map("position_allowance")
+  overtimePay           Float  @default(0) @map("overtime_pay")
+  commuteTaxable        Float  @default(0) @map("commute_taxable")
+  commuteNontax         Float  @default(0) @map("commute_nontax")
+  taxableTotal          Float  @default(0) @map("taxable_total")
+  grossTotal            Float  @default(0) @map("gross_total")
+  healthInsuranceCo     Float  @default(0) @map("health_insurance_co")
+  careInsuranceCo       Float  @default(0) @map("care_insurance_co")
+  pensionCo             Float  @default(0) @map("pension_co")
+  childContributionCo   Float  @default(0) @map("child_contribution_co")
+  pensionFundCo         Float  @default(0) @map("pension_fund_co")
+  employmentInsuranceCo Float  @default(0) @map("employment_insurance_co")
+  workersCompCo         Float  @default(0) @map("workers_comp_co")
+  generalContributionCo Float  @default(0) @map("general_contribution_co")
+
+  @@unique([year, month, employeeId, storeName])
+  @@map("payroll_data")
+}
+
+// ─── Expense Data ───────────────────────────────────────────
+
+model ExpenseData {
+  id          Int     @id @default(autoincrement())
+  year        Int
+  month       Int
+  day         Int
+  storeName   String  @default("") @map("store_name")
+  description String?
+  amount      Float   @default(0)
+  deposit     Float   @default(0)
+  category    String?
+  isRevenue   Int     @default(0) @map("is_revenue")
+  breakdown   String  @default("")
+
+  @@map("expense_data")
+}
+
+// ─── Revenue Data ───────────────────────────────────────────
+
+model RevenueData {
+  id          Int     @id @default(autoincrement())
+  year        Int
+  month       Int
+  storeName   String  @map("store_name")
+  category    String  @default("売上")
+  amount      Float   @default(0)
+  memberCount Int     @default(0) @map("member_count")
+  note        String?
+
+  @@map("revenue_data")
+}
+
+// ─── Member Data (ML001) ────────────────────────────────────
+
+model MemberData {
+  id             Int     @id @default(autoincrement())
+  year           Int
+  month          Int
+  storeName      String  @map("store_name")
+  memberId       String? @map("member_id")
+  memberName     String? @map("member_name")
+  planName       String? @map("plan_name")
+  joinDate       String? @map("join_date")
+  tenure         String?
+  isActive       Int     @default(1) @map("is_active")
+  isNew          Int     @default(0) @map("is_new")
+  hadTrial       Int     @default(0) @map("had_trial")
+  planEndDate    String? @map("plan_end_date")
+  trialDate      String? @map("trial_date")
+  firstTrialDate String? @map("first_trial_date")
+  initialPlan    String? @map("initial_plan")
+
+  @@map("member_data")
+}
+
+// ─── Monthly Summary (MA002) ────────────────────────────────
+
+model MonthlySummary {
+  id                  Int    @id @default(autoincrement())
+  year                Int
+  month               Int
+  storeName           String @default("") @map("store_name")
+  totalMembers        Int    @default(0) @map("total_members")
+  planSubscribers     Int    @default(0) @map("plan_subscribers")
+  planSubscribers1st  Int    @default(0) @map("plan_subscribers_1st")
+  newRegistrations    Int    @default(0) @map("new_registrations")
+  newPlanApplications Int    @default(0) @map("new_plan_applications")
+  newPlanSignups      Int    @default(0) @map("new_plan_signups")
+  planChanges         Int    @default(0) @map("plan_changes")
+  suspensions         Int    @default(0) @map("suspensions")
+  cancellations       Int    @default(0) @map("cancellations")
+  cancellationRate    String @default("") @map("cancellation_rate")
+
+  @@map("monthly_summary")
+}
+
+// ─── Sales Detail (PL001) ───────────────────────────────────
+
+model SalesDetail {
+  id            Int     @id @default(autoincrement())
+  year          Int
+  month         Int
+  storeName     String  @map("store_name")
+  saleId        String? @map("sale_id")
+  saleDate      String? @map("sale_date")
+  paymentMethod String? @map("payment_method")
+  description   String?
+  category      String?
+  amount        Int     @default(0)
+  tax           Int     @default(0)
+  discount      Int     @default(0)
+
+  @@map("sales_detail")
+}
+
+// ─── Square Sales ───────────────────────────────────────────
+
+model SquareSales {
+  id         Int    @id @default(autoincrement())
+  year       Int
+  month      Int
+  storeName  String @map("store_name")
+  grossSales Int    @default(0) @map("gross_sales")
+  netSales   Int    @default(0) @map("net_sales")
+  salesCount Int    @default(0) @map("sales_count")
+
+  @@unique([year, month, storeName])
+  @@map("square_sales")
+}
+
+// ─── Budget Data ────────────────────────────────────────────
+
+model BudgetData {
+  id        Int    @id @default(autoincrement())
+  storeName String @map("store_name")
+  year      Int
+  month     Int
+  category  String
+  amount    Int    @default(0)
+
+  @@unique([storeName, year, month, category])
+  @@map("budget_data")
+}
+
+// ─── Amazon Orders ──────────────────────────────────────────
+
+model AmazonOrder {
+  id              Int     @id @default(autoincrement())
+  orderDate       String? @map("order_date")
+  orderId         String? @map("order_id")
+  storeName       String? @map("store_name")
+  productName     String? @map("product_name")
+  shortName       String? @map("short_name")
+  amount          Int     @default(0)
+  orderTotal      Int     @default(0) @map("order_total")
+  paymentDate     String? @map("payment_date")
+  deliveryAddress String? @map("delivery_address")
+  asin            String  @default("")
+  amazonCategory  String  @default("") @map("amazon_category")
+  expenseCategory String  @default("") @map("expense_category")
+  quantity        Int     @default(1)
+  taxAmount       Int     @default(0) @map("tax_amount")
+  taxRate         String  @default("") @map("tax_rate")
+  accountUser     String  @default("") @map("account_user")
+  invoiceNumber   String  @default("") @map("invoice_number")
+
+  @@unique([orderId, productName])
+  @@map("amazon_orders")
+}
+
+// ─── Amazon Product Master ──────────────────────────────────
+
+model AmazonProductMaster {
+  id              Int    @id @default(autoincrement())
+  asin            String @unique
+  productName     String @default("") @map("product_name")
+  amazonCategory  String @default("") @map("amazon_category")
+  expenseCategory String @map("expense_category")
+  lastSeenDate    String @default("") @map("last_seen_date")
+  updatedAt       String @default("") @map("updated_at")
+
+  @@map("amazon_product_master")
+}
+
+// ─── Breakdown Rules ────────────────────────────────────────
+
+model BreakdownRule {
+  id          Int    @id @default(autoincrement())
+  storeName   String @map("store_name")
+  category    String
+  subcategory String
+  ratio       Float  @default(100)
+
+  @@unique([storeName, category, subcategory])
+  @@map("breakdown_rules")
+}
