@@ -1723,7 +1723,7 @@ function PeriodView({
 // ─── Main Dashboard Page ────────────────────────────────────
 
 export default function DashboardPage() {
-  const [year, setYear] = useState(2025);
+  const [year, setYear] = useState(new Date().getFullYear());
   const [period, setPeriod] = useState("通期");
   const [store, setStore] = useState("全体");
 

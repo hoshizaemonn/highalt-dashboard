@@ -855,6 +855,15 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
       expenseCategory: string;
     }[]
   >([]);
+  const [allParsedRecords, setAllParsedRecords] = useState<
+    {
+      asin: string;
+      productName: string;
+      shortName: string;
+      amazonCategory: string;
+      expenseCategory: string;
+    }[]
+  >([]);
   const [skippedCount, setSkippedCount] = useState(0);
   const [allRegistered, setAllRegistered] = useState(false);
 
@@ -898,53 +907,65 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
         return;
       }
 
-      // Filter: records with empty expenseCategory = unregistered ASINs
-      // Deduplicate by ASIN (only need one entry per product)
+      // Deduplicate by ASIN and categorize
       const seenAsins = new Set<string>();
       const unregistered: typeof newRecords = [];
+      const allDeduped: typeof newRecords = [];
       let registered = 0;
 
       for (const rec of data.records) {
+        if (seenAsins.has(rec.asin)) continue;
+        seenAsins.add(rec.asin);
+
+        const entry = {
+          asin: rec.asin,
+          productName: rec.productName,
+          shortName: rec.shortName,
+          amazonCategory: rec.amazonCategory,
+          expenseCategory: rec.expenseCategory || "",
+        };
+
+        allDeduped.push(entry);
+
         if (rec.expenseCategory) {
-          // Already in product master
-          if (!seenAsins.has(rec.asin)) {
-            registered++;
-            seenAsins.add(rec.asin);
-          }
+          registered++;
         } else {
-          if (!seenAsins.has(rec.asin)) {
-            seenAsins.add(rec.asin);
-            // Apply auto-set from Amazon category
-            let suggestedCategory = "";
-            if (autoSetFromCategory && rec.amazonCategory) {
-              suggestedCategory = amazonCategoryToExpense[rec.amazonCategory] || "";
-            }
-            unregistered.push({
-              asin: rec.asin,
-              productName: rec.productName,
-              shortName: rec.shortName,
-              amazonCategory: rec.amazonCategory,
-              expenseCategory: suggestedCategory,
-            });
+          // Apply auto-set from Amazon category
+          if (autoSetFromCategory && rec.amazonCategory) {
+            entry.expenseCategory = amazonCategoryToExpense[rec.amazonCategory] || "";
           }
+          unregistered.push(entry);
         }
       }
 
+      setAllParsedRecords(allDeduped);
       setSkippedCount(registered);
       setNewRecords(unregistered);
 
       if (unregistered.length === 0) {
-        // All ASINs already registered
+        // All ASINs already registered — still save to update product names
         setAllRegistered(true);
         setStatus({
-          type: "success",
-          text: `全商品が登録済みです（${registered}件スキップ）`,
+          type: "info",
+          text: `全商品が登録済み（${registered}件）。商品名を最新に更新します...`,
         });
+        // Auto-save to update product names
+        const saveRes = await fetch("/api/upload/amazon", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ records: allDeduped, action: "save" }),
+        });
+        if (saveRes.ok) {
+          setStatus({
+            type: "success",
+            text: `全商品が登録済みです（${registered}件の商品名を最新に更新しました）`,
+          });
+        }
         onSuccess?.();
       } else {
         setStatus({
           type: "success",
-          text: `新規 ${unregistered.length}件 / 登録済み ${registered}件（スキップ）`,
+          text: `新規 ${unregistered.length}件 / 登録済み ${registered}件`,
         });
       }
     } catch (e) {
@@ -966,7 +987,7 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
       const res = await fetch("/api/upload/amazon", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ records: newRecords, action: "save" }),
+        body: JSON.stringify({ records: [...newRecords, ...allParsedRecords.filter(r => r.expenseCategory && !newRecords.find(n => n.asin === r.asin))], action: "save" }),
       });
 
       const data = await res.json();
