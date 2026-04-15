@@ -77,38 +77,51 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      await prisma.$transaction(async (tx) => {
-        for (const rec of inputRecords) {
-          // Upsert amazon order
-          await tx.amazonOrder.upsert({
+      // Save to product master (upsert — always update with latest product name)
+      for (const rec of inputRecords) {
+        if (rec.asin) {
+          await prisma.amazonProductMaster.upsert({
+            where: { asin: rec.asin },
+            update: {
+              productName: rec.productName || rec.shortName || "",
+              amazonCategory: rec.amazonCategory || "",
+              expenseCategory: rec.expenseCategory || "",
+              lastSeenDate: new Date().toISOString().split("T")[0],
+              updatedAt: new Date().toISOString(),
+            },
+            create: {
+              asin: rec.asin,
+              productName: rec.productName || rec.shortName || "",
+              amazonCategory: rec.amazonCategory || "",
+              expenseCategory: rec.expenseCategory || "",
+              lastSeenDate: new Date().toISOString().split("T")[0],
+              updatedAt: new Date().toISOString(),
+            },
+          });
+        }
+      }
+
+      // Also save to amazon_orders if full order data is provided
+      for (const rec of inputRecords) {
+        if (rec.orderId && rec.productName) {
+          await prisma.amazonOrder.upsert({
             where: {
               orderId_productName: {
-                orderId: rec.orderId || "",
-                productName: rec.productName || "",
+                orderId: rec.orderId,
+                productName: rec.productName,
               },
             },
             update: {
-              orderDate: rec.orderDate || null,
-              storeName: rec.storeName || null,
-              shortName: rec.shortName || null,
-              amount: rec.amount || 0,
-              orderTotal: rec.orderTotal || 0,
-              paymentDate: rec.paymentDate || null,
-              deliveryAddress: rec.deliveryAddress || null,
               asin: rec.asin || "",
-              amazonCategory: rec.amazonCategory || "",
+              shortName: rec.shortName || "",
               expenseCategory: rec.expenseCategory || "",
-              quantity: rec.quantity || 1,
-              taxAmount: rec.taxAmount || 0,
-              taxRate: rec.taxRate || "",
-              accountUser: rec.accountUser || "",
-              invoiceNumber: rec.invoiceNumber || "",
+              amazonCategory: rec.amazonCategory || "",
             },
             create: {
               orderDate: rec.orderDate || null,
-              orderId: rec.orderId || "",
+              orderId: rec.orderId,
               storeName: rec.storeName || null,
-              productName: rec.productName || "",
+              productName: rec.productName,
               shortName: rec.shortName || null,
               amount: rec.amount || 0,
               orderTotal: rec.orderTotal || 0,
@@ -124,39 +137,17 @@ export async function POST(request: NextRequest) {
               invoiceNumber: rec.invoiceNumber || "",
             },
           });
-
-          // Upsert amazon product master if ASIN exists
-          if (rec.asin) {
-            await tx.amazonProductMaster.upsert({
-              where: { asin: rec.asin },
-              update: {
-                productName: rec.productName || "",
-                amazonCategory: rec.amazonCategory || "",
-                expenseCategory: rec.expenseCategory || "",
-                lastSeenDate: rec.orderDate || "",
-                updatedAt: new Date().toISOString(),
-              },
-              create: {
-                asin: rec.asin,
-                productName: rec.productName || "",
-                amazonCategory: rec.amazonCategory || "",
-                expenseCategory: rec.expenseCategory || "",
-                lastSeenDate: rec.orderDate || "",
-                updatedAt: new Date().toISOString(),
-              },
-            });
-          }
         }
+      }
 
-        await tx.uploadLog.create({
-          data: {
-            userId: session.userId,
-            userName: session.displayName || session.storeName || "ユーザー",
-            dataType: "amazon",
-            fileName: "Amazon CSV",
-            recordCount: inputRecords.length,
-          },
-        });
+      await prisma.uploadLog.create({
+        data: {
+          userId: session.userId,
+          userName: session.displayName || session.storeName || "ユーザー",
+          dataType: "amazon",
+          fileName: "Amazon CSV",
+          recordCount: inputRecords.length,
+        },
       });
 
       return NextResponse.json({

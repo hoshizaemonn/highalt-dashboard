@@ -34,6 +34,11 @@ export async function GET(request: NextRequest) {
     let totalLaborCost = 0;
     let totalHours = 0;
     let legalWelfare = 0;
+    let totalBaseSalary = 0;
+    let totalPositionAllowance = 0;
+    let totalOvertimePay = 0;
+    let totalCommute = 0;
+    let totalTaxableTotal = 0;
     const employeeIds = new Set<string>();
     let fulltimeCount = 0;
     let parttimeCount = 0;
@@ -42,6 +47,12 @@ export async function GET(request: NextRequest) {
       const ratio = row.ratio / 100;
       const gross = row.grossTotal * ratio;
       totalLaborCost += gross;
+
+      totalBaseSalary += row.baseSalary * ratio;
+      totalPositionAllowance += row.positionAllowance * ratio;
+      totalOvertimePay += row.overtimePay * ratio;
+      totalCommute += (row.commuteTaxable + row.commuteNontax) * ratio;
+      totalTaxableTotal += row.taxableTotal * ratio;
 
       const hours =
         (row.scheduledHours + row.overtimeHours) * ratio;
@@ -79,6 +90,11 @@ export async function GET(request: NextRequest) {
       total_labor_cost: Math.round(totalLaborCost),
       fulltime_gross: Math.round(fulltimeGross),
       parttime_gross: Math.round(parttimeGross),
+      base_salary: Math.round(totalBaseSalary),
+      position_allowance: Math.round(totalPositionAllowance),
+      overtime_pay: Math.round(totalOvertimePay),
+      commute: Math.round(totalCommute),
+      taxable_total: Math.round(totalTaxableTotal),
       total_hours: Math.round(totalHours * 10) / 10,
       employee_count: employeeIds.size,
       fulltime_count: fulltimeCount,

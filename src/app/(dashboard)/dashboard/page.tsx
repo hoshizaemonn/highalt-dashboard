@@ -73,6 +73,11 @@ interface DashboardData {
     total_labor_cost: number;
     fulltime_gross: number;
     parttime_gross: number;
+    base_salary: number;
+    position_allowance: number;
+    overtime_pay: number;
+    commute: number;
+    taxable_total: number;
     total_hours: number;
     employee_count: number;
     fulltime_count: number;
@@ -935,17 +940,59 @@ function MonthlyView({
               </td>
             </tr>
             <tr className="border-b">
-              <td className="px-4 py-1.5 pl-8 text-gray-600">正社員</td>
+              <td className="px-4 py-1.5 pl-8 text-gray-600">正社員給与</td>
               <td className="px-4 py-1.5 text-right">
                 {formatYen(data.payroll.fulltime_gross)}
               </td>
             </tr>
             <tr className="border-b">
-              <td className="px-4 py-1.5 pl-8 text-gray-600">パート・アルバイト</td>
+              <td className="px-4 py-1.5 pl-8 text-gray-600">契約社員給与</td>
               <td className="px-4 py-1.5 text-right">
                 {formatYen(data.payroll.parttime_gross)}
               </td>
             </tr>
+            {data.payroll.base_salary > 0 && (
+              <tr className="border-b">
+                <td className="px-4 py-1.5 pl-8 text-gray-600">基本給</td>
+                <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.base_salary)}</td>
+              </tr>
+            )}
+            {data.payroll.position_allowance > 0 && (
+              <tr className="border-b">
+                <td className="px-4 py-1.5 pl-8 text-gray-600">役職手当</td>
+                <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.position_allowance)}</td>
+              </tr>
+            )}
+            {data.payroll.overtime_pay > 0 && (
+              <tr className="border-b">
+                <td className="px-4 py-1.5 pl-8 text-gray-600">残業手当</td>
+                <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.overtime_pay)}</td>
+              </tr>
+            )}
+            {data.payroll.commute > 0 && (
+              <tr className="border-b">
+                <td className="px-4 py-1.5 pl-8 text-gray-600">通勤手当</td>
+                <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.commute)}</td>
+              </tr>
+            )}
+            {data.payroll.taxable_total > 0 && (
+              <tr className="border-b">
+                <td className="px-4 py-1.5 pl-8 text-gray-600">課税支給合計</td>
+                <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.taxable_total)}</td>
+              </tr>
+            )}
+            {data.payroll.legal_welfare > 0 && (
+              <tr className="border-b">
+                <td className="px-4 py-1.5 pl-8 text-gray-600">法定福利費（会社負担）</td>
+                <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.legal_welfare)}</td>
+              </tr>
+            )}
+            {data.payroll.total_hours > 0 && (
+              <tr className="border-b">
+                <td className="px-4 py-1.5 pl-8 text-gray-600">総勤務時間</td>
+                <td className="px-4 py-1.5 text-right">{data.payroll.total_hours.toLocaleString()}h</td>
+              </tr>
+            )}
             <tr className="border-b font-bold">
               <td className="px-4 py-2 text-red-700">人件費合計</td>
               <td className="px-4 py-2 text-right text-red-700">
