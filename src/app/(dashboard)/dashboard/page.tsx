@@ -358,11 +358,26 @@ function ExpenseDetailSection({
         )}
       </div>
 
-      {missingBreakdownCount > 0 && (
-        <p className="text-sm text-amber-600 mb-2">
-          ⚠ 内訳未入力: {missingBreakdownCount}件
-        </p>
-      )}
+      {(() => {
+        const missingCatCount = expenses.filter((e) => {
+          const cat = edits[e.id]?.category ?? e.category ?? "";
+          return !cat;
+        }).length;
+        return (
+          <div className="flex gap-4 mb-2">
+            {missingCatCount > 0 && (
+              <p className="text-sm text-red-600 font-medium">
+                🔴 勘定科目 未分類: {missingCatCount}件
+              </p>
+            )}
+            {missingBreakdownCount > 0 && (
+              <p className="text-sm text-amber-600">
+                🟡 内訳未入力: {missingBreakdownCount}件
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
         <table className="w-full text-sm">
@@ -378,8 +393,17 @@ function ExpenseDetailSection({
           <tbody>
             {expenses.map((e) => {
               const edited = edits[e.id] ?? {};
+              const currentCategory = edited.category ?? e.category ?? "";
+              const currentBreakdown = edited.breakdown ?? e.breakdown ?? "";
+              const isMissingCategory = !currentCategory;
+              const isMissingBreakdown = !currentBreakdown.trim();
+              const rowBg = isMissingCategory
+                ? "bg-red-50"
+                : isMissingBreakdown
+                ? "bg-yellow-50"
+                : "";
               return (
-                <tr key={e.id} className="border-b hover:bg-gray-50/50">
+                <tr key={e.id} className={`border-b hover:bg-gray-50/50 ${rowBg}`}>
                   <td className="px-3 py-1.5 text-gray-600">{e.day}</td>
                   <td className="px-3 py-1.5 text-gray-700">{e.description ?? ""}</td>
                   <td className="px-3 py-1.5 text-right">
@@ -394,13 +418,15 @@ function ExpenseDetailSection({
                   </td>
                   <td className="px-3 py-1.5">
                     <select
-                      value={edited.category ?? e.category ?? ""}
+                      value={currentCategory}
                       onChange={(ev) =>
                         handleEdit(e.id, "category", ev.target.value)
                       }
-                      className="border rounded px-2 py-0.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-300"
+                      className={`border rounded px-2 py-0.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-300 ${
+                        isMissingCategory ? "border-red-400 bg-red-50 text-red-700" : ""
+                      }`}
                     >
-                      <option value="">未分類</option>
+                      <option value="">🔴 未分類</option>
                       {EXPENSE_CATEGORIES.map((c) => (
                         <option key={c} value={c}>
                           {c}
@@ -411,12 +437,14 @@ function ExpenseDetailSection({
                   <td className="px-3 py-1.5">
                     <input
                       type="text"
-                      value={edited.breakdown ?? e.breakdown ?? ""}
+                      value={currentBreakdown}
                       onChange={(ev) =>
                         handleEdit(e.id, "breakdown", ev.target.value)
                       }
-                      className="w-full border rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300"
-                      placeholder="内訳を入力"
+                      className={`w-full border rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300 ${
+                        isMissingBreakdown ? "border-amber-400 bg-amber-50" : ""
+                      }`}
+                      placeholder="🟡 未入力"
                     />
                   </td>
                 </tr>
