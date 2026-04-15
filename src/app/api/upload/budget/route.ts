@@ -4,6 +4,44 @@ import { getSession } from "@/lib/auth";
 import { BUDGET_ITEMS } from "@/lib/constants";
 import { decodeFileBuffer, parseCSV, safeInt } from "@/lib/csv-utils";
 
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const store = searchParams.get("store") || "";
+    const fiscalYear = parseInt(searchParams.get("fiscalYear") || "", 10);
+
+    if (!store || isNaN(fiscalYear)) {
+      return NextResponse.json(
+        { error: "store, fiscalYear are required" },
+        { status: 400 },
+      );
+    }
+
+    const count = await prisma.budgetData.count({
+      where: { storeName: store, year: fiscalYear },
+    });
+
+    return NextResponse.json({
+      exists: count > 0,
+      count,
+    });
+  } catch (error) {
+    console.error("Budget check error:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Internal server error",
+      },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();

@@ -240,6 +240,43 @@ function MonthSelect({
   );
 }
 
+// ─── Overwrite Warning Component ────────────────────────────
+
+function OverwriteWarning({
+  message,
+  onConfirm,
+  onCancel,
+  loading,
+}: {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading?: boolean;
+}) {
+  return (
+    <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
+      <p className="text-sm text-amber-800 font-medium mb-3">{message}</p>
+      <div className="flex gap-2">
+        <button
+          onClick={onConfirm}
+          disabled={loading}
+          className="px-4 py-2 rounded-md text-sm font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          {loading && <Loader2 size={14} className="animate-spin" />}
+          はい（上書き保存）
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={loading}
+          className="px-4 py-2 rounded-md text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          いいえ（キャンセル）
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Action Buttons ─────────────────────────────────────────
 
 function ActionButton({
@@ -306,16 +343,17 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
     records: number;
     unresolved: { employeeId: string; employeeName: string; contractType: string; grossTotal: number }[];
   } | null>(null);
+  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const doUpload = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "解析・保存中..." });
     setResult(null);
+    setOverwriteWarning(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", file!);
       formData.append("year", String(year));
       formData.append("month", String(month));
 
@@ -345,6 +383,28 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setLoading(true);
+    setStatus(null);
+    setResult(null);
+
+    try {
+      const checkRes = await fetch(`/api/upload/payroll?year=${year}&month=${month}`);
+      const checkData = await checkRes.json();
+
+      if (checkData.exists) {
+        setOverwriteWarning({ count: checkData.count });
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Check failed, proceed with upload anyway
+    }
+
+    await doUpload();
   };
 
   return (
@@ -383,10 +443,19 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
       )}
 
       <div className="flex gap-2">
-        <ActionButton onClick={handleUpload} loading={loading} disabled={!file}>
+        <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
           解析して保存する
         </ActionButton>
       </div>
+
+      {overwriteWarning && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F ${year}年${month}月の人件費データが既に${overwriteWarning.count}件あります。上書きしますか？`}
+          onConfirm={doUpload}
+          onCancel={() => setOverwriteWarning(null)}
+          loading={loading}
+        />
+      )}
 
       <StatusBanner status={status} />
 
@@ -470,15 +539,16 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const doUpload = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "解析・保存中..." });
+    setOverwriteWarning(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", file!);
       formData.append("store", store);
       formData.append("year", String(year));
       formData.append("month", String(month));
@@ -510,6 +580,27 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
     }
   };
 
+  const handleUpload = async () => {
+    if (!file) return;
+    setLoading(true);
+    setStatus(null);
+
+    try {
+      const checkRes = await fetch(`/api/upload/expense?year=${year}&month=${month}&store=${encodeURIComponent(store)}`);
+      const checkData = await checkRes.json();
+
+      if (checkData.exists) {
+        setOverwriteWarning({ count: checkData.count });
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Check failed, proceed with upload anyway
+    }
+
+    await doUpload();
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
@@ -529,12 +620,22 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
         onClear={() => {
           setFile(null);
           setStatus(null);
+          setOverwriteWarning(null);
         }}
       />
 
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file}>
+      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
         解析して保存する
       </ActionButton>
+
+      {overwriteWarning && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F ${store} ${year}年${month}月の経費データが既に${overwriteWarning.count}件あります。上書きしますか？`}
+          onConfirm={doUpload}
+          onCancel={() => setOverwriteWarning(null)}
+          loading={loading}
+        />
+      )}
 
       <StatusBanner status={status} />
     </div>
@@ -788,15 +889,16 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
   const [store, setStore] = useState<string>(STORES[0]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const doUpload = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "取込中..." });
+    setOverwriteWarning(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", file!);
       formData.append("type", "ml001");
       formData.append("store", store);
 
@@ -827,6 +929,27 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
     }
   };
 
+  const handleUpload = async () => {
+    if (!file) return;
+    setLoading(true);
+    setStatus(null);
+
+    try {
+      const checkRes = await fetch(`/api/upload/hacomono?type=ml001&store=${encodeURIComponent(store)}`);
+      const checkData = await checkRes.json();
+
+      if (checkData.exists) {
+        setOverwriteWarning({ count: checkData.count });
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Check failed, proceed with upload anyway
+    }
+
+    await doUpload();
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
@@ -844,12 +967,22 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
         onClear={() => {
           setFile(null);
           setStatus(null);
+          setOverwriteWarning(null);
         }}
       />
 
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file}>
+      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
         取り込む
       </ActionButton>
+
+      {overwriteWarning && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F ${store}の会員データが既に${overwriteWarning.count}件あります。上書きしますか？`}
+          onConfirm={doUpload}
+          onCancel={() => setOverwriteWarning(null)}
+          loading={loading}
+        />
+      )}
 
       <StatusBanner status={status} />
     </div>
@@ -863,15 +996,16 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const doUpload = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "取込中..." });
+    setOverwriteWarning(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", file!);
       formData.append("type", "pl001");
       formData.append("store", store);
       formData.append("year", String(year));
@@ -904,6 +1038,27 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
     }
   };
 
+  const handleUpload = async () => {
+    if (!file) return;
+    setLoading(true);
+    setStatus(null);
+
+    try {
+      const checkRes = await fetch(`/api/upload/hacomono?type=pl001&store=${encodeURIComponent(store)}&year=${year}&month=${month}`);
+      const checkData = await checkRes.json();
+
+      if (checkData.exists) {
+        setOverwriteWarning({ count: checkData.count });
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Check failed, proceed with upload anyway
+    }
+
+    await doUpload();
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
@@ -923,12 +1078,22 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
         onClear={() => {
           setFile(null);
           setStatus(null);
+          setOverwriteWarning(null);
         }}
       />
 
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file}>
+      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
         取り込む
       </ActionButton>
+
+      {overwriteWarning && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F ${store} ${year}年${month}月の売上明細データが既に${overwriteWarning.count}件あります。上書きしますか？`}
+          onConfirm={doUpload}
+          onCancel={() => setOverwriteWarning(null)}
+          loading={loading}
+        />
+      )}
 
       <StatusBanner status={status} />
     </div>
@@ -942,15 +1107,16 @@ function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const doUpload = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "取込中..." });
+    setOverwriteWarning(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", file!);
       formData.append("type", "ma002");
       formData.append("store", store);
       formData.append("year", String(year));
@@ -983,6 +1149,27 @@ function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
     }
   };
 
+  const handleUpload = async () => {
+    if (!file) return;
+    setLoading(true);
+    setStatus(null);
+
+    try {
+      const checkRes = await fetch(`/api/upload/hacomono?type=ma002&store=${encodeURIComponent(store)}&year=${year}&month=${month}`);
+      const checkData = await checkRes.json();
+
+      if (checkData.exists) {
+        setOverwriteWarning({ count: checkData.count });
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Check failed, proceed with upload anyway
+    }
+
+    await doUpload();
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
@@ -1002,12 +1189,22 @@ function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
         onClear={() => {
           setFile(null);
           setStatus(null);
+          setOverwriteWarning(null);
         }}
       />
 
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file}>
+      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
         取り込む
       </ActionButton>
+
+      {overwriteWarning && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F ${store} ${year}年${month}月の月次サマリデータが既に${overwriteWarning.count}件あります。上書きしますか？`}
+          onConfirm={doUpload}
+          onCancel={() => setOverwriteWarning(null)}
+          loading={loading}
+        />
+      )}
 
       <StatusBanner status={status} />
     </div>
@@ -1033,15 +1230,16 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
   const [period, setPeriod] = useState(9);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const doUpload = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "解析・保存中..." });
+    setOverwriteWarning(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", file!);
       formData.append("store", store);
       formData.append("fiscalYear", String(fiscalYear));
       formData.append("period", String(period));
@@ -1071,6 +1269,27 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setLoading(true);
+    setStatus(null);
+
+    try {
+      const checkRes = await fetch(`/api/upload/budget?store=${encodeURIComponent(store)}&fiscalYear=${fiscalYear}`);
+      const checkData = await checkRes.json();
+
+      if (checkData.exists) {
+        setOverwriteWarning({ count: checkData.count });
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Check failed, proceed with upload anyway
+    }
+
+    await doUpload();
   };
 
   return (
@@ -1122,12 +1341,22 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
         onClear={() => {
           setFile(null);
           setStatus(null);
+          setOverwriteWarning(null);
         }}
       />
 
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file}>
+      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
         解析して保存する
       </ActionButton>
+
+      {overwriteWarning && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F ${store} ${fiscalYear}年度の予算データが既に${overwriteWarning.count}件あります。上書きしますか？`}
+          onConfirm={doUpload}
+          onCancel={() => setOverwriteWarning(null)}
+          loading={loading}
+        />
+      )}
 
       <StatusBanner status={status} />
     </div>

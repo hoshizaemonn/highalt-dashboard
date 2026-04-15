@@ -54,6 +54,44 @@ async function resolveStore(employeeId: string): Promise<StoreAssignment[]> {
   return [];
 }
 
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const year = parseInt(searchParams.get("year") || "", 10);
+    const month = parseInt(searchParams.get("month") || "", 10);
+
+    if (isNaN(year) || isNaN(month)) {
+      return NextResponse.json(
+        { error: "year, month are required" },
+        { status: 400 },
+      );
+    }
+
+    const count = await prisma.payrollData.count({
+      where: { year, month },
+    });
+
+    return NextResponse.json({
+      exists: count > 0,
+      count,
+    });
+  } catch (error) {
+    console.error("Payroll check error:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Internal server error",
+      },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();

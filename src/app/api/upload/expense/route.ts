@@ -35,6 +35,45 @@ function classifyExpense(
   return { category: null, isRevenue: false };
 }
 
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const year = parseInt(searchParams.get("year") || "", 10);
+    const month = parseInt(searchParams.get("month") || "", 10);
+    const store = searchParams.get("store") || "";
+
+    if (isNaN(year) || isNaN(month) || !store) {
+      return NextResponse.json(
+        { error: "year, month, store are required" },
+        { status: 400 },
+      );
+    }
+
+    const count = await prisma.expenseData.count({
+      where: { year, month, storeName: store },
+    });
+
+    return NextResponse.json({
+      exists: count > 0,
+      count,
+    });
+  } catch (error) {
+    console.error("Expense check error:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Internal server error",
+      },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();

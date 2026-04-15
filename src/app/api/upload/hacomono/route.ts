@@ -29,6 +29,81 @@ function mapHacomonoStore(fullName: string): string {
   return short || trimmed;
 }
 
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get("type") || "";
+    const year = parseInt(searchParams.get("year") || "", 10);
+    const month = parseInt(searchParams.get("month") || "", 10);
+    const store = searchParams.get("store") || "";
+
+    if (!type) {
+      return NextResponse.json(
+        { error: "type is required" },
+        { status: 400 },
+      );
+    }
+
+    let count = 0;
+
+    if (type === "ml001") {
+      if (!store) {
+        return NextResponse.json(
+          { error: "store is required for ML001" },
+          { status: 400 },
+        );
+      }
+      count = await prisma.memberData.count({
+        where: { storeName: store },
+      });
+    } else if (type === "pl001") {
+      if (!store || isNaN(year) || isNaN(month)) {
+        return NextResponse.json(
+          { error: "store, year, month are required for PL001" },
+          { status: 400 },
+        );
+      }
+      count = await prisma.salesDetail.count({
+        where: { year, month, storeName: store },
+      });
+    } else if (type === "ma002") {
+      if (!store || isNaN(year) || isNaN(month)) {
+        return NextResponse.json(
+          { error: "store, year, month are required for MA002" },
+          { status: 400 },
+        );
+      }
+      count = await prisma.monthlySummary.count({
+        where: { year, month, storeName: store },
+      });
+    } else {
+      return NextResponse.json(
+        { error: "Invalid type. Use ml001, pl001, or ma002." },
+        { status: 400 },
+      );
+    }
+
+    return NextResponse.json({
+      exists: count > 0,
+      count,
+    });
+  } catch (error) {
+    console.error("Hacomono check error:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Internal server error",
+      },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
