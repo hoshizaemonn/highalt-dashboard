@@ -659,6 +659,175 @@ function buildBudgetRows(
   return rows;
 }
 
+// ─── Payroll Detail types & component ─────────────────────
+
+interface PayrollEmployee {
+  employeeId: string;
+  employeeName: string;
+  contractType: string;
+  baseSalary: number;
+  positionAllowance: number;
+  overtimePay: number;
+  commuteTaxable: number;
+  commuteNontax: number;
+  taxableTotal: number;
+  grossTotal: number;
+  scheduledHours: number;
+  overtimeHours: number;
+  ratio: number;
+  storeName: string;
+}
+
+function PayrollDetailSection({
+  year,
+  month,
+  store,
+  isAdmin,
+  sessionStoreName,
+}: {
+  year: number;
+  month: number;
+  store: string;
+  isAdmin: boolean;
+  sessionStoreName: string | null;
+}) {
+  const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Only show for admin or own-store manager
+  const canView = isAdmin || (sessionStoreName != null && sessionStoreName === store);
+
+  useEffect(() => {
+    if (!canView) {
+      setEmployees([]);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          year: String(year),
+          month: String(month),
+          store,
+        });
+        const res = await fetch(`/api/dashboard/payroll-detail?${params}`);
+        if (!res.ok) throw new Error("fetch failed");
+        const data = await res.json();
+        if (!cancelled) setEmployees(data.employees ?? []);
+      } catch {
+        if (!cancelled) setEmployees([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [year, month, store, canView]);
+
+  if (!canView) return null;
+
+  if (loading) {
+    return (
+      <div className="animate-pulse mt-4">
+        <div className="h-4 bg-gray-200 rounded w-32 mb-3" />
+        <div className="h-48 bg-gray-100 rounded" />
+      </div>
+    );
+  }
+
+  if (employees.length === 0) return null;
+
+  // Group employees by store
+  const byStore: Record<string, PayrollEmployee[]> = {};
+  for (const emp of employees) {
+    if (!byStore[emp.storeName]) byStore[emp.storeName] = [];
+    byStore[emp.storeName].push(emp);
+  }
+
+  const storeNames = Object.keys(byStore).sort();
+
+  return (
+    <>
+      <SectionTitle>従業員別明細</SectionTitle>
+      <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-gray-50">
+              <th className="text-left px-3 py-2 font-medium text-gray-600">店舗</th>
+              <th className="text-left px-3 py-2 font-medium text-gray-600">氏名</th>
+              <th className="text-left px-3 py-2 font-medium text-gray-600">契約種別</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600">基本給</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600">役職手当</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600">残業代</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600">通勤手当</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600">課税支給合計</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600">総支給額</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600">勤務時間</th>
+            </tr>
+          </thead>
+          <tbody>
+            {storeNames.map((sn) => {
+              const group = byStore[sn];
+              const subtotal = {
+                baseSalary: 0,
+                positionAllowance: 0,
+                overtimePay: 0,
+                commute: 0,
+                taxableTotal: 0,
+                grossTotal: 0,
+                hours: 0,
+              };
+              for (const e of group) {
+                const r = e.ratio / 100;
+                subtotal.baseSalary += e.baseSalary * r;
+                subtotal.positionAllowance += e.positionAllowance * r;
+                subtotal.overtimePay += e.overtimePay * r;
+                subtotal.commute += (e.commuteTaxable + e.commuteNontax) * r;
+                subtotal.taxableTotal += e.taxableTotal * r;
+                subtotal.grossTotal += e.grossTotal * r;
+                subtotal.hours += (e.scheduledHours + e.overtimeHours) * r;
+              }
+              return [
+                ...group.map((e) => {
+                  const r = e.ratio / 100;
+                  return (
+                    <tr key={`${sn}-${e.employeeId}`} className="border-b hover:bg-gray-50/50">
+                      <td className="px-3 py-1.5 text-gray-600">{e.storeName}</td>
+                      <td className="px-3 py-1.5 text-gray-700">{e.employeeName}</td>
+                      <td className="px-3 py-1.5 text-gray-600">{e.contractType}</td>
+                      <td className="px-3 py-1.5 text-right">{formatYen(Math.round(e.baseSalary * r))}</td>
+                      <td className="px-3 py-1.5 text-right">{formatYen(Math.round(e.positionAllowance * r))}</td>
+                      <td className="px-3 py-1.5 text-right">{formatYen(Math.round(e.overtimePay * r))}</td>
+                      <td className="px-3 py-1.5 text-right">{formatYen(Math.round((e.commuteTaxable + e.commuteNontax) * r))}</td>
+                      <td className="px-3 py-1.5 text-right">{formatYen(Math.round(e.taxableTotal * r))}</td>
+                      <td className="px-3 py-1.5 text-right">{formatYen(Math.round(e.grossTotal * r))}</td>
+                      <td className="px-3 py-1.5 text-right">{((e.scheduledHours + e.overtimeHours) * r).toFixed(1)}h</td>
+                    </tr>
+                  );
+                }),
+                <tr key={`subtotal-${sn}`} className="border-b bg-gray-50 font-bold">
+                  <td className="px-3 py-2 text-gray-700">{sn}</td>
+                  <td className="px-3 py-2 text-gray-700">小計（{group.length}名）</td>
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2 text-right">{formatYen(Math.round(subtotal.baseSalary))}</td>
+                  <td className="px-3 py-2 text-right">{formatYen(Math.round(subtotal.positionAllowance))}</td>
+                  <td className="px-3 py-2 text-right">{formatYen(Math.round(subtotal.overtimePay))}</td>
+                  <td className="px-3 py-2 text-right">{formatYen(Math.round(subtotal.commute))}</td>
+                  <td className="px-3 py-2 text-right">{formatYen(Math.round(subtotal.taxableTotal))}</td>
+                  <td className="px-3 py-2 text-right">{formatYen(Math.round(subtotal.grossTotal))}</td>
+                  <td className="px-3 py-2 text-right">{subtotal.hours.toFixed(1)}h</td>
+                </tr>,
+              ];
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 // ─── Monthly View component ─────────────────────────────────
 
 function MonthlyView({
@@ -668,6 +837,7 @@ function MonthlyView({
   month,
   store,
   isAdmin,
+  sessionStoreName,
 }: {
   data: DashboardData;
   isAllStores: boolean;
@@ -675,6 +845,7 @@ function MonthlyView({
   month: number;
   store: string;
   isAdmin: boolean;
+  sessionStoreName: string | null;
 }) {
   const budgetRows = useMemo(() => {
     if (isAllStores || Object.keys(data.budget).length === 0) return [];
@@ -993,6 +1164,17 @@ function MonthlyView({
             </table>
           </div>
         </>
+      )}
+
+      {/* Employee Payroll Detail (admin or own-store manager) */}
+      {!isAllStores && (
+        <PayrollDetailSection
+          year={year}
+          month={month}
+          store={store}
+          isAdmin={isAdmin}
+          sessionStoreName={sessionStoreName}
+        />
       )}
 
       {/* Payroll Summary Download (admin only) */}
@@ -1501,13 +1683,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [sessionStoreName, setSessionStoreName] = useState<string | null>(null);
 
-  // Check admin status from session cookie (read via API)
+  // Check admin status and store name from session cookie (read via API)
   useEffect(() => {
     fetch("/api/auth/session")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data?.role === "admin") setIsAdmin(true);
+        if (data?.storeName) setSessionStoreName(data.storeName);
       })
       .catch(() => {});
   }, []);
@@ -1714,6 +1898,7 @@ export default function DashboardPage() {
           month={calendarYM.calMonth}
           store={store}
           isAdmin={isAdmin}
+          sessionStoreName={sessionStoreName}
         />
       )}
 

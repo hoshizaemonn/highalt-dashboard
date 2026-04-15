@@ -229,17 +229,17 @@ export async function POST(request: NextRequest) {
       const orderDate = getVal(row, "注文日");
       const orderId = getVal(row, "注文番号");
       const productName = getVal(row, "商品名");
-      const asin = getVal(row, "ASIN/ISBN");
-      const amazonCategory = getVal(row, "カテゴリー");
-      const accountUser = getVal(row, "注文者");
-      const deliveryAddress = getVal(row, "届け先住所");
-      const paymentDate = getVal(row, "支払い日");
-      const invoiceNumber = getVal(row, "請求書番号");
-      const quantity = safeInt(getVal(row, "数量")) || 1;
-      const amount = safeInt(getVal(row, "商品小計"));
-      const orderTotal = safeInt(getVal(row, "合計"));
-      const taxAmount = safeInt(getVal(row, "税額"));
-      const taxRate = getVal(row, "税率");
+      const asin = getVal(row, "ASIN") || getVal(row, "ASIN/ISBN");
+      const amazonCategory = getVal(row, "商品カテゴリー") || getVal(row, "カテゴリー");
+      const accountUser = getVal(row, "アカウントユーザー") || getVal(row, "注文者");
+      const deliveryAddress = getVal(row, "配送先住所") || getVal(row, "届け先住所");
+      const paymentDate = getVal(row, "支払い確定日") || getVal(row, "支払い日");
+      const invoiceNumber = getVal(row, "適格請求書（または支払い明細書）番号") || getVal(row, "請求書番号");
+      const quantity = safeInt(getVal(row, "商品の数量") || getVal(row, "数量")) || 1;
+      const amount = safeInt(getVal(row, "商品および配送料の合計（税込）") || getVal(row, "商品小計"));
+      const orderTotal = safeInt(getVal(row, "注文の合計（税込）") || getVal(row, "合計"));
+      const taxAmount = safeInt(getVal(row, "商品の小計（消費税）") || getVal(row, "税額"));
+      const taxRate = getVal(row, "商品の小計（税率）") || getVal(row, "税率");
 
       // Detect store
       let storeName =
@@ -247,11 +247,12 @@ export async function POST(request: NextRequest) {
         detectStoreFromAddress(deliveryAddress) ||
         "";
 
-      // Short name: truncate product name to 20 chars
+      // Short name: truncate product name to 30 chars (matching Streamlit version)
+      const cleaned = productName.replace(/\s*[\[【（(].*?[\]】）)]/g, "").trim();
       const shortName =
-        productName.length > 20
-          ? productName.substring(0, 20) + "..."
-          : productName;
+        cleaned.length > 30
+          ? cleaned.substring(0, 30) + "…"
+          : cleaned;
 
       // Auto-classify from product master
       let expenseCategory = "";
