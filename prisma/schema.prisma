@@ -199,13 +199,14 @@ model SalesDetail {
 // ─── Square Sales ───────────────────────────────────────────
 
 model SquareSales {
-  id         Int    @id @default(autoincrement())
-  year       Int
-  month      Int
-  storeName  String @map("store_name")
-  grossSales Int    @default(0) @map("gross_sales")
-  netSales   Int    @default(0) @map("net_sales")
-  salesCount Int    @default(0) @map("sales_count")
+  id               Int    @id @default(autoincrement())
+  year             Int
+  month            Int
+  storeName        String @map("store_name")
+  grossSales       Int    @default(0) @map("gross_sales")
+  netSales         Int    @default(0) @map("net_sales")
+  fees             Int    @default(0)
+  transactionCount Int    @default(0) @map("transaction_count")
 
   @@unique([year, month, storeName])
   @@map("square_sales")
