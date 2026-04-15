@@ -74,14 +74,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Budget CSV (予算実績対比表) format:
-    // Each month has 4 columns: 予算, 実績, 予算差, 予算比
-    // Row structure: category name, then 4 cols x 12 months + totals
-    // We extract the 予算 column (first of each group of 4) for 12 months
+    // Each month has 4 columns: 予算/実績/予算差/予算比 starting from col index 1
+    // Values are in thousands (千円単位) → multiply by 1000
+    // Fiscal year: Oct(fy-1) to Sep(fy)
 
-    // Determine fiscal year start month (period parameter)
-    // If period=9, fiscal year starts in September
-    // Month mapping: col 0 = category, then groups of 4
-    const fiscalStartMonth = isNaN(period) ? 9 : period;
+    // Build fiscal year month mapping: [(2025,10),(2025,11),(2025,12),(2026,1),...,(2026,9)]
+    const fyMonths: { year: number; month: number }[] = [];
+    for (let m = 10; m <= 12; m++) fyMonths.push({ year: fiscalYear - 1, month: m });
+    for (let m = 1; m <= 9; m++) fyMonths.push({ year: fiscalYear, month: m });
 
     interface BudgetRecord {
       storeName: string;
@@ -92,41 +92,36 @@ export async function POST(request: NextRequest) {
     }
 
     const records: BudgetRecord[] = [];
-
-    // Skip header rows - find data rows by matching against known BUDGET_ITEMS
     const budgetItemSet = new Set(BUDGET_ITEMS as readonly string[]);
 
     for (const row of allRows) {
-      if (row.length < 5) continue;
+      if (!row || !row[0]?.trim()) continue;
 
-      const categoryName = row[0]?.trim();
-      if (!categoryName || !budgetItemSet.has(categoryName)) continue;
+      const categoryName = row[0].trim();
+      if (!budgetItemSet.has(categoryName)) continue;
 
-      // Extract budget values for 12 months
-      // Each month occupies 4 columns starting at column 1
-      for (let monthIdx = 0; monthIdx < 12; monthIdx++) {
-        const budgetColIdx = 1 + monthIdx * 4; // 予算 is first of each 4-col group
+      // Each month has 4 columns: 予算/実績/予算差/予算比 starting from col index 1
+      for (let i = 0; i < fyMonths.length; i++) {
+        const colIdx = 1 + i * 4; // 予算 column (first of each group of 4)
+        if (colIdx >= row.length) break;
 
-        if (budgetColIdx >= row.length) break;
+        const valStr = row[colIdx].trim().replace(/,/g, "").replace(/"/g, "").replace(/ /g, "");
+        if (!valStr || valStr === "0" || valStr === "-") continue;
 
-        const amount = safeInt(row[budgetColIdx]);
+        try {
+          const amount = parseInt(valStr, 10) * 1000; // 千円単位 → 円
+          if (isNaN(amount)) continue;
 
-        // Calculate actual year and month
-        // For period=9 (9月決算), fiscal year 2026 = 2025/10〜2026/9
-        // CSV columns: 10月,11月,12月,1月,2月,...,9月
-        // Month 10-12 → previous year (fiscalYear-1), Month 1-9 → fiscalYear
-        const actualMonth = ((10 - 1 + monthIdx) % 12) + 1; // starts from October
-        const actualYear = actualMonth >= 10
-          ? fiscalYear - 1
-          : fiscalYear;
-
-        records.push({
-          storeName: store,
-          year: actualYear,
-          month: actualMonth,
-          category: categoryName,
-          amount,
-        });
+          records.push({
+            storeName: store,
+            year: fyMonths[i].year,
+            month: fyMonths[i].month,
+            category: categoryName,
+            amount,
+          });
+        } catch {
+          // Skip invalid values
+        }
       }
     }
 
