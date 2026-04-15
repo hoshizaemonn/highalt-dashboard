@@ -67,18 +67,18 @@ interface UserRow {
 function useSessionRole() {
   const [role, setRole] = useState<string>("store_manager");
   useEffect(() => {
-    try {
-      const cookie = document.cookie
-        .split("; ")
-        .find((c) => c.startsWith("highalt_session="));
-      if (cookie) {
-        const val = decodeURIComponent(cookie.split("=")[1]);
-        const parsed = JSON.parse(val);
-        setRole(parsed.role || "store_manager");
+    async function fetchRole() {
+      try {
+        const res = await fetch("/api/auth/session");
+        if (res.ok) {
+          const data = await res.json();
+          setRole(data.role || "store_manager");
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
+    fetchRole();
   }, []);
   return role;
 }
