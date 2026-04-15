@@ -112,12 +112,13 @@ export async function POST(request: NextRequest) {
         const amount = safeInt(row[budgetColIdx]);
 
         // Calculate actual year and month
-        const actualMonth =
-          ((fiscalStartMonth - 1 + monthIdx) % 12) + 1;
-        const actualYear =
-          actualMonth >= fiscalStartMonth
-            ? fiscalYear
-            : fiscalYear + 1;
+        // For period=9 (9月決算), fiscal year 2026 = 2025/10〜2026/9
+        // CSV columns: 10月,11月,12月,1月,2月,...,9月
+        // Month 10-12 → previous year (fiscalYear-1), Month 1-9 → fiscalYear
+        const actualMonth = ((10 - 1 + monthIdx) % 12) + 1; // starts from October
+        const actualYear = actualMonth >= 10
+          ? fiscalYear - 1
+          : fiscalYear;
 
         records.push({
           storeName: store,
