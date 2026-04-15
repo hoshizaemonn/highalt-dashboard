@@ -1146,6 +1146,7 @@ function UploadHistory() {
         <thead className="bg-gray-50">
           <tr>
             <th className="text-left py-2 px-3 font-medium">日時</th>
+            <th className="text-left py-2 px-3 font-medium">実行者</th>
             <th className="text-left py-2 px-3 font-medium">種別</th>
             <th className="text-left py-2 px-3 font-medium">店舗</th>
             <th className="text-left py-2 px-3 font-medium">対象</th>
@@ -1165,6 +1166,7 @@ function UploadHistory() {
                   minute: "2-digit",
                 })}
               </td>
+              <td className="py-1.5 px-3 whitespace-nowrap">{log.userName || "-"}</td>
               <td className="py-1.5 px-3">
                 <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-medium">
                   {dataTypeLabels[log.dataType] || log.dataType}
