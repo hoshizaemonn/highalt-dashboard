@@ -33,7 +33,60 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ expenses: rows });
+    // Match Amazon orders to fill breakdown for AMAZON expenses
+    const amazonRows = await prisma.amazonOrder.findMany({
+      where: {
+        paymentDate: { startsWith: `${year}/${String(month).padStart(2, "0")}` },
+        storeName: store,
+      },
+      select: {
+        shortName: true,
+        amount: true,
+        orderTotal: true,
+        paymentDate: true,
+        storeName: true,
+      },
+    });
+
+    const enriched = rows.map((row) => {
+      // If breakdown already set, keep it
+      if (row.breakdown && row.breakdown.trim()) return row;
+
+      // Only match AMAZON-related descriptions
+      const desc = (row.description || "").toUpperCase();
+      if (!desc.includes("AMAZON") && !desc.includes("ＡＭＡＺｏＮ")) return row;
+
+      const amt = Math.round(row.amount);
+      const dayStr = `${year}/${String(month).padStart(2, "0")}/${String(row.day).padStart(2, "0")}`;
+
+      // Priority 1: exact payment_date + store + order_total
+      let matched = amazonRows.filter(
+        (a) => a.paymentDate === dayStr && a.storeName === store && a.orderTotal === amt,
+      );
+
+      // Priority 2: month + store + order_total
+      if (matched.length === 0) {
+        matched = amazonRows.filter(
+          (a) => a.storeName === store && a.orderTotal === amt,
+        );
+      }
+
+      // Priority 3: month + store + individual amount
+      if (matched.length === 0) {
+        matched = amazonRows.filter(
+          (a) => a.storeName === store && a.amount === amt,
+        );
+      }
+
+      if (matched.length > 0) {
+        const names = [...new Set(matched.map((m) => m.shortName).filter(Boolean))];
+        return { ...row, breakdown: names.join(" / ") };
+      }
+
+      return row;
+    });
+
+    return NextResponse.json({ expenses: enriched });
   } catch (err) {
     console.error("GET /api/dashboard/expenses error:", err);
     return NextResponse.json(
