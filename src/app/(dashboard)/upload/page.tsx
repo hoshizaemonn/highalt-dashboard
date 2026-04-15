@@ -500,34 +500,62 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
 // ─── Expense Tab ────────────────────────────────────────────
 
 function ExpenseTab({ onSuccess }: { onSuccess?: () => void }) {
-  const [activeSubTab, setActiveSubTab] = useState<"amazon" | "paypay">("paypay");
+  const [amazonDone, setAmazonDone] = useState(false);
+  const [skipAmazon, setSkipAmazon] = useState(false);
+
+  const amazonReady = amazonDone || skipAmazon;
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-        <button
-          onClick={() => setActiveSubTab("paypay")}
-          className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            activeSubTab === "paypay"
-              ? "bg-white text-gray-800 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          PayPay銀行 CSV
-        </button>
-        <button
-          onClick={() => setActiveSubTab("amazon")}
-          className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            activeSubTab === "amazon"
-              ? "bg-white text-gray-800 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          Amazon CSV
-        </button>
+    <div className="space-y-6">
+      <p className="text-sm text-gray-500">
+        ① Amazon注文履歴 → ② PayPay銀行CSV の順にアップロード
+      </p>
+
+      {/* Step 1: Amazon */}
+      <div className="border border-gray-200 rounded-lg p-4">
+        <h3 className="text-sm font-bold text-gray-700 mb-2">① Amazon注文履歴（内訳データ）</h3>
+
+        {!amazonDone && (
+          <label className="flex items-center gap-2 mb-3">
+            <input
+              type="checkbox"
+              checked={skipAmazon}
+              onChange={(e) => setSkipAmazon(e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-sm text-gray-600">Amazonデータをスキップ（内訳不要の場合）</span>
+          </label>
+        )}
+
+        {!skipAmazon && !amazonDone && (
+          <AmazonExpenseSection onSuccess={() => { setAmazonDone(true); onSuccess?.(); }} />
+        )}
+
+        {amazonDone && (
+          <div className="bg-green-50 border border-green-200 rounded px-4 py-2 text-sm text-green-700">
+            ✅ Amazon注文データ取込完了
+          </div>
+        )}
+
+        {skipAmazon && !amazonDone && (
+          <div className="bg-blue-50 border border-blue-200 rounded px-4 py-2 text-sm text-blue-700">
+            Amazonデータはスキップされます
+          </div>
+        )}
       </div>
 
-      {activeSubTab === "paypay" ? <PayPayExpenseSection onSuccess={onSuccess} /> : <AmazonExpenseSection onSuccess={onSuccess} />}
+      {/* Step 2: PayPay */}
+      <div className={`border rounded-lg p-4 ${amazonReady ? "border-gray-200" : "border-gray-100 opacity-50"}`}>
+        <h3 className="text-sm font-bold text-gray-700 mb-2">② PayPay銀行CSV</h3>
+
+        {!amazonReady ? (
+          <p className="text-sm text-yellow-600">
+            先に①のAmazonデータを取り込むか、スキップにチェックを入れてください。
+          </p>
+        ) : (
+          <PayPayExpenseSection onSuccess={onSuccess} />
+        )}
+      </div>
     </div>
   );
 }
