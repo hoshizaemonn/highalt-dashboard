@@ -565,6 +565,7 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   const [store, setStore] = useState<string>(STORES[0]);
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [autoDetected, setAutoDetected] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
@@ -644,13 +645,26 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
       <FileDropzone
         accept=".csv"
         file={file}
-        onFileSelect={setFile}
+        onFileSelect={(f) => {
+          setFile(f);
+          if (f) {
+            const detected = detectYearMonthFromFilename(f.name);
+            if (detected.year) { setYear(detected.year); setAutoDetected(true); }
+            if (detected.month) { setMonth(detected.month); setAutoDetected(true); }
+          }
+        }}
         onClear={() => {
           setFile(null);
           setStatus(null);
           setOverwriteWarning(null);
+          setAutoDetected(false);
         }}
       />
+      {autoDetected && file && (
+        <p className="text-sm text-green-600">
+          ファイル名から <strong>{year}年{month}月</strong> を自動検出しました
+        </p>
+      )}
 
       <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
         解析して保存する
@@ -1396,6 +1410,8 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
 function UploadHistory() {
   const [logs, setLogs] = useState<UploadLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  const INITIAL_SHOW = 10;
 
   useEffect(() => {
     async function fetchLogs() {
@@ -1454,7 +1470,7 @@ function UploadHistory() {
           </tr>
         </thead>
         <tbody>
-          {logs.slice(0, 20).map((log) => (
+          {(showAll ? logs : logs.slice(0, INITIAL_SHOW)).map((log) => (
             <tr key={log.id} className="border-t border-gray-100 hover:bg-gray-50">
               <td className="py-1.5 px-3 whitespace-nowrap">
                 {new Date(log.createdAt).toLocaleString("ja-JP", {
@@ -1485,6 +1501,26 @@ function UploadHistory() {
           ))}
         </tbody>
       </table>
+      {!showAll && logs.length > INITIAL_SHOW && (
+        <div className="text-center py-3 border-t border-gray-100">
+          <button
+            onClick={() => setShowAll(true)}
+            className="text-sm text-[#567FC0] hover:underline"
+          >
+            さらに表示（全{logs.length}件）
+          </button>
+        </div>
+      )}
+      {showAll && logs.length > INITIAL_SHOW && (
+        <div className="text-center py-3 border-t border-gray-100">
+          <button
+            onClick={() => setShowAll(false)}
+            className="text-sm text-gray-500 hover:underline"
+          >
+            折りたたむ
+          </button>
+        </div>
+      )}
     </div>
   );
 }
