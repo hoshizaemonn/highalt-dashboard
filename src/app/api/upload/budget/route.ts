@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
         year: fiscalYear,
         fileName: file.name,
         recordCount: savedCount,
-        note: `${fiscalYear}年度 期首月${fiscalStartMonth}月`,
+        note: `${fiscalYear}年度 第${period || 9}期`,
       },
     });
 
