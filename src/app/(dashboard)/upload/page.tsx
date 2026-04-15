@@ -845,28 +845,18 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [autoSetFromCategory, setAutoSetFromCategory] = useState(true);
-  const [parsedRecords, setParsedRecords] = useState<
+  // Only unregistered (new) products to confirm
+  const [newRecords, setNewRecords] = useState<
     {
-      orderDate: string;
-      orderId: string;
-      storeName: string;
+      asin: string;
       productName: string;
       shortName: string;
-      asin: string;
       amazonCategory: string;
       expenseCategory: string;
-      amount: number;
-      quantity: number;
-      accountUser: string;
-      deliveryAddress: string;
-      paymentDate: string;
-      orderTotal: number;
-      taxAmount: number;
-      taxRate: string;
-      invoiceNumber: string;
     }[]
   >([]);
-  const [parseStats, setParseStats] = useState<{ autoClassified: number } | null>(null);
+  const [skippedCount, setSkippedCount] = useState(0);
+  const [allRegistered, setAllRegistered] = useState(false);
 
   // Map Amazon categories to expense categories as initial suggestion
   const amazonCategoryToExpense: Record<string, string> = {
@@ -890,6 +880,7 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
     if (!file) return;
     setLoading(true);
     setStatus({ type: "info", text: "解析中..." });
+    setAllRegistered(false);
 
     try {
       const formData = new FormData();
@@ -907,28 +898,55 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
         return;
       }
 
-      // Apply auto-set from Amazon category if checkbox is checked
-      const records = data.records.map((rec: typeof data.records[0]) => {
-        if (!rec.expenseCategory && autoSetFromCategory && rec.amazonCategory) {
-          const suggested = amazonCategoryToExpense[rec.amazonCategory];
-          if (suggested) {
-            return { ...rec, expenseCategory: suggested };
+      // Filter: records with empty expenseCategory = unregistered ASINs
+      // Deduplicate by ASIN (only need one entry per product)
+      const seenAsins = new Set<string>();
+      const unregistered: typeof newRecords = [];
+      let registered = 0;
+
+      for (const rec of data.records) {
+        if (rec.expenseCategory) {
+          // Already in product master
+          if (!seenAsins.has(rec.asin)) {
+            registered++;
+            seenAsins.add(rec.asin);
+          }
+        } else {
+          if (!seenAsins.has(rec.asin)) {
+            seenAsins.add(rec.asin);
+            // Apply auto-set from Amazon category
+            let suggestedCategory = "";
+            if (autoSetFromCategory && rec.amazonCategory) {
+              suggestedCategory = amazonCategoryToExpense[rec.amazonCategory] || "";
+            }
+            unregistered.push({
+              asin: rec.asin,
+              productName: rec.productName,
+              shortName: rec.shortName,
+              amazonCategory: rec.amazonCategory,
+              expenseCategory: suggestedCategory,
+            });
           }
         }
-        return rec;
-      });
+      }
 
-      setParsedRecords(records);
-      setParseStats({ autoClassified: data.autoClassified });
+      setSkippedCount(registered);
+      setNewRecords(unregistered);
 
-      const totalCount = records.length;
-      const classifiedCount = records.filter((r: { expenseCategory: string }) => r.expenseCategory).length;
-      const unclassifiedCount = totalCount - classifiedCount;
-
-      setStatus({
-        type: "success",
-        text: `\uD83D\uDCE6 ${totalCount}件の商品を検出。自動分類: ${classifiedCount}件 / 未分類: ${unclassifiedCount}件`,
-      });
+      if (unregistered.length === 0) {
+        // All ASINs already registered
+        setAllRegistered(true);
+        setStatus({
+          type: "success",
+          text: `全商品が登録済みです（${registered}件スキップ）`,
+        });
+        onSuccess?.();
+      } else {
+        setStatus({
+          type: "success",
+          text: `新規 ${unregistered.length}件 / 登録済み ${registered}件（スキップ）`,
+        });
+      }
     } catch (e) {
       setStatus({
         type: "error",
@@ -940,15 +958,15 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   };
 
   const handleSave = async () => {
-    if (parsedRecords.length === 0) return;
+    if (newRecords.length === 0) return;
     setSaving(true);
-    setStatus({ type: "info", text: "保存中（商品マスタに学習＆保存）..." });
+    setStatus({ type: "info", text: "商品マスタに登録中..." });
 
     try {
       const res = await fetch("/api/upload/amazon", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ records: parsedRecords }),
+        body: JSON.stringify({ records: newRecords, action: "save" }),
       });
 
       const data = await res.json();
@@ -960,11 +978,11 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
 
       setStatus({
         type: "success",
-        text: `${data.saved}件のAmazon注文データを保存しました（商品マスタも更新済み）`,
+        text: `商品マスタに ${data.saved ?? newRecords.length}件 登録しました`,
       });
       onSuccess?.();
-      setParsedRecords([]);
-      setParseStats(null);
+      setNewRecords([]);
+      setSkippedCount(0);
       setFile(null);
     } catch (e) {
       setStatus({
@@ -977,21 +995,19 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   };
 
   const updateRecordCategory = (index: number, category: string) => {
-    setParsedRecords((prev) => {
+    setNewRecords((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], expenseCategory: category };
       return next;
     });
   };
 
-  const totalCount = parsedRecords.length;
-  const classifiedCount = parsedRecords.filter((r) => r.expenseCategory).length;
-  const unclassifiedCount = totalCount - classifiedCount;
+  const parsed = newRecords.length > 0 || allRegistered;
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        Amazonビジネス注文履歴CSVをアップロード
+        Amazonビジネス注文履歴CSVをアップロード（商品マスタ登録用）
       </p>
 
       <FileDropzone
@@ -999,18 +1015,20 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
         file={file}
         onFileSelect={(f) => {
           setFile(f);
-          setParsedRecords([]);
-          setParseStats(null);
+          setNewRecords([]);
+          setSkippedCount(0);
+          setAllRegistered(false);
         }}
         onClear={() => {
           setFile(null);
           setStatus(null);
-          setParsedRecords([]);
-          setParseStats(null);
+          setNewRecords([]);
+          setSkippedCount(0);
+          setAllRegistered(false);
         }}
       />
 
-      {parsedRecords.length === 0 && (
+      {!parsed && (
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -1023,56 +1041,38 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
       )}
 
       <div className="flex gap-2">
-        <ActionButton onClick={handleParse} loading={loading} disabled={!file || parsedRecords.length > 0}>
+        <ActionButton onClick={handleParse} loading={loading} disabled={!file || parsed}>
           解析する
         </ActionButton>
-        {parsedRecords.length > 0 && (
+        {newRecords.length > 0 && (
           <ActionButton onClick={handleSave} loading={saving} variant="primary">
-            取り込む（商品マスタに学習＆保存）
+            この内容で商品マスタに登録する
           </ActionButton>
         )}
       </div>
 
       <StatusBanner status={status} />
 
-      {parsedRecords.length > 0 && unclassifiedCount > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2">
-          <p className="text-sm text-yellow-800 font-medium">
-            {"\u26A0\uFE0F"} 未分類: {unclassifiedCount}件 -- 下のドロップダウンから勘定科目を選択してください
-          </p>
-        </div>
-      )}
-
-      {parsedRecords.length > 0 && (
+      {newRecords.length > 0 && (
         <div className="overflow-x-auto border border-gray-200 rounded-lg">
           <div className="max-h-96 overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
-                  <th className="text-left py-2 px-3 font-medium">注文日</th>
-                  <th className="text-left py-2 px-3 font-medium">店舗</th>
-                  <th className="text-left py-2 px-3 font-medium">商品名</th>
                   <th className="text-left py-2 px-3 font-medium">ASIN</th>
+                  <th className="text-left py-2 px-3 font-medium">商品名</th>
                   <th className="text-left py-2 px-3 font-medium">Amazonカテゴリ</th>
-                  <th className="text-right py-2 px-3 font-medium">金額</th>
-                  <th className="text-center py-2 px-3 font-medium">数量</th>
                   <th className="text-left py-2 px-3 font-medium">勘定科目</th>
                 </tr>
               </thead>
               <tbody>
-                {parsedRecords.map((rec, i) => (
-                  <tr key={i} className={`border-t border-gray-100 ${!rec.expenseCategory ? "bg-yellow-50/50" : ""}`}>
-                    <td className="py-1.5 px-3 whitespace-nowrap">{rec.orderDate}</td>
-                    <td className="py-1.5 px-3 whitespace-nowrap">{rec.storeName || "未検出"}</td>
-                    <td className="py-1.5 px-3 max-w-[200px] truncate" title={rec.productName}>
+                {newRecords.map((rec, i) => (
+                  <tr key={rec.asin} className="border-t border-gray-100">
+                    <td className="py-1.5 px-3 whitespace-nowrap font-mono text-[10px]">{rec.asin}</td>
+                    <td className="py-1.5 px-3 max-w-[250px] truncate" title={rec.productName}>
                       {rec.shortName}
                     </td>
-                    <td className="py-1.5 px-3 whitespace-nowrap font-mono text-[10px]">{rec.asin}</td>
                     <td className="py-1.5 px-3 whitespace-nowrap text-gray-500 text-[10px]">{rec.amazonCategory}</td>
-                    <td className="py-1.5 px-3 text-right whitespace-nowrap">
-                      {rec.amount.toLocaleString()}円
-                    </td>
-                    <td className="py-1.5 px-3 text-center">{rec.quantity}</td>
                     <td className="py-1.5 px-3">
                       <select
                         value={rec.expenseCategory}
