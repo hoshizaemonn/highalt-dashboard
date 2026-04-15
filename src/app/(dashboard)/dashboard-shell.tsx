@@ -10,6 +10,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { LOGO_BASE64 } from "@/lib/logo";
 
 interface DashboardShellProps {
   userId: number;
@@ -75,21 +76,18 @@ export function DashboardShell({
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="bg-[#567FC0] px-4 py-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-white font-bold text-lg">ハイアルチ</h1>
-                <p className="text-white/80 text-xs mt-0.5">
-                  駅前高地&trade;トレーニング
-                </p>
-              </div>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden text-white/80 hover:text-white"
-              >
-                <X size={20} />
-              </button>
-            </div>
+          <div className="px-4 py-4 flex items-center justify-between">
+            <img
+              src={LOGO_BASE64}
+              alt="ハイアルチ 駅前高地™トレーニング"
+              className="w-32 rounded-lg"
+            />
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden text-gray-500 hover:text-gray-700"
+            >
+              <X size={20} />
+            </button>
           </div>
 
           {/* User Info */}
