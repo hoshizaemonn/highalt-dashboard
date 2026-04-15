@@ -10,7 +10,7 @@ import {
   Trash2,
   Clock,
 } from "lucide-react";
-import { STORES } from "@/lib/constants";
+import { STORES, EXPENSE_CATEGORIES } from "@/lib/constants";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -567,13 +567,31 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [autoDetected, setAutoDetected] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
+  const [parsedRecords, setParsedRecords] = useState<
+    {
+      year: number;
+      month: number;
+      day: number;
+      description: string;
+      amount: number;
+      deposit: number;
+      category: string | null;
+      isAutoClassified: boolean;
+      isRevenue: boolean;
+      breakdown: string;
+    }[]
+  >([]);
+  const [parseStats, setParseStats] = useState<{ classified: number; unclassified: number } | null>(null);
 
-  const doUpload = async () => {
+  const doParse = async () => {
     setLoading(true);
-    setStatus({ type: "info", text: "解析・保存中..." });
+    setStatus({ type: "info", text: "解析中..." });
     setOverwriteWarning(null);
+    setParsedRecords([]);
+    setParseStats(null);
 
     try {
       const formData = new FormData();
@@ -594,11 +612,12 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
         return;
       }
 
+      setParsedRecords(data.records);
+      setParseStats({ classified: data.classified, unclassified: data.unclassified });
       setStatus({
         type: "success",
-        text: `${store} ${year}年${month}月の経費データを保存しました\n${data.records}件（分類済み ${data.classified}件 / 未分類 ${data.unclassified}件）`,
+        text: `${data.records.length}件の取引を検出（分類済み ${data.classified}件 / 未分類 ${data.unclassified}件）`,
       });
-      onSuccess?.();
     } catch (e) {
       setStatus({
         type: "error",
@@ -609,7 +628,7 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
     }
   };
 
-  const handleUpload = async () => {
+  const handleParse = async () => {
     if (!file) return;
     setLoading(true);
     setStatus(null);
@@ -624,11 +643,64 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
         return;
       }
     } catch {
-      // Check failed, proceed with upload anyway
+      // Check failed, proceed with parse anyway
     }
 
-    await doUpload();
+    await doParse();
   };
+
+  const handleSave = async () => {
+    if (parsedRecords.length === 0) return;
+    setSaving(true);
+    setStatus({ type: "info", text: "保存中..." });
+
+    try {
+      const res = await fetch("/api/upload/expense", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save",
+          records: parsedRecords,
+          store,
+          year,
+          month,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setStatus({ type: "error", text: data.error || "エラーが発生しました" });
+        return;
+      }
+
+      setStatus({
+        type: "success",
+        text: `${store} ${year}年${month}月の経費データを保存しました（${data.saved}件）`,
+      });
+      onSuccess?.();
+      setParsedRecords([]);
+      setParseStats(null);
+      setFile(null);
+    } catch (e) {
+      setStatus({
+        type: "error",
+        text: e instanceof Error ? e.message : "エラーが発生しました",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateRecordCategory = (index: number, category: string) => {
+    setParsedRecords((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], category: category || null };
+      return next;
+    });
+  };
+
+  const currentUnclassified = parsedRecords.filter((r) => !r.category).length;
 
   return (
     <div className="space-y-4">
@@ -647,6 +719,8 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
         file={file}
         onFileSelect={(f) => {
           setFile(f);
+          setParsedRecords([]);
+          setParseStats(null);
           if (f) {
             const detected = detectYearMonthFromFilename(f.name);
             if (detected.year) { setYear(detected.year); setAutoDetected(true); }
@@ -658,6 +732,8 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
           setStatus(null);
           setOverwriteWarning(null);
           setAutoDetected(false);
+          setParsedRecords([]);
+          setParseStats(null);
         }}
       />
       {autoDetected && file && (
@@ -666,20 +742,99 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
         </p>
       )}
 
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
-        解析して保存する
-      </ActionButton>
+      <div className="flex gap-2">
+        <ActionButton onClick={handleParse} loading={loading} disabled={!file || !!overwriteWarning || parsedRecords.length > 0}>
+          解析する
+        </ActionButton>
+        {parsedRecords.length > 0 && (
+          <ActionButton onClick={handleSave} loading={saving} variant="primary">
+            保存する
+          </ActionButton>
+        )}
+      </div>
 
       {overwriteWarning && (
         <OverwriteWarning
           message={`\u26A0\uFE0F ${store} ${year}年${month}月の経費データが既に${overwriteWarning.count}件あります。上書きしますか？`}
-          onConfirm={doUpload}
-          onCancel={() => setOverwriteWarning(null)}
+          onConfirm={async () => {
+            setOverwriteWarning(null);
+            await doParse();
+          }}
+          onCancel={() => { setOverwriteWarning(null); setLoading(false); }}
           loading={loading}
         />
       )}
 
       <StatusBanner status={status} />
+
+      {parsedRecords.length > 0 && currentUnclassified > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2">
+          <p className="text-sm text-yellow-800 font-medium">
+            {"\u26A0\uFE0F"} 未分類: {currentUnclassified}件 -- 下のドロップダウンから勘定科目を選択してください
+          </p>
+        </div>
+      )}
+
+      {parsedRecords.length > 0 && (
+        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+          <div className="max-h-96 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="text-left py-2 px-3 font-medium">日</th>
+                  <th className="text-left py-2 px-3 font-medium">摘要</th>
+                  <th className="text-right py-2 px-3 font-medium">出金</th>
+                  <th className="text-right py-2 px-3 font-medium">入金</th>
+                  <th className="text-left py-2 px-3 font-medium">勘定科目</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parsedRecords.map((rec, i) => (
+                  <tr
+                    key={i}
+                    className={`border-t border-gray-100 ${
+                      rec.isRevenue ? "bg-blue-50/50" : !rec.category ? "bg-yellow-50/50" : ""
+                    }`}
+                  >
+                    <td className="py-1.5 px-3 whitespace-nowrap">{rec.month}/{rec.day}</td>
+                    <td className="py-1.5 px-3 max-w-[250px] truncate" title={rec.description}>
+                      {rec.description}
+                    </td>
+                    <td className="py-1.5 px-3 text-right whitespace-nowrap">
+                      {rec.amount > 0 ? rec.amount.toLocaleString() : ""}
+                    </td>
+                    <td className="py-1.5 px-3 text-right whitespace-nowrap">
+                      {rec.deposit > 0 ? rec.deposit.toLocaleString() : ""}
+                    </td>
+                    <td className="py-1.5 px-3">
+                      {rec.isRevenue ? (
+                        <span className="text-xs text-blue-600 font-medium">収入</span>
+                      ) : (
+                        <select
+                          value={rec.category || ""}
+                          onChange={(e) => updateRecordCategory(i, e.target.value)}
+                          className={`text-xs border rounded px-1.5 py-1 w-full ${
+                            rec.category
+                              ? "border-green-300 bg-green-50"
+                              : "border-yellow-300 bg-yellow-50"
+                          }`}
+                        >
+                          <option value="">未分類</option>
+                          {EXPENSE_CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -689,6 +844,7 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [autoSetFromCategory, setAutoSetFromCategory] = useState(true);
   const [parsedRecords, setParsedRecords] = useState<
     {
       orderDate: string;
@@ -710,6 +866,25 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
       invoiceNumber: string;
     }[]
   >([]);
+  const [parseStats, setParseStats] = useState<{ autoClassified: number } | null>(null);
+
+  // Map Amazon categories to expense categories as initial suggestion
+  const amazonCategoryToExpense: Record<string, string> = {
+    "ABIS_HEALTH_AND_BEAUTY": "消耗品費",
+    "ABIS_DRUGSTORE": "消耗品費",
+    "ABIS_OFFICE_PRODUCTS": "消耗品費",
+    "ABIS_KITCHEN": "消耗品費",
+    "ABIS_HOME": "消耗品費",
+    "ABIS_GROCERY": "消耗品費",
+    "ABIS_SPORTS": "消耗品費",
+    "ABIS_TOOLS": "消耗品費",
+    "ABIS_ELECTRONICS": "消耗品費",
+    "ABIS_COMPUTER": "消耗品費",
+    "ABIS_APPAREL": "消耗品費",
+    "ABIS_SHOES": "消耗品費",
+    "ABIS_PET_SUPPLIES": "消耗品費",
+    "ABIS_BABY_PRODUCTS": "消耗品費",
+  };
 
   const handleParse = async () => {
     if (!file) return;
@@ -732,12 +907,28 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
         return;
       }
 
-      setParsedRecords(data.records);
+      // Apply auto-set from Amazon category if checkbox is checked
+      const records = data.records.map((rec: typeof data.records[0]) => {
+        if (!rec.expenseCategory && autoSetFromCategory && rec.amazonCategory) {
+          const suggested = amazonCategoryToExpense[rec.amazonCategory];
+          if (suggested) {
+            return { ...rec, expenseCategory: suggested };
+          }
+        }
+        return rec;
+      });
+
+      setParsedRecords(records);
+      setParseStats({ autoClassified: data.autoClassified });
+
+      const totalCount = records.length;
+      const classifiedCount = records.filter((r: { expenseCategory: string }) => r.expenseCategory).length;
+      const unclassifiedCount = totalCount - classifiedCount;
+
       setStatus({
         type: "success",
-        text: `${data.records.length}件のAmazon注文を検出しました（自動分類: ${data.autoClassified}件）`,
+        text: `\uD83D\uDCE6 ${totalCount}件の商品を検出。自動分類: ${classifiedCount}件 / 未分類: ${unclassifiedCount}件`,
       });
-      onSuccess?.();
     } catch (e) {
       setStatus({
         type: "error",
@@ -751,7 +942,7 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   const handleSave = async () => {
     if (parsedRecords.length === 0) return;
     setSaving(true);
-    setStatus({ type: "info", text: "保存中..." });
+    setStatus({ type: "info", text: "保存中（商品マスタに学習＆保存）..." });
 
     try {
       const res = await fetch("/api/upload/amazon", {
@@ -769,10 +960,11 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
 
       setStatus({
         type: "success",
-        text: `${data.saved}件のAmazon注文データを保存しました`,
+        text: `${data.saved}件のAmazon注文データを保存しました（商品マスタも更新済み）`,
       });
       onSuccess?.();
       setParsedRecords([]);
+      setParseStats(null);
       setFile(null);
     } catch (e) {
       setStatus({
@@ -792,16 +984,9 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
     });
   };
 
-  const EXPENSE_CATS = [
-    "消耗品費",
-    "広告宣伝費",
-    "委託料",
-    "通信費",
-    "賃借料",
-    "支払手数料",
-    "雑費",
-    "その他",
-  ];
+  const totalCount = parsedRecords.length;
+  const classifiedCount = parsedRecords.filter((r) => r.expenseCategory).length;
+  const unclassifiedCount = totalCount - classifiedCount;
 
   return (
     <div className="space-y-4">
@@ -812,76 +997,105 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
       <FileDropzone
         accept=".csv"
         file={file}
-        onFileSelect={setFile}
+        onFileSelect={(f) => {
+          setFile(f);
+          setParsedRecords([]);
+          setParseStats(null);
+        }}
         onClear={() => {
           setFile(null);
           setStatus(null);
           setParsedRecords([]);
+          setParseStats(null);
         }}
       />
 
+      {parsedRecords.length === 0 && (
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={autoSetFromCategory}
+            onChange={(e) => setAutoSetFromCategory(e.target.checked)}
+            className="rounded"
+          />
+          <span className="text-sm text-gray-600">未分類にAmazonカテゴリから初期値を自動セット</span>
+        </label>
+      )}
+
       <div className="flex gap-2">
-        <ActionButton onClick={handleParse} loading={loading} disabled={!file}>
+        <ActionButton onClick={handleParse} loading={loading} disabled={!file || parsedRecords.length > 0}>
           解析する
         </ActionButton>
         {parsedRecords.length > 0 && (
           <ActionButton onClick={handleSave} loading={saving} variant="primary">
-            保存する
+            取り込む（商品マスタに学習＆保存）
           </ActionButton>
         )}
       </div>
 
       <StatusBanner status={status} />
 
+      {parsedRecords.length > 0 && unclassifiedCount > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2">
+          <p className="text-sm text-yellow-800 font-medium">
+            {"\u26A0\uFE0F"} 未分類: {unclassifiedCount}件 -- 下のドロップダウンから勘定科目を選択してください
+          </p>
+        </div>
+      )}
+
       {parsedRecords.length > 0 && (
         <div className="overflow-x-auto border border-gray-200 rounded-lg">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left py-2 px-3 font-medium">注文日</th>
-                <th className="text-left py-2 px-3 font-medium">店舗</th>
-                <th className="text-left py-2 px-3 font-medium">商品名</th>
-                <th className="text-left py-2 px-3 font-medium">ASIN</th>
-                <th className="text-right py-2 px-3 font-medium">金額</th>
-                <th className="text-center py-2 px-3 font-medium">数量</th>
-                <th className="text-left py-2 px-3 font-medium">勘定科目</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parsedRecords.map((rec, i) => (
-                <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="py-1.5 px-3 whitespace-nowrap">{rec.orderDate}</td>
-                  <td className="py-1.5 px-3 whitespace-nowrap">{rec.storeName || "未検出"}</td>
-                  <td className="py-1.5 px-3 max-w-[200px] truncate" title={rec.productName}>
-                    {rec.shortName}
-                  </td>
-                  <td className="py-1.5 px-3 whitespace-nowrap font-mono">{rec.asin}</td>
-                  <td className="py-1.5 px-3 text-right whitespace-nowrap">
-                    {rec.amount.toLocaleString()}円
-                  </td>
-                  <td className="py-1.5 px-3 text-center">{rec.quantity}</td>
-                  <td className="py-1.5 px-3">
-                    <select
-                      value={rec.expenseCategory}
-                      onChange={(e) => updateRecordCategory(i, e.target.value)}
-                      className={`text-xs border rounded px-1.5 py-1 w-full ${
-                        rec.expenseCategory
-                          ? "border-green-300 bg-green-50"
-                          : "border-yellow-300 bg-yellow-50"
-                      }`}
-                    >
-                      <option value="">未分類</option>
-                      {EXPENSE_CATS.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
+          <div className="max-h-96 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="text-left py-2 px-3 font-medium">注文日</th>
+                  <th className="text-left py-2 px-3 font-medium">店舗</th>
+                  <th className="text-left py-2 px-3 font-medium">商品名</th>
+                  <th className="text-left py-2 px-3 font-medium">ASIN</th>
+                  <th className="text-left py-2 px-3 font-medium">Amazonカテゴリ</th>
+                  <th className="text-right py-2 px-3 font-medium">金額</th>
+                  <th className="text-center py-2 px-3 font-medium">数量</th>
+                  <th className="text-left py-2 px-3 font-medium">勘定科目</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {parsedRecords.map((rec, i) => (
+                  <tr key={i} className={`border-t border-gray-100 ${!rec.expenseCategory ? "bg-yellow-50/50" : ""}`}>
+                    <td className="py-1.5 px-3 whitespace-nowrap">{rec.orderDate}</td>
+                    <td className="py-1.5 px-3 whitespace-nowrap">{rec.storeName || "未検出"}</td>
+                    <td className="py-1.5 px-3 max-w-[200px] truncate" title={rec.productName}>
+                      {rec.shortName}
+                    </td>
+                    <td className="py-1.5 px-3 whitespace-nowrap font-mono text-[10px]">{rec.asin}</td>
+                    <td className="py-1.5 px-3 whitespace-nowrap text-gray-500 text-[10px]">{rec.amazonCategory}</td>
+                    <td className="py-1.5 px-3 text-right whitespace-nowrap">
+                      {rec.amount.toLocaleString()}円
+                    </td>
+                    <td className="py-1.5 px-3 text-center">{rec.quantity}</td>
+                    <td className="py-1.5 px-3">
+                      <select
+                        value={rec.expenseCategory}
+                        onChange={(e) => updateRecordCategory(i, e.target.value)}
+                        className={`text-xs border rounded px-1.5 py-1 w-full ${
+                          rec.expenseCategory
+                            ? "border-green-300 bg-green-50"
+                            : "border-yellow-300 bg-yellow-50"
+                        }`}
+                      >
+                        <option value="">未分類</option>
+                        {EXPENSE_CATEGORIES.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
