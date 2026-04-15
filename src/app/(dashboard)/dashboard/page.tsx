@@ -1796,10 +1796,9 @@ export default function DashboardPage() {
   const getCalendarYearMonth = useCallback(
     (y: number, monthStr: string) => {
       const m = parseInt(monthStr, 10);
-      // Fiscal year: months 10-12 belong to the selected year,
-      // months 1-9 belong to year+1
-      if (m >= 10) return { calYear: y, calMonth: m };
-      return { calYear: y + 1, calMonth: m };
+      // The year selector represents the calendar year directly
+      // No fiscal year conversion needed for monthly view
+      return { calYear: y, calMonth: m };
     },
     [],
   );
@@ -1832,10 +1831,9 @@ export default function DashboardPage() {
           if (!cancelled) setMonthlyData(data);
         } else {
           // Period view — use annual endpoint
-          const fiscalYear = year + 1; // fiscal year label
-
+          // Year selector = fiscal year end (e.g. 2026 = 2025/10〜2026/9期)
           const annualParams = new URLSearchParams({
-            fiscalYear: String(fiscalYear),
+            fiscalYear: String(year),
           });
           if (!isAllStores) annualParams.set("store", store);
 
