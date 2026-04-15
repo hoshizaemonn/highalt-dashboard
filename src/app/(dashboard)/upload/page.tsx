@@ -1535,7 +1535,7 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
 
       setStatus({
         type: "success",
-        text: `${store} ${fiscalYear}年度の予算データを保存しました（${data.records}件 / ${data.categories?.length || 0}カテゴリ）`,
+        text: `${fiscalYear}年度 第${period}期の予算データを保存しました（${data.records}件 / ${data.categories?.length || 0}カテゴリ）`,
       });
       onSuccess?.();
     } catch (e) {
@@ -1554,7 +1554,7 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
     setStatus(null);
 
     try {
-      const checkRes = await fetch(`/api/upload/budget?store=${encodeURIComponent(store)}&fiscalYear=${fiscalYear}`);
+      const checkRes = await fetch(`/api/upload/budget?store=all&fiscalYear=${fiscalYear}`);
       const checkData = await checkRes.json();
 
       if (checkData.exists) {
@@ -1575,11 +1575,10 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
         予算実績対比表 CSVをアップロード（各月の予算列を取り込みます）
       </p>
 
-      <div className="grid grid-cols-3 gap-4">
-        <StoreSelect value={store} onChange={setStore} />
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
-            会計年度
+            対象年度（決算年）
           </label>
           <select
             value={fiscalYear}
@@ -1595,7 +1594,7 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
-            期首月
+            第○期
           </label>
           <select
             value={period}
@@ -1604,12 +1603,15 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
           >
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
               <option key={m} value={m}>
-                {m}月
+                第{m}期
               </option>
             ))}
           </select>
         </div>
       </div>
+      <p className="text-xs text-gray-400">
+        {fiscalYear}年/第{period}期 = {fiscalYear - 1}年10月〜{fiscalYear}年9月
+      </p>
 
       <FileDropzone
         accept=".csv"
@@ -1628,7 +1630,7 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
 
       {overwriteWarning && (
         <OverwriteWarning
-          message={`\u26A0\uFE0F ${store} ${fiscalYear}年度の予算データが既に${overwriteWarning.count}件あります。上書きしますか？`}
+          message={`\u26A0\uFE0F ${fiscalYear}年度 第${period}期の予算データが既に${overwriteWarning.count}件あります。上書きしますか？`}
           onConfirm={doUpload}
           onCancel={() => setOverwriteWarning(null)}
           loading={loading}
