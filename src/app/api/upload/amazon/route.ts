@@ -274,6 +274,48 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Also save all parsed records to amazon_orders for expense breakdown matching
+    for (const rec of records) {
+      if (rec.orderId && rec.productName) {
+        await prisma.amazonOrder.upsert({
+          where: {
+            orderId_productName: {
+              orderId: rec.orderId,
+              productName: rec.productName,
+            },
+          },
+          update: {
+            asin: rec.asin || "",
+            shortName: rec.shortName || "",
+            storeName: rec.storeName || null,
+            amount: rec.amount || 0,
+            orderTotal: rec.orderTotal || 0,
+            paymentDate: rec.paymentDate || null,
+            amazonCategory: rec.amazonCategory || "",
+          },
+          create: {
+            orderDate: rec.orderDate || null,
+            orderId: rec.orderId,
+            storeName: rec.storeName || null,
+            productName: rec.productName,
+            shortName: rec.shortName || null,
+            amount: rec.amount || 0,
+            orderTotal: rec.orderTotal || 0,
+            paymentDate: rec.paymentDate || null,
+            deliveryAddress: rec.deliveryAddress || null,
+            asin: rec.asin || "",
+            amazonCategory: rec.amazonCategory || "",
+            expenseCategory: rec.expenseCategory || "",
+            quantity: rec.quantity || 1,
+            taxAmount: rec.taxAmount || 0,
+            taxRate: rec.taxRate || "",
+            accountUser: rec.accountUser || "",
+            invoiceNumber: rec.invoiceNumber || "",
+          },
+        });
+      }
+    }
+
     return NextResponse.json({
       records,
       autoClassified,

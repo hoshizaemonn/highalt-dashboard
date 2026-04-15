@@ -34,53 +34,75 @@ export async function GET(request: NextRequest) {
     });
 
     // Match Amazon orders to fill breakdown for AMAZON expenses
+    // Try amazon_orders first, then fall back to product master
     const amazonRows = await prisma.amazonOrder.findMany({
       where: {
         paymentDate: { startsWith: `${year}/${String(month).padStart(2, "0")}` },
-        storeName: store,
       },
       select: {
         shortName: true,
+        productName: true,
         amount: true,
         orderTotal: true,
         paymentDate: true,
         storeName: true,
+        asin: true,
       },
     });
 
+    // Also load product master for ASIN-based matching
+    const productMaster = await prisma.amazonProductMaster.findMany({
+      select: { asin: true, productName: true },
+    });
+    const masterByAsin = new Map(productMaster.map((p) => [p.asin, p.productName]));
+
+    // Normalize full-width to half-width for matching
+    function normalizeToHalf(s: string): string {
+      return s.replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    }
+
     const enriched = rows.map((row) => {
-      // If breakdown already set, keep it
       if (row.breakdown && row.breakdown.trim()) return row;
 
-      // Only match AMAZON-related descriptions
-      const desc = (row.description || "").toUpperCase();
-      if (!desc.includes("AMAZON") && !desc.includes("ＡＭＡＺｏＮ")) return row;
+      const desc = normalizeToHalf(row.description || "").toUpperCase();
+      if (!desc.includes("AMAZON")) return row;
 
       const amt = Math.round(row.amount);
-      const dayStr = `${year}/${String(month).padStart(2, "0")}/${String(row.day).padStart(2, "0")}`;
 
-      // Priority 1: exact payment_date + store + order_total
-      let matched = amazonRows.filter(
-        (a) => a.paymentDate === dayStr && a.storeName === store && a.orderTotal === amt,
-      );
+      // Try amazon_orders matching (payment_date + amount)
+      if (amazonRows.length > 0) {
+        const dayStr = `${year}/${String(month).padStart(2, "0")}/${String(row.day).padStart(2, "0")}`;
 
-      // Priority 2: month + store + order_total
-      if (matched.length === 0) {
-        matched = amazonRows.filter(
-          (a) => a.storeName === store && a.orderTotal === amt,
+        let matched = amazonRows.filter(
+          (a) => a.paymentDate === dayStr && a.orderTotal === amt,
         );
+        if (matched.length === 0) {
+          matched = amazonRows.filter((a) => a.orderTotal === amt);
+        }
+        if (matched.length === 0) {
+          matched = amazonRows.filter((a) => a.amount === amt);
+        }
+
+        if (matched.length > 0) {
+          const names = [...new Set(matched.map((m) => m.shortName || m.productName).filter(Boolean))];
+          if (names.length > 0) {
+            return { ...row, breakdown: names.join(" / ") };
+          }
+        }
       }
 
-      // Priority 3: month + store + individual amount
-      if (matched.length === 0) {
-        matched = amazonRows.filter(
-          (a) => a.storeName === store && a.amount === amt,
-        );
-      }
-
-      if (matched.length > 0) {
-        const names = [...new Set(matched.map((m) => m.shortName).filter(Boolean))];
-        return { ...row, breakdown: names.join(" / ") };
+      // Fall back: try to extract order number from description and match
+      // Description like: Vデビット AMAZON.CO.JP 1A032001
+      const orderNumMatch = desc.match(/([0-9A-Z]{8,})\s*$/);
+      if (orderNumMatch) {
+        // Look up any amazon_order or product with matching amount
+        const amtMatched = amazonRows.filter((a) => a.amount === amt || a.orderTotal === amt);
+        if (amtMatched.length > 0) {
+          const names = [...new Set(amtMatched.map((m) => m.shortName || m.productName).filter(Boolean))];
+          if (names.length > 0) {
+            return { ...row, breakdown: names.join(" / ") };
+          }
+        }
       }
 
       return row;
