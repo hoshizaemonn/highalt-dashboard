@@ -99,9 +99,9 @@ export async function POST(request: NextRequest) {
       workDaysHoliday: number;
       scheduledHours: number;
       overtimeHours: number;
-      lateNightHours: number;
-      holidayHours: number;
-      basicSalary: number;
+      
+      
+      baseSalary: number;
       positionAllowance: number;
       overtimePay: number;
       commuteTaxable: number;
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
         overtimeHours += col(c);
       }
 
-      const basicSalary = col(27);
+      const baseSalary = col(27);
       const positionAllowance = col(28);
       const overtimePay = col(32);
       const commuteTaxable = col(44);
@@ -188,9 +188,9 @@ export async function POST(request: NextRequest) {
           workDaysHoliday: applyRatio(workDaysHoliday, r),
           scheduledHours: applyRatio(scheduledHours, r),
           overtimeHours: applyRatio(overtimeHours, r),
-          lateNightHours: 0,
-          holidayHours: 0,
-          basicSalary: applyRatio(basicSalary, r),
+          
+          
+          baseSalary: applyRatio(baseSalary, r),
           positionAllowance: applyRatio(positionAllowance, r),
           overtimePay: applyRatio(overtimePay, r),
           commuteTaxable: applyRatio(commuteTaxable, r),

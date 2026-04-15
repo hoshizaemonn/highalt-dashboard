@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       totalLaborCost += gross;
 
       const hours =
-        (row.scheduledHours + row.overtimeHours + row.lateNightHours + row.holidayHours) * ratio;
+        (row.scheduledHours + row.overtimeHours) * ratio;
       totalHours += hours;
 
       const welfare =

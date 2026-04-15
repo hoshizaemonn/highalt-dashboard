@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
         const gross = row.grossTotal * ratio;
         totalLabor += gross;
         totalHours +=
-          (row.scheduledHours + row.overtimeHours + row.lateNightHours + row.holidayHours) * ratio;
+          (row.scheduledHours + row.overtimeHours) * ratio;
         legalWelfare +=
           (row.healthInsuranceCo +
             row.careInsuranceCo +
