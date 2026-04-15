@@ -1178,6 +1178,11 @@ function UsersTab() {
   const [message, setMessage] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
+  // Edit user form
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editPassword, setEditPassword] = useState("");
+  const [editDisplayName, setEditDisplayName] = useState("");
+
   // New user form
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -1326,6 +1331,85 @@ function UsersTab() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Change password / display name */}
+          <div className="mt-6 border-t border-gray-200 pt-4">
+            <p className="text-sm font-medium text-gray-700 mb-3">
+              パスワード・表示名の変更
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={editId ?? ""}
+                onChange={(e) => {
+                  const id = e.target.value ? parseInt(e.target.value, 10) : null;
+                  setEditId(id);
+                  setEditPassword("");
+                  const u = users.find((u) => u.id === id);
+                  setEditDisplayName(u?.displayName || "");
+                }}
+                className="border border-gray-300 rounded px-2 py-2 text-sm"
+              >
+                <option value="">ユーザーを選択</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.username} ({u.displayName || getRoleLabel(u.role)})
+                  </option>
+                ))}
+              </select>
+              {editId && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="新しい表示名"
+                    value={editDisplayName}
+                    onChange={(e) => setEditDisplayName(e.target.value)}
+                    className="border border-gray-300 rounded px-3 py-2 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+                  />
+                  <input
+                    type="password"
+                    placeholder="新しいパスワード（変更時のみ）"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    className="border border-gray-300 rounded px-3 py-2 text-sm w-52 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+                  />
+                  <button
+                    onClick={async () => {
+                      setSaving(true);
+                      setMessage("");
+                      try {
+                        const res = await fetch("/api/settings/users", {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            id: editId,
+                            password: editPassword || undefined,
+                            displayName: editDisplayName,
+                          }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                          setMessage(data.error || "変更に失敗しました");
+                        } else {
+                          setEditId(null);
+                          setEditPassword("");
+                          setEditDisplayName("");
+                          await fetchData();
+                          setMessage("ユーザー情報を更新しました");
+                        }
+                      } catch {
+                        setMessage("変更に失敗しました");
+                      }
+                      setSaving(false);
+                    }}
+                    disabled={saving}
+                    className="bg-[#567FC0] hover:bg-[#4a6fa8] text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50 transition-colors"
+                  >
+                    変更を保存
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Delete user */}

@@ -89,6 +89,47 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PUT(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { id, password, displayName } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    const data: Record<string, unknown> = {};
+    if (password && password.trim()) {
+      data.password = await hashPassword(password.trim());
+    }
+    if (displayName !== undefined) {
+      data.displayName = displayName || null;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: "変更内容がありません" }, { status: 400 });
+    }
+
+    await prisma.user.update({
+      where: { id: parseInt(id, 10) },
+      data,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Users PUT error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getSession();
