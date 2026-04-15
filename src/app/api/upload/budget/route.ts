@@ -130,31 +130,47 @@ export async function POST(request: NextRequest) {
     }
 
     // Delete existing budget data for this store and year range, then insert
-    await prisma.$transaction(async (tx) => {
-      // Determine year range to delete
-      const years = [...new Set(records.map((r) => r.year))];
-      for (const y of years) {
-        await tx.budgetData.deleteMany({
-          where: { storeName: store, year: y },
-        });
-      }
-
-      if (records.length > 0) {
-        await tx.budgetData.createMany({ data: records });
-      }
-
-      await tx.uploadLog.create({
-        data: {
-          userId: session.userId,
-          userName: session.displayName || session.storeName || "ユーザー",
-          dataType: "budget",
-          storeName: store,
-          year: fiscalYear,
-          fileName: file.name,
-          recordCount: records.length,
-          note: `${fiscalYear}年度 期首月${fiscalStartMonth}月`,
-        },
+    // Use sequential operations instead of transaction to avoid pool limits
+    const years = [...new Set(records.map((r) => r.year))];
+    for (const y of years) {
+      await prisma.budgetData.deleteMany({
+        where: { storeName: store, year: y },
       });
+    }
+
+    // Insert one by one to handle upsert for duplicates
+    let savedCount = 0;
+    for (const rec of records) {
+      try {
+        await prisma.budgetData.upsert({
+          where: {
+            storeName_year_month_category: {
+              storeName: rec.storeName,
+              year: rec.year,
+              month: rec.month,
+              category: rec.category,
+            },
+          },
+          update: { amount: rec.amount },
+          create: rec,
+        });
+        savedCount++;
+      } catch (e) {
+        console.error("Budget upsert error:", rec, e);
+      }
+    }
+
+    await prisma.uploadLog.create({
+      data: {
+        userId: session.userId,
+        userName: session.displayName || session.storeName || "ユーザー",
+        dataType: "budget",
+        storeName: store,
+        year: fiscalYear,
+        fileName: file.name,
+        recordCount: savedCount,
+        note: `${fiscalYear}年度 期首月${fiscalStartMonth}月`,
+      },
     });
 
     return NextResponse.json({
