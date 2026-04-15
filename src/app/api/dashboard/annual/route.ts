@@ -80,27 +80,25 @@ export async function GET(request: NextRequest) {
     const years = [...new Set(periods.map((p) => p.year))];
     const storeWhere = store ? { storeName: store } : {};
 
-    const [allPayroll, allExpenses, allSalesDetail, allRevenue, allSquare, allMonthlySummary] =
-      await Promise.all([
-        prisma.payrollData.findMany({
-          where: { year: { in: years }, ...storeWhere },
-        }),
-        prisma.expenseData.findMany({
-          where: { year: { in: years }, isRevenue: 0, ...storeWhere },
-        }),
-        prisma.salesDetail.findMany({
-          where: { year: { in: years }, ...storeWhere },
-        }),
-        prisma.revenueData.findMany({
-          where: { year: { in: years }, ...storeWhere },
-        }),
-        prisma.squareSales.findMany({
-          where: { year: { in: years }, ...storeWhere },
-        }),
-        prisma.monthlySummary.findMany({
-          where: { year: { in: years }, ...storeWhere },
-        }),
-      ]);
+    // Sequential queries to avoid Supabase connection pool limits
+    const allPayroll = await prisma.payrollData.findMany({
+      where: { year: { in: years }, ...storeWhere },
+    });
+    const allExpenses = await prisma.expenseData.findMany({
+      where: { year: { in: years }, isRevenue: 0, ...storeWhere },
+    });
+    const allSalesDetail = await prisma.salesDetail.findMany({
+      where: { year: { in: years }, ...storeWhere },
+    });
+    const allRevenue = await prisma.revenueData.findMany({
+      where: { year: { in: years }, ...storeWhere },
+    });
+    const allSquare = await prisma.squareSales.findMany({
+      where: { year: { in: years }, ...storeWhere },
+    });
+    const allMonthlySummary = await prisma.monthlySummary.findMany({
+      where: { year: { in: years }, ...storeWhere },
+    });
 
     const monthLabels = [
       "", "1月", "2月", "3月", "4月", "5月", "6月",
