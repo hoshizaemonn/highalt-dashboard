@@ -25,6 +25,10 @@ interface MonthlyEntry {
   ma_cancel_rate: string;
   expense_by_category: Record<string, number>;
   sales_by_category: Record<string, number>;
+  budget_revenue: number;
+  budget_labor: number;
+  budget_expense: number;
+  budget_profit: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -100,6 +104,11 @@ export async function GET(request: NextRequest) {
     const allMonthlySummary = await prisma.monthlySummary.findMany({
       where: { year: { in: years }, ...storeWhere },
     });
+    const allBudget = store
+      ? await prisma.budgetData.findMany({
+          where: { year: { in: years }, storeName: store },
+        })
+      : [];
 
     const monthLabels = [
       "", "1月", "2月", "3月", "4月", "5月", "6月",
@@ -181,6 +190,17 @@ export async function GET(request: NextRequest) {
       // Member summary (MA002)
       const ms = allMonthlySummary.filter((r) => r.year === y && r.month === m);
 
+      // Budget per month
+      const budgetForMonth = allBudget.filter((r) => r.year === y && r.month === m);
+      const budgetMap: Record<string, number> = {};
+      for (const b of budgetForMonth) {
+        budgetMap[b.category] = (budgetMap[b.category] || 0) + b.amount;
+      }
+      const budgetRevenue = budgetMap["売上合計"] ?? 0;
+      const budgetLabor = budgetMap["人件費"] ?? 0;
+      const budgetExpense = budgetMap["経費合計"] ?? 0;
+      const budgetProfit = budgetMap["営業利益"] ?? 0;
+
       return {
         month: m,
         month_label: monthLabels[m],
@@ -204,6 +224,10 @@ export async function GET(request: NextRequest) {
         ma_cancel_rate: ms.length > 0 ? ms[0].cancellationRate : "",
         expense_by_category: expenseByCat,
         sales_by_category: salesByCat,
+        budget_revenue: budgetRevenue,
+        budget_labor: budgetLabor,
+        budget_expense: budgetExpense,
+        budget_profit: budgetProfit,
       };
     });
 

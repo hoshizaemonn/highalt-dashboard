@@ -117,6 +117,9 @@ interface MonthlyEntry {
   labor_cost: number;
   expense: number;
   operating_profit: number;
+  fulltime_count: number;
+  parttime_count: number;
+  employee_count: number;
   ma_total_members: number;
   ma_plan_subscribers: number;
   ma_new_signups: number;
@@ -125,6 +128,15 @@ interface MonthlyEntry {
   ma_cancel_rate: string;
   expense_by_category: Record<string, number>;
   sales_by_category: Record<string, number>;
+  budget_revenue: number;
+  budget_labor: number;
+  budget_expense: number;
+  budget_profit: number;
+}
+
+interface PlanBreakdownEntry {
+  name: string;
+  count: number;
 }
 
 interface AnnualData {
@@ -1285,6 +1297,90 @@ function MonthlyView({
         </div>
       )}
 
+      {/* Budget vs Actual (per-store only, monthly) */}
+      {!isAllStores && data.budget && Object.keys(data.budget).length > 0 && (() => {
+        const revItems = ["月会費収入", "パーソナル・物販・その他収入", "サービス収入", "自販機手数料収入"];
+        const laborItems = ["正社員・契約社員給与", "賞与", "通勤手当", "法定福利費"];
+        const budget = data.budget as Record<string, number>;
+
+        // Build actual values from existing data
+        const actuals: Record<string, number> = {
+          "月会費収入": data.revenue?.by_category?.["月会費"] ?? 0,
+          "パーソナル・物販・その他収入": (data.revenue?.by_category?.["パーソナル"] ?? 0) + (data.revenue?.by_category?.["オプション"] ?? 0) + (data.revenue?.by_category?.["スポット"] ?? 0) + (data.revenue?.by_category?.["入会金"] ?? 0) + (data.revenue?.by_category?.["ロッカー"] ?? 0) + (data.revenue?.by_category?.["その他"] ?? 0),
+          "サービス収入": data.revenue?.by_category?.["体験"] ?? 0,
+          "正社員・契約社員給与": data.payroll?.taxable_total ?? 0,
+          "通勤手当": data.payroll?.commute ?? 0,
+          "法定福利費": data.payroll?.legal_welfare ?? 0,
+        };
+        // Add expense actuals
+        if (data.expense?.by_category) {
+          for (const [cat, amt] of Object.entries(data.expense.by_category)) {
+            actuals[cat] = (actuals[cat] ?? 0) + amt;
+          }
+        }
+
+        const rows = Object.entries(budget)
+          .filter(([, amt]) => amt !== 0)
+          .map(([item, budgetAmt]) => {
+            const actual = actuals[item] ?? 0;
+            const diff = actual - budgetAmt;
+            const ratio = budgetAmt !== 0 ? (actual / budgetAmt * 100) : 0;
+            const cat = revItems.includes(item) ? "売上系" : laborItems.includes(item) ? "人件費系" : "経費系";
+            return { item, budget: budgetAmt, actual, diff, ratio, cat };
+          });
+
+        const revBudget = rows.filter(r => r.cat === "売上系").reduce((s, r) => s + r.budget, 0);
+        const revActual = rows.filter(r => r.cat === "売上系").reduce((s, r) => s + r.actual, 0);
+        const labBudget = rows.filter(r => r.cat === "人件費系").reduce((s, r) => s + r.budget, 0);
+        const labActual = rows.filter(r => r.cat === "人件費系").reduce((s, r) => s + r.actual, 0);
+        const expBudget = rows.filter(r => r.cat === "経費系").reduce((s, r) => s + r.budget, 0);
+        const expActual = rows.filter(r => r.cat === "経費系").reduce((s, r) => s + r.actual, 0);
+        const profBudget = revBudget - labBudget - expBudget;
+        const profActual = revActual - labActual - expActual;
+
+        return (
+          <>
+            <SectionTitle>予算実績対比</SectionTitle>
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              <KPICard title="売上 達成率" value={revBudget ? `${Math.round(revActual/revBudget*100)}%` : "-"} color="#2196F3" />
+              <KPICard title="人件費 予算比" value={labBudget ? `${Math.round(labActual/labBudget*100)}%` : "-"} color="#F44336" />
+              <KPICard title="経費 予算比" value={expBudget ? `${Math.round(expActual/expBudget*100)}%` : "-"} color="#FF9800" />
+              <KPICard title="営業利益 予算差" value={formatYen(profActual - profBudget)} color="#4CAF50" />
+            </div>
+            <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">カテゴリ</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">科目</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">予算</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">実績</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">予算差</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">予算比</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const isGood = r.cat === "売上系" ? r.diff >= 0 : r.diff <= 0;
+                    const clr = isGood ? "text-green-600" : "text-red-600";
+                    return (
+                      <tr key={r.item} className="border-b">
+                        <td className="px-3 py-1.5 text-gray-500 text-xs">{r.cat}</td>
+                        <td className="px-3 py-1.5">{r.item}</td>
+                        <td className="px-3 py-1.5 text-right">{formatYen(r.budget)}</td>
+                        <td className="px-3 py-1.5 text-right">{formatYen(r.actual)}</td>
+                        <td className={`px-3 py-1.5 text-right ${clr}`}>{formatYen(r.diff)}</td>
+                        <td className={`px-3 py-1.5 text-right ${clr}`}>{r.ratio.toFixed(1)}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        );
+      })()}
+
       {/* Expense Detail (per-store only) */}
       {!isAllStores && (
         <ExpenseDetailSection year={year} month={month} store={store} />
@@ -1301,12 +1397,14 @@ function PeriodView({
   isAllStores,
   budgetData,
   store,
+  planBreakdown,
 }: {
   annualData: AnnualData;
   storeCompareData: StoreCompareData | null;
   isAllStores: boolean;
   budgetData: Record<string, number>;
   store: string;
+  planBreakdown: PlanBreakdownEntry[] | null;
 }) {
   const monthly = annualData.monthly_data;
 
@@ -1342,33 +1440,28 @@ function PeriodView({
     [monthly],
   );
 
-  // Budget vs actual per-month chart data
-  const budgetVsActualCharts = useMemo(() => {
-    if (isAllStores || Object.keys(budgetData).length === 0) return null;
+  // Budget vs actual per-month chart data (using per-month budget from annual API)
+  const hasBudgetData = useMemo(() => {
+    if (isAllStores) return false;
+    return monthly.some(
+      (m) => m.budget_revenue > 0 || m.budget_labor > 0 || m.budget_expense > 0,
+    );
+  }, [isAllStores, monthly]);
 
-    // We need per-month budget — fetch from annualData's monthly entries
-    // Budget data is aggregated, so we divide equally if needed
-    // Actually we should have per-month budget from the annual API
-    // For now, show aggregated comparison
-    return {
-      revenue: {
-        budget: budgetData["売上合計"] ?? 0,
-        actual: totals.revenue,
-      },
-      profit: {
-        budget: budgetData["営業利益"] ?? 0,
-        actual: totals.profit,
-      },
-      labor: {
-        budget: budgetData["人件費"] ?? 0,
-        actual: totals.labor,
-      },
-      expense: {
-        budget: budgetData["経費合計"] ?? 0,
-        actual: totals.expense,
-      },
-    };
-  }, [isAllStores, budgetData, totals]);
+  const budgetChartData = useMemo(() => {
+    if (!hasBudgetData) return null;
+    return monthly.map((m) => ({
+      name: m.month_label,
+      売上予算: m.budget_revenue,
+      売上実績: m.revenue,
+      人件費予算: m.budget_labor,
+      人件費実績: m.labor_cost,
+      経費予算: m.budget_expense,
+      経費実績: m.expense,
+      利益予算: m.budget_profit,
+      利益実績: m.operating_profit,
+    }));
+  }, [hasBudgetData, monthly]);
 
   return (
     <>
@@ -1533,76 +1626,89 @@ function PeriodView({
         </div>
       </div>
 
-      {/* Budget vs Actual charts (store != 全体) */}
-      {budgetVsActualCharts && (
+      {/* Budget vs Actual charts (store != 全体, per-month trend) */}
+      {budgetChartData && (
         <>
           <SectionTitle>予算 vs 実績</SectionTitle>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-            {(
-              [
-                {
-                  title: "売上 予算vs実績",
-                  data: budgetVsActualCharts.revenue,
-                  goodWhen: "above",
-                },
-                {
-                  title: "営業利益 予算vs実績",
-                  data: budgetVsActualCharts.profit,
-                  goodWhen: "above",
-                },
-                {
-                  title: "人件費 予算vs実績",
-                  data: budgetVsActualCharts.labor,
-                  goodWhen: "below",
-                },
-                {
-                  title: "経費 予算vs実績",
-                  data: budgetVsActualCharts.expense,
-                  goodWhen: "below",
-                },
-              ] as const
-            ).map((item) => {
-              const barData = [
-                { name: item.title.split(" ")[0], 予算: item.data.budget, 実績: item.data.actual },
-              ];
-              const isGood =
-                item.goodWhen === "above"
-                  ? item.data.actual >= item.data.budget
-                  : item.data.actual <= item.data.budget;
-              return (
-                <div key={item.title} className="bg-white rounded-lg border shadow-sm p-4">
-                  <p className="text-sm font-medium text-gray-600 mb-1">{item.title}</p>
-                  <p
-                    className="text-xs mb-3"
-                    style={{ color: isGood ? COLORS.green : COLORS.red }}
-                  >
-                    差額: {formatYen(item.data.actual - item.data.budget)} (
-                    {item.data.budget !== 0
-                      ? formatPercent(item.data.actual / item.data.budget)
-                      : "-"}
-                    )
-                  </p>
-                  <ResponsiveContainer width="100%" height={80}>
-                    <BarChart data={barData} layout="vertical">
-                      <XAxis
-                        type="number"
-                        tickFormatter={(v: number) => formatCompact(v)}
-                        fontSize={11}
-                      />
-                      <YAxis type="category" dataKey="name" width={60} fontSize={11} />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Legend />
-                      <Bar dataKey="予算" fill={COLORS.gray} radius={[0, 4, 4, 0]} />
-                      <Bar
-                        dataKey="実績"
-                        fill={isGood ? COLORS.green : COLORS.red}
-                        radius={[0, 4, 4, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              );
-            })}
+            {/* Revenue budget vs actual */}
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">売上 予算 vs 実績</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={budgetChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend />
+                  <Bar dataKey="売上予算" name="予算" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="売上実績" name="実績" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Operating profit budget vs actual */}
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">営業利益 予算 vs 実績</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={budgetChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="利益予算"
+                    name="予算"
+                    stroke={COLORS.gray}
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={{ r: 3 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="利益実績"
+                    name="実績"
+                    stroke={COLORS.green}
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Labor budget vs actual */}
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">人件費 予算 vs 実績</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={budgetChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend />
+                  <Bar dataKey="人件費予算" name="予算" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="人件費実績" name="実績" fill={COLORS.red} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Expense budget vs actual */}
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">経費 予算 vs 実績</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={budgetChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend />
+                  <Bar dataKey="経費予算" name="予算" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="経費実績" name="実績" fill={COLORS.orange} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </>
       )}
@@ -1759,6 +1865,88 @@ function PeriodView({
           </tbody>
         </table>
       </div>
+
+      {/* Headcount Trend Table */}
+      {monthly.some((m) => m.employee_count > 0) && (
+        <>
+          <SectionTitle>人員推移</SectionTitle>
+          <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 sticky left-0 bg-gray-50 min-w-[100px]">
+                    区分
+                  </th>
+                  {monthly.map((m) => (
+                    <th
+                      key={m.month_label}
+                      className="text-right px-3 py-2 font-medium text-gray-600 min-w-[70px]"
+                    >
+                      {m.month_label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b">
+                  <td className="px-3 py-1.5 sticky left-0 bg-white text-gray-700">正社員</td>
+                  {monthly.map((m, i) => (
+                    <td key={i} className="px-3 py-1.5 text-right">
+                      {m.fulltime_count > 0 ? m.fulltime_count : "-"}
+                    </td>
+                  ))}
+                </tr>
+                <tr className="border-b">
+                  <td className="px-3 py-1.5 sticky left-0 bg-white text-gray-700">アルバイト</td>
+                  {monthly.map((m, i) => (
+                    <td key={i} className="px-3 py-1.5 text-right">
+                      {m.parttime_count > 0 ? m.parttime_count : "-"}
+                    </td>
+                  ))}
+                </tr>
+                <tr className="border-b font-bold bg-gray-50">
+                  <td className="px-3 py-2 sticky left-0 bg-gray-50 text-gray-700">合計</td>
+                  {monthly.map((m, i) => (
+                    <td key={i} className="px-3 py-2 text-right">
+                      {m.employee_count > 0 ? m.employee_count : "-"}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* Plan Breakdown Bar Chart */}
+      {planBreakdown && planBreakdown.length > 0 && (
+        <>
+          <SectionTitle>プラン別会員数</SectionTitle>
+          <div className="bg-white rounded-lg border shadow-sm p-4">
+            <ResponsiveContainer width="100%" height={Math.max(200, planBreakdown.length * 36)}>
+              <BarChart
+                data={planBreakdown}
+                layout="vertical"
+                margin={{ left: 20, right: 20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" fontSize={11} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={160}
+                  fontSize={11}
+                  tick={{ fill: "#555" }}
+                />
+                <Tooltip
+                  formatter={(value) => [`${numFormat.format(Number(value))}人`, "会員数"]}
+                />
+                <Bar dataKey="count" name="会員数" fill={COLORS.teal} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -1793,6 +1981,7 @@ export default function DashboardPage() {
   const [annualData, setAnnualData] = useState<AnnualData | null>(null);
   const [storeCompareData, setStoreCompareData] = useState<StoreCompareData | null>(null);
   const [periodBudget, setPeriodBudget] = useState<Record<string, number>>({});
+  const [planBreakdown, setPlanBreakdown] = useState<PlanBreakdownEntry[] | null>(null);
 
   const isMonthly = !["通期", "上期", "下期"].includes(period);
   const isAllStores = store === "全体";
@@ -1842,6 +2031,7 @@ export default function DashboardPage() {
       setAnnualData(null);
       setStoreCompareData(null);
       setPeriodBudget({});
+      setPlanBreakdown(null);
 
       try {
         if (isMonthly) {
@@ -1933,6 +2123,36 @@ export default function DashboardPage() {
               const budgetJson = await responses[responses.length - 1].json();
               setPeriodBudget(budgetJson.budget || {});
             }
+
+            // Fetch plan breakdown for the latest month with data
+            const monthsWithMembers = filteredMonthly
+              .filter((m: MonthlyEntry) => m.ma_plan_subscribers > 0)
+              .sort((a: MonthlyEntry, b: MonthlyEntry) => {
+                // Sort by year-month descending (higher month later in fiscal year)
+                const aIdx = FISCAL_MONTHS.indexOf(a.month);
+                const bIdx = FISCAL_MONTHS.indexOf(b.month);
+                return bIdx - aIdx;
+              });
+
+            if (monthsWithMembers.length > 0) {
+              const latestMonth = monthsWithMembers[0] as MonthlyEntry;
+              // Determine calendar year for this month
+              const calYear = latestMonth.month >= 10 ? year - 1 : year;
+              const planParams = new URLSearchParams({
+                year: String(calYear),
+                month: String(latestMonth.month),
+              });
+              if (!isAllStores) planParams.set("store", store);
+              try {
+                const planRes = await fetch(`/api/dashboard/plan-breakdown?${planParams}`);
+                if (planRes.ok) {
+                  const planJson = await planRes.json();
+                  if (!cancelled) setPlanBreakdown(planJson.plans ?? null);
+                }
+              } catch {
+                // Plan breakdown is optional, don't fail
+              }
+            }
           }
         }
       } catch (err) {
@@ -1997,6 +2217,7 @@ export default function DashboardPage() {
           isAllStores={isAllStores}
           budgetData={periodBudget}
           store={store}
+          planBreakdown={planBreakdown}
         />
       )}
 
