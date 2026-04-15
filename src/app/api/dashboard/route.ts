@@ -20,10 +20,13 @@ export async function GET(request: NextRequest) {
     const store = storeParam || undefined;
 
     // ── Payroll ──────────────────────────────────────────────
+    const storeFilter = store && store !== "全体"
+      ? { storeName: store }
+      : { storeName: { not: HQ_STORE } };
     const payrollWhere = {
       year,
       ...(month !== undefined && { month }),
-      ...(store && store !== "全体" ? { storeName: store } : { storeName: { not: HQ_STORE } }),
+      ...storeFilter,
     };
 
     const payrollRows = await prisma.payrollData.findMany({

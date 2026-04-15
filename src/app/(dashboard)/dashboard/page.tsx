@@ -492,37 +492,46 @@ function PeriodSelector({
   onStoreChange: (s: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-3 mb-6">
-      <select
-        value={year}
-        onChange={(e) => onYearChange(Number(e.target.value))}
-        className="border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-      >
-        <option value={2025}>2025年</option>
-        <option value={2026}>2026年</option>
-      </select>
-      <select
-        value={period}
-        onChange={(e) => onPeriodChange(e.target.value)}
-        className="border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-      >
-        {PERIOD_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <select
-        value={store}
-        onChange={(e) => onStoreChange(e.target.value)}
-        className="border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-      >
-        {STORE_OPTIONS.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+    <div className="grid grid-cols-3 gap-4 mb-6">
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">年</label>
+        <select
+          value={year}
+          onChange={(e) => onYearChange(Number(e.target.value))}
+          className="w-full border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          <option value={2025}>2025年</option>
+          <option value={2026}>2026年</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">期間</label>
+        <select
+          value={period}
+          onChange={(e) => onPeriodChange(e.target.value)}
+          className="w-full border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          {PERIOD_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">店舗</label>
+        <select
+          value={store}
+          onChange={(e) => onStoreChange(e.target.value)}
+          className="w-full border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          {STORE_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
