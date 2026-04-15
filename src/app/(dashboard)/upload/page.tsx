@@ -295,7 +295,7 @@ function detectYearMonthFromFilename(filename: string): { year?: number; month?:
   return {};
 }
 
-function PayrollTab() {
+function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -336,6 +336,7 @@ function PayrollTab() {
         type: "success",
         text: `${year}年${month}月の人件費データを保存しました（${data.records}件）${data.unresolved.length > 0 ? `\n未登録従業員: ${data.unresolved.length}名` : ""}`,
       });
+      onSuccess?.();
     } catch (e) {
       setStatus({
         type: "error",
@@ -429,7 +430,7 @@ function PayrollTab() {
 
 // ─── Expense Tab ────────────────────────────────────────────
 
-function ExpenseTab() {
+function ExpenseTab({ onSuccess }: { onSuccess?: () => void }) {
   const [activeSubTab, setActiveSubTab] = useState<"amazon" | "paypay">("paypay");
 
   return (
@@ -457,12 +458,12 @@ function ExpenseTab() {
         </button>
       </div>
 
-      {activeSubTab === "paypay" ? <PayPayExpenseSection /> : <AmazonExpenseSection />}
+      {activeSubTab === "paypay" ? <PayPayExpenseSection onSuccess={onSuccess} /> : <AmazonExpenseSection onSuccess={onSuccess} />}
     </div>
   );
 }
 
-function PayPayExpenseSection() {
+function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [store, setStore] = useState<string>(STORES[0]);
   const [year, setYear] = useState(2026);
@@ -498,6 +499,7 @@ function PayPayExpenseSection() {
         type: "success",
         text: `${store} ${year}年${month}月の経費データを保存しました\n${data.records}件（分類済み ${data.classified}件 / 未分類 ${data.unclassified}件）`,
       });
+      onSuccess?.();
     } catch (e) {
       setStatus({
         type: "error",
@@ -539,7 +541,7 @@ function PayPayExpenseSection() {
   );
 }
 
-function AmazonExpenseSection() {
+function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -592,6 +594,7 @@ function AmazonExpenseSection() {
         type: "success",
         text: `${data.records.length}件のAmazon注文を検出しました（自動分類: ${data.autoClassified}件）`,
       });
+      onSuccess?.();
     } catch (e) {
       setStatus({
         type: "error",
@@ -625,6 +628,7 @@ function AmazonExpenseSection() {
         type: "success",
         text: `${data.saved}件のAmazon注文データを保存しました`,
       });
+      onSuccess?.();
       setParsedRecords([]);
       setFile(null);
     } catch (e) {
@@ -743,7 +747,7 @@ function AmazonExpenseSection() {
 
 // ─── Sales Tab ──────────────────────────────────────────────
 
-function SalesTab() {
+function SalesTab({ onSuccess }: { onSuccess?: () => void }) {
   const [subTab, setSubTab] = useState<SalesSubTab>("ml001");
 
   const subTabs: { id: SalesSubTab; label: string }[] = [
@@ -771,15 +775,15 @@ function SalesTab() {
         ))}
       </div>
 
-      {subTab === "ml001" && <ML001Section />}
-      {subTab === "pl001" && <PL001Section />}
-      {subTab === "ma002" && <MA002Section />}
+      {subTab === "ml001" && <ML001Section onSuccess={onSuccess} />}
+      {subTab === "pl001" && <PL001Section onSuccess={onSuccess} />}
+      {subTab === "ma002" && <MA002Section onSuccess={onSuccess} />}
       {subTab === "square" && <SquareSection />}
     </div>
   );
 }
 
-function ML001Section() {
+function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [store, setStore] = useState<string>(STORES[0]);
   const [loading, setLoading] = useState(false);
@@ -812,6 +816,7 @@ function ML001Section() {
         type: "success",
         text: `${store} の会員データを取り込みました（${data.records}名）`,
       });
+      onSuccess?.();
     } catch (e) {
       setStatus({
         type: "error",
@@ -851,7 +856,7 @@ function ML001Section() {
   );
 }
 
-function PL001Section() {
+function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [store, setStore] = useState<string>(STORES[0]);
   const [year, setYear] = useState(2026);
@@ -888,6 +893,7 @@ function PL001Section() {
         type: "success",
         text: `${store} ${data.year}年${data.month}月の売上明細を取り込みました（${data.records}件）`,
       });
+      onSuccess?.();
     } catch (e) {
       setStatus({
         type: "error",
@@ -929,7 +935,7 @@ function PL001Section() {
   );
 }
 
-function MA002Section() {
+function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [store, setStore] = useState<string>(STORES[0]);
   const [year, setYear] = useState(2026);
@@ -966,6 +972,7 @@ function MA002Section() {
         type: "success",
         text: `${store} の月次サマリを取り込みました（${data.records}件）`,
       });
+      onSuccess?.();
     } catch (e) {
       setStatus({
         type: "error",
@@ -1019,7 +1026,7 @@ function SquareSection() {
 
 // ─── Budget Tab ─────────────────────────────────────────────
 
-function BudgetTab() {
+function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [store, setStore] = useState<string>(STORES[0]);
   const [fiscalYear, setFiscalYear] = useState(2026);
@@ -1055,6 +1062,7 @@ function BudgetTab() {
         type: "success",
         text: `${store} ${fiscalYear}年度の予算データを保存しました（${data.records}件 / ${data.categories?.length || 0}カテゴリ）`,
       });
+      onSuccess?.();
     } catch (e) {
       setStatus({
         type: "error",
@@ -1228,6 +1236,8 @@ function UploadHistory() {
 
 export default function UploadPage() {
   const [activeTab, setActiveTab] = useState<TabId>("payroll");
+  const [historyKey, setHistoryKey] = useState(0);
+  const refreshHistory = () => setHistoryKey((k) => k + 1);
 
   const tabs: { id: TabId; label: string }[] = [
     { id: "payroll", label: "人件費" },
@@ -1270,10 +1280,10 @@ export default function UploadPage() {
 
       {/* Tab Content */}
       <div className="bg-white rounded-b-lg shadow-sm p-6">
-        {activeTab === "payroll" && <PayrollTab />}
-        {activeTab === "expense" && <ExpenseTab />}
-        {activeTab === "sales" && <SalesTab />}
-        {activeTab === "budget" && <BudgetTab />}
+        {activeTab === "payroll" && <PayrollTab onSuccess={refreshHistory} />}
+        {activeTab === "expense" && <ExpenseTab onSuccess={refreshHistory} />}
+        {activeTab === "sales" && <SalesTab onSuccess={refreshHistory} />}
+        {activeTab === "budget" && <BudgetTab onSuccess={refreshHistory} />}
       </div>
 
       {/* Upload History */}
@@ -1283,7 +1293,7 @@ export default function UploadPage() {
           <h2 className="text-sm font-medium text-gray-700">アップロード履歴</h2>
         </div>
         <div className="p-4">
-          <UploadHistory />
+          <UploadHistory key={historyKey} />
         </div>
       </div>
     </div>
