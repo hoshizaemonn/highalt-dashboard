@@ -276,10 +276,30 @@ function ActionButton({
 
 // ─── Payroll Tab ────────────────────────────────────────────
 
+function detectYearMonthFromFilename(filename: string): { year?: number; month?: number } {
+  // Match patterns like: 2026年02月, 2026_02, 202602, 2026-02
+  const patterns = [
+    /(\d{4})[年_\-](\d{1,2})[月]?/,
+    /(\d{4})(\d{2})/,
+  ];
+  for (const p of patterns) {
+    const m = filename.match(p);
+    if (m) {
+      const y = parseInt(m[1], 10);
+      const mo = parseInt(m[2], 10);
+      if (y >= 2020 && y <= 2030 && mo >= 1 && mo <= 12) {
+        return { year: y, month: mo };
+      }
+    }
+  }
+  return {};
+}
+
 function PayrollTab() {
   const [file, setFile] = useState<File | null>(null);
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [autoDetected, setAutoDetected] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [result, setResult] = useState<{
@@ -340,13 +360,26 @@ function PayrollTab() {
       <FileDropzone
         accept=".csv,.xlsx,.xls"
         file={file}
-        onFileSelect={setFile}
+        onFileSelect={(f) => {
+          setFile(f);
+          if (f) {
+            const detected = detectYearMonthFromFilename(f.name);
+            if (detected.year) { setYear(detected.year); setAutoDetected(true); }
+            if (detected.month) { setMonth(detected.month); setAutoDetected(true); }
+          }
+        }}
         onClear={() => {
           setFile(null);
           setResult(null);
           setStatus(null);
+          setAutoDetected(false);
         }}
       />
+      {autoDetected && file && (
+        <p className="text-sm text-green-600">
+          ファイル名から <strong>{year}年{month}月</strong> を自動検出しました
+        </p>
+      )}
 
       <div className="flex gap-2">
         <ActionButton onClick={handleUpload} loading={loading} disabled={!file}>
