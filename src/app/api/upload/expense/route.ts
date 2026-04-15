@@ -142,6 +142,21 @@ export async function POST(request: NextRequest) {
           });
         }
 
+        // Auto-register expense rules for manually classified items
+        for (const rec of inputRecords) {
+          if (rec.category && !rec.isAutoClassified && rec.description) {
+            // Extract a keyword from description (first meaningful word/phrase)
+            const keyword = rec.description.trim();
+            if (keyword) {
+              await tx.expenseRule.upsert({
+                where: { keyword },
+                update: { category: rec.category },
+                create: { keyword, category: rec.category },
+              });
+            }
+          }
+        }
+
         // Count classified/unclassified for log
         let classified = 0;
         let unclassified = 0;
