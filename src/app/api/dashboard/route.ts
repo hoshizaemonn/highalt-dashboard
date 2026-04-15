@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { HQ_STORE } from "@/lib/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
     const payrollWhere = {
       year,
       ...(month !== undefined && { month }),
-      ...(store && { storeName: store }),
+      ...(store && store !== "全体" ? { storeName: store } : { storeName: { not: HQ_STORE } }),
     };
 
     const payrollRows = await prisma.payrollData.findMany({

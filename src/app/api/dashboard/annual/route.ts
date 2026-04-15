@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { HQ_STORE } from "@/lib/constants";
 
 interface MonthlyEntry {
   month: number;
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch all data for the year range at once to minimize queries
     const years = [...new Set(periods.map((p) => p.year))];
-    const storeWhere = store ? { storeName: store } : {};
+    const storeWhere = store ? { storeName: store } : { storeName: { not: HQ_STORE } };
 
     // Sequential queries to avoid Supabase connection pool limits
     const allPayroll = await prisma.payrollData.findMany({
