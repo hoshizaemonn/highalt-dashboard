@@ -336,24 +336,18 @@ function OverridesTab() {
     setSaving(true);
     setMessage("");
     try {
-      // Update existing record ratio
+      // Use dual action to atomically replace all overrides for this employee
       await fetch("/api/settings/overrides", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "dual",
           employeeId: dualTarget.employeeId,
-          storeName: dualTarget.storeName,
-          ratio: 100 - dualRatio,
-        }),
-      });
-      // Create second store
-      await fetch("/api/settings/overrides", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          employeeId: dualTarget.employeeId,
-          storeName: dualStore,
-          ratio: dualRatio,
+          employeeName: dualTarget.employeeName,
+          store1: dualTarget.storeName,
+          ratio1: 100 - dualRatio,
+          store2: dualStore,
+          ratio2: dualRatio,
         }),
       });
       setDualTarget(null);
@@ -370,46 +364,73 @@ function OverridesTab() {
     setMessage("");
     try {
       if (addMode === "new") {
-        const r1 = newDual ? parseInt(newRatio, 10) || 50 : 100;
-        await fetch("/api/settings/overrides", {
+        const empId = parseInt(newEmpId, 10);
+        // Check duplicate
+        const checkRes = await fetch("/api/settings/overrides", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            employeeId: parseInt(newEmpId, 10),
-            storeName: newStore,
-            ratio: r1,
-          }),
+          body: JSON.stringify({ action: "check-duplicate", employeeId: empId }),
         });
+        const checkData = await checkRes.json();
+        if (checkData.exists) {
+          setMessage(`従業員番号 ${empId} は既に登録されています。既存の従業員（兼務・変更）から操作してください。`);
+          setSaving(false);
+          return;
+        }
+
+        const r1 = newDual ? parseInt(newRatio, 10) || 50 : 100;
         if (newDual) {
           await fetch("/api/settings/overrides", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              employeeId: parseInt(newEmpId, 10),
-              storeName: newStore2,
-              ratio: 100 - r1,
+              action: "dual",
+              employeeId: empId,
+              employeeName: newEmpName,
+              store1: newStore,
+              ratio1: r1,
+              store2: newStore2,
+              ratio2: 100 - r1,
+            }),
+          });
+        } else {
+          await fetch("/api/settings/overrides", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              employeeId: empId,
+              storeName: newStore,
+              ratio: r1,
+              employeeName: newEmpName,
             }),
           });
         }
       } else if (selectedExisting) {
         const r1 = existDual ? parseInt(existRatio, 10) || 50 : 100;
-        await fetch("/api/settings/overrides", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            employeeId: selectedExisting.employeeId,
-            storeName: existStore,
-            ratio: r1,
-          }),
-        });
         if (existDual) {
           await fetch("/api/settings/overrides", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              action: "dual",
               employeeId: selectedExisting.employeeId,
-              storeName: existStore2,
-              ratio: 100 - r1,
+              employeeName: selectedExisting.employeeName,
+              store1: existStore,
+              ratio1: r1,
+              store2: existStore2,
+              ratio2: 100 - r1,
+            }),
+          });
+        } else {
+          // Single store change — delete old, create new
+          await fetch("/api/settings/overrides", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              employeeId: selectedExisting.employeeId,
+              storeName: existStore,
+              ratio: r1,
+              employeeName: selectedExisting.employeeName,
             }),
           });
         }

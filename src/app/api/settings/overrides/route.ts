@@ -14,28 +14,28 @@ export async function GET() {
       orderBy: { employeeId: "asc" },
     });
 
-    // Get unique employee IDs to look up names from payroll_data
-    const employeeIds = [...new Set(overrides.map((o) => String(o.employeeId)))];
-
-    const payrollRecords = await prisma.payrollData.findMany({
-      where: { employeeId: { in: employeeIds } },
-      select: { employeeId: true, employeeName: true },
-      distinct: ["employeeId"],
-    });
-
-    const nameMap: Record<string, string> = {};
-    for (const p of payrollRecords) {
-      if (p.employeeName) {
-        nameMap[p.employeeId] = p.employeeName;
+    // Supplement names from payroll_data for records that don't have employee_name
+    const needNames = overrides.filter((o) => !o.employeeName);
+    if (needNames.length > 0) {
+      const ids = [...new Set(needNames.map((o) => String(o.employeeId)))];
+      const payrollRecords = await prisma.payrollData.findMany({
+        where: { employeeId: { in: ids } },
+        select: { employeeId: true, employeeName: true },
+        distinct: ["employeeId"],
+      });
+      const nameMap: Record<string, string> = {};
+      for (const p of payrollRecords) {
+        if (p.employeeName) nameMap[p.employeeId] = p.employeeName;
       }
+
+      const result = overrides.map((o) => ({
+        ...o,
+        employeeName: o.employeeName || nameMap[String(o.employeeId)] || "",
+      }));
+      return NextResponse.json({ overrides: result });
     }
 
-    const result = overrides.map((o) => ({
-      ...o,
-      employeeName: nameMap[String(o.employeeId)] || "",
-    }));
-
-    return NextResponse.json({ overrides: result });
+    return NextResponse.json({ overrides });
   } catch (error) {
     console.error("Overrides GET error:", error);
     return NextResponse.json(
@@ -54,15 +54,13 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    // Bulk register action
+    // Bulk register action (from payroll data)
     if (body.action === "bulk-register") {
-      // Get all unique employees from payroll_data
       const allEmployees = await prisma.payrollData.findMany({
         select: { employeeId: true, employeeName: true },
         distinct: ["employeeId"],
       });
 
-      // Get existing overrides
       const existingOverrides = await prisma.storeOverride.findMany({
         select: { employeeId: true },
       });
@@ -73,7 +71,6 @@ export async function POST(request: NextRequest) {
         const empIdNum = parseInt(emp.employeeId, 10);
         if (isNaN(empIdNum) || existingIds.has(empIdNum)) continue;
 
-        // Determine store from thousand digit
         const thousandDigit = Math.floor((empIdNum % 10000) / 1000);
         const storeName = THOUSAND_DIGIT_MAP[thousandDigit];
         if (!storeName) continue;
@@ -83,6 +80,7 @@ export async function POST(request: NextRequest) {
             employeeId: empIdNum,
             storeName,
             ratio: 100,
+            employeeName: emp.employeeName || "",
           },
         });
         created++;
@@ -91,27 +89,52 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ created }, { status: 201 });
     }
 
-    // Batch upsert from array
+    // Batch upsert from array (upload unresolved registration)
     if (Array.isArray(body.overrides)) {
       let created = 0;
       for (const item of body.overrides) {
         const empId = typeof item.employeeId === "string" ? parseInt(item.employeeId, 10) : item.employeeId;
         const ratioVal = item.ratio ?? 100;
+        const empName = item.employeeName || "";
         if (isNaN(empId) || !item.storeName) continue;
-        // Delete old overrides for this employee before creating new one
-        await prisma.storeOverride.deleteMany({
-          where: { employeeId: empId },
-        });
+        // Replace all overrides for this employee
+        await prisma.storeOverride.deleteMany({ where: { employeeId: empId } });
         await prisma.storeOverride.create({
-          data: { employeeId: empId, storeName: item.storeName, ratio: ratioVal },
+          data: { employeeId: empId, storeName: item.storeName, ratio: ratioVal, employeeName: empName },
         });
         created++;
       }
       return NextResponse.json({ created }, { status: 201 });
     }
 
-    // Single upsert (supports dual assignment / 兼務)
-    const { employeeId, storeName, ratio } = body;
+    // Dual assignment (兼務): replace all overrides with 2 new ones
+    if (body.action === "dual") {
+      const empId = typeof body.employeeId === "string" ? parseInt(body.employeeId, 10) : body.employeeId;
+      const empName = body.employeeName || "";
+      if (isNaN(empId) || !body.store1 || !body.store2) {
+        return NextResponse.json({ error: "Invalid dual params" }, { status: 400 });
+      }
+      // Delete all existing for this employee
+      await prisma.storeOverride.deleteMany({ where: { employeeId: empId } });
+      // Create 2 records
+      await prisma.storeOverride.create({
+        data: { employeeId: empId, storeName: body.store1, ratio: body.ratio1 ?? 50, employeeName: empName },
+      });
+      await prisma.storeOverride.create({
+        data: { employeeId: empId, storeName: body.store2, ratio: body.ratio2 ?? 50, employeeName: empName },
+      });
+      return NextResponse.json({ ok: true }, { status: 201 });
+    }
+
+    // Check duplicate (for new employee validation)
+    if (body.action === "check-duplicate") {
+      const empId = typeof body.employeeId === "string" ? parseInt(body.employeeId, 10) : body.employeeId;
+      const exists = await prisma.storeOverride.findFirst({ where: { employeeId: empId } });
+      return NextResponse.json({ exists: !!exists });
+    }
+
+    // Single upsert
+    const { employeeId, storeName, ratio, employeeName: bodyName } = body;
     if (!employeeId || !storeName) {
       return NextResponse.json(
         { error: "employeeId and storeName are required" },
@@ -119,12 +142,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const empId =
-      typeof employeeId === "string" ? parseInt(employeeId, 10) : employeeId;
-    const ratioVal =
-      typeof ratio === "string" ? parseInt(ratio, 10) : ratio ?? 100;
+    const empId = typeof employeeId === "string" ? parseInt(employeeId, 10) : employeeId;
+    const ratioVal = typeof ratio === "string" ? parseInt(ratio, 10) : ratio ?? 100;
+    const empName = bodyName || "";
 
-    // Upsert: only replace the same (employeeId, storeName) pair, not all
     const existing = await prisma.storeOverride.findFirst({
       where: { employeeId: empId, storeName },
     });
@@ -133,11 +154,11 @@ export async function POST(request: NextRequest) {
     if (existing) {
       override = await prisma.storeOverride.update({
         where: { id: existing.id },
-        data: { ratio: ratioVal },
+        data: { ratio: ratioVal, ...(empName ? { employeeName: empName } : {}) },
       });
     } else {
       override = await prisma.storeOverride.create({
-        data: { employeeId: empId, storeName, ratio: ratioVal },
+        data: { employeeId: empId, storeName, ratio: ratioVal, employeeName: empName },
       });
     }
 

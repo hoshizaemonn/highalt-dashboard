@@ -45,10 +45,11 @@ model UploadLog {
 // ─── Store Overrides ────────────────────────────────────────
 
 model StoreOverride {
-  id         Int    @id @default(autoincrement())
-  employeeId Int    @map("employee_id")
-  storeName  String @map("store_name")
-  ratio      Int    @default(100)
+  id           Int    @id @default(autoincrement())
+  employeeId   Int    @map("employee_id")
+  storeName    String @map("store_name")
+  ratio        Int    @default(100)
+  employeeName String @default("") @map("employee_name")
 
   @@unique([employeeId, storeName])
   @@map("store_overrides")
