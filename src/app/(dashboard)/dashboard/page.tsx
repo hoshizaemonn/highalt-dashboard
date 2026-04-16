@@ -1175,8 +1175,10 @@ function buildBudgetRows(
   rows.push({ group: "人件費", category: "人件費合計", budget: laborBudget, actual: laborActual, diff: laborActual - laborBudget, ratio: laborBudget !== 0 ? laborActual / laborBudget : 0, isGood: laborActual <= laborBudget });
 
   // Expense rows — all budget items not in REV or LABOR
+  let expBudgetSum = 0;
   for (const [cat, b] of Object.entries(budget)) {
     if (REV_ITEMS.includes(cat) || LABOR_ITEMS.includes(cat)) continue;
+    expBudgetSum += b;
     const a = actuals[cat] ?? expenseByCategory[cat] ?? 0;
     if (b === 0 && a === 0) continue;
     const diff = a - b;
@@ -1192,20 +1194,19 @@ function buildBudgetRows(
     });
   }
 
-  // Expense total
-  const expBudget = budget["経費合計"] ?? 0;
+  // Expense total (sum of individual expense budget items)
   rows.push({
     group: "経費",
     category: "経費合計",
-    budget: expBudget,
+    budget: expBudgetSum,
     actual: totalExpense,
-    diff: totalExpense - expBudget,
-    ratio: expBudget !== 0 ? totalExpense / expBudget : 0,
-    isGood: totalExpense <= expBudget,
+    diff: totalExpense - expBudgetSum,
+    ratio: expBudgetSum !== 0 ? totalExpense / expBudgetSum : 0,
+    isGood: totalExpense <= expBudgetSum,
   });
 
-  // Operating profit
-  const profitBudget = budget["営業利益"] ?? 0;
+  // Operating profit (calculated: revenue budget - labor budget - expense budget)
+  const profitBudget = revBudget - laborBudget - expBudgetSum;
   rows.push({
     group: "利益",
     category: "営業利益",
@@ -1613,7 +1614,7 @@ function MonthlyView({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             {(() => {
               const revRow = budgetRows.find((r) => r.category === "売上合計");
-              const laborRow = budgetRows.find((r) => r.category === "人件費");
+              const laborRow = budgetRows.find((r) => r.category === "人件費合計");
               const expRow = budgetRows.find((r) => r.category === "経費合計");
               const profitRow = budgetRows.find((r) => r.category === "営業利益");
               return (
