@@ -623,7 +623,7 @@ interface BudgetRow {
 function buildBudgetRows(
   budget: Record<string, number>,
   revenueByCategory: Record<string, number>,
-  laborCost: number,
+  payrollData: { taxable_total: number; commute: number; legal_welfare: number },
   expenseByCategory: Record<string, number>,
   totalRevenue: number,
   totalExpense: number,
@@ -631,53 +631,50 @@ function buildBudgetRows(
 ): BudgetRow[] {
   const rows: BudgetRow[] = [];
 
-  // Revenue rows
-  for (const cat of SALES_CATEGORIES) {
-    const b = budget[cat] ?? 0;
-    const a = revenueByCategory[cat] ?? 0;
+  const REV_ITEMS = ["パーソナル・物販・その他収入", "月会費収入", "サービス収入", "自販機手数料収入"];
+  const LABOR_ITEMS = ["正社員・契約社員給与", "賞与", "通勤手当", "法定福利費"];
+
+  // Build actuals mapping for budget items
+  const actuals: Record<string, number> = {
+    "月会費収入": revenueByCategory["月会費"] ?? 0,
+    "パーソナル・物販・その他収入": (revenueByCategory["パーソナル"] ?? 0) + (revenueByCategory["オプション"] ?? 0) + (revenueByCategory["スポット"] ?? 0) + (revenueByCategory["入会金"] ?? 0) + (revenueByCategory["ロッカー"] ?? 0) + (revenueByCategory["その他"] ?? 0),
+    "サービス収入": revenueByCategory["体験"] ?? 0,
+    "自販機手数料収入": 0,
+    "正社員・契約社員給与": payrollData.taxable_total ?? 0,
+    "通勤手当": payrollData.commute ?? 0,
+    "法定福利費": payrollData.legal_welfare ?? 0,
+    ...expenseByCategory,
+  };
+
+  // Revenue items
+  for (const item of REV_ITEMS) {
+    const b = budget[item] ?? 0;
+    const a = actuals[item] ?? 0;
     if (b === 0 && a === 0) continue;
-    const diff = a - b;
-    const ratio = b !== 0 ? a / b : 0;
-    rows.push({
-      group: "売上",
-      category: cat,
-      budget: b,
-      actual: a,
-      diff,
-      ratio,
-      isGood: diff >= 0,
-    });
+    rows.push({ group: "売上", category: item, budget: b, actual: a, diff: a - b, ratio: b !== 0 ? a / b : 0, isGood: a >= b });
   }
 
   // Revenue total
-  const revBudget = budget["売上合計"] ?? 0;
-  rows.push({
-    group: "売上",
-    category: "売上合計",
-    budget: revBudget,
-    actual: totalRevenue,
-    diff: totalRevenue - revBudget,
-    ratio: revBudget !== 0 ? totalRevenue / revBudget : 0,
-    isGood: totalRevenue >= revBudget,
-  });
+  const revBudget = REV_ITEMS.reduce((s, i) => s + (budget[i] ?? 0), 0);
+  rows.push({ group: "売上", category: "売上合計", budget: revBudget, actual: totalRevenue, diff: totalRevenue - revBudget, ratio: revBudget !== 0 ? totalRevenue / revBudget : 0, isGood: totalRevenue >= revBudget });
 
-  // Labor
-  const laborBudget = budget["人件費"] ?? 0;
-  rows.push({
-    group: "人件費",
-    category: "人件費",
-    budget: laborBudget,
-    actual: laborCost,
-    diff: laborCost - laborBudget,
-    ratio: laborBudget !== 0 ? laborCost / laborBudget : 0,
-    isGood: laborCost <= laborBudget,
-  });
+  // Labor items
+  for (const item of LABOR_ITEMS) {
+    const b = budget[item] ?? 0;
+    const a = actuals[item] ?? 0;
+    if (b === 0 && a === 0) continue;
+    rows.push({ group: "人件費", category: item, budget: b, actual: a, diff: a - b, ratio: b !== 0 ? a / b : 0, isGood: a <= b });
+  }
 
-  // Expense rows
-  for (const cat of EXPENSE_BUDGET_CATEGORIES) {
-    if (cat === "人件費") continue;
-    const b = budget[cat] ?? 0;
-    const a = expenseByCategory[cat] ?? 0;
+  // Labor total
+  const laborBudget = LABOR_ITEMS.reduce((s, i) => s + (budget[i] ?? 0), 0);
+  const laborActual = LABOR_ITEMS.reduce((s, i) => s + (actuals[i] ?? 0), 0);
+  rows.push({ group: "人件費", category: "人件費合計", budget: laborBudget, actual: laborActual, diff: laborActual - laborBudget, ratio: laborBudget !== 0 ? laborActual / laborBudget : 0, isGood: laborActual <= laborBudget });
+
+  // Expense rows — all budget items not in REV or LABOR
+  for (const [cat, b] of Object.entries(budget)) {
+    if (REV_ITEMS.includes(cat) || LABOR_ITEMS.includes(cat)) continue;
+    const a = actuals[cat] ?? expenseByCategory[cat] ?? 0;
     if (b === 0 && a === 0) continue;
     const diff = a - b;
     const ratio = b !== 0 ? a / b : 0;
@@ -912,7 +909,7 @@ function MonthlyView({
     return buildBudgetRows(
       data.budget,
       data.revenue.by_category,
-      data.total_labor,
+      data.payroll,
       data.expense.by_category,
       data.total_revenue,
       data.total_expense,
