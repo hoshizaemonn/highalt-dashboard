@@ -42,11 +42,19 @@ function FileDropzone({
   onFileSelect,
   file,
   onClear,
+  multiple,
+  files,
+  onFilesSelect,
+  onRemoveFile,
 }: {
   accept: string;
-  onFileSelect: (file: File) => void;
-  file: File | null;
-  onClear: () => void;
+  onFileSelect?: (file: File) => void;
+  file?: File | null;
+  onClear?: () => void;
+  multiple?: boolean;
+  files?: File[];
+  onFilesSelect?: (files: File[]) => void;
+  onRemoveFile?: (index: number) => void;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -67,20 +75,62 @@ function FileDropzone({
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
-      const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile) onFileSelect(droppedFile);
+      if (multiple && onFilesSelect) {
+        const dropped = Array.from(e.dataTransfer.files);
+        if (dropped.length > 0) onFilesSelect(dropped);
+      } else {
+        const droppedFile = e.dataTransfer.files[0];
+        if (droppedFile && onFileSelect) onFileSelect(droppedFile);
+      }
     },
-    [onFileSelect],
+    [multiple, onFileSelect, onFilesSelect],
   );
 
   const handleClick = () => inputRef.current?.click();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
-    if (selected) onFileSelect(selected);
+    if (multiple && onFilesSelect) {
+      const selected = Array.from(e.target.files || []);
+      if (selected.length > 0) onFilesSelect(selected);
+    } else {
+      const selected = e.target.files?.[0];
+      if (selected && onFileSelect) onFileSelect(selected);
+    }
+    if (inputRef.current) inputRef.current.value = "";
   };
 
-  if (file) {
+  // Multi-file display
+  if (multiple && files && files.length > 0) {
+    return (
+      <div className="space-y-2">
+        {files.map((f, i) => (
+          <div key={`${f.name}-${i}`} className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <FileUp size={18} className="text-blue-600 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-blue-800 truncate">{f.name}</p>
+              <p className="text-xs text-blue-600">{(f.size / 1024).toFixed(1)} KB</p>
+            </div>
+            <button
+              onClick={() => onRemoveFile?.(i)}
+              className="text-blue-400 hover:text-red-500 transition-colors"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={handleClick}
+          className="text-xs text-blue-600 hover:text-blue-800 underline"
+        >
+          + ファイルを追加
+        </button>
+        <input ref={inputRef} type="file" accept={accept} multiple onChange={handleChange} className="hidden" />
+      </div>
+    );
+  }
+
+  // Single file display
+  if (!multiple && file) {
     return (
       <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <FileUp size={20} className="text-blue-600 shrink-0" />
@@ -117,6 +167,7 @@ function FileDropzone({
         ref={inputRef}
         type="file"
         accept={accept}
+        multiple={multiple}
         onChange={handleChange}
         className="hidden"
       />
@@ -124,7 +175,9 @@ function FileDropzone({
       <p className="text-sm text-gray-600">
         ファイルをドラッグ&ドロップ、またはクリックして選択
       </p>
-      <p className="text-xs text-gray-400 mt-1">{accept}</p>
+      <p className="text-xs text-gray-400 mt-1">
+        {accept}{multiple ? "（複数選択可）" : ""}
+      </p>
     </div>
   );
 }
@@ -524,138 +577,165 @@ function UnresolvedEmployeeSection({
 // ─── Payroll Tab ───────────────────────────────────────────
 
 function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [year, setYear] = useState(2026);
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
-  const [autoDetected, setAutoDetected] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<StatusMessage | null>(null);
-  const [result, setResult] = useState<{
+  const [results, setResults] = useState<{
+    fileName: string;
+    year: number;
+    month: number;
     records: number;
+    error?: string;
     unresolved: { employeeId: string; employeeName: string; contractType: string; grossTotal: number }[];
-  } | null>(null);
-  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
+  }[]>([]);
 
-  const doUpload = async () => {
-    setLoading(true);
-    setStatus({ type: "info", text: "解析・保存中..." });
-    setResult(null);
-    setOverwriteWarning(null);
+  const uploadSingleFile = async (file: File, forceOverwrite = false) => {
+    const detected = detectYearMonthFromFilename(file.name);
+    const year = detected.year || new Date().getFullYear();
+    const month = detected.month || (new Date().getMonth() + 1);
 
-    try {
-      const formData = new FormData();
-      formData.append("file", file!);
-      formData.append("year", String(year));
-      formData.append("month", String(month));
-
-      const res = await fetch("/api/upload/payroll", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus({ type: "error", text: data.error || "エラーが発生しました" });
-        return;
-      }
-
-      setResult(data);
-      setStatus({
-        type: "success",
-        text: `${year}年${month}月の人件費データを保存しました（${data.records}件）${data.unresolved.length > 0 ? `\n未登録従業員: ${data.unresolved.length}名` : ""}`,
-      });
-      onSuccess?.();
-    } catch (e) {
-      setStatus({
-        type: "error",
-        text: e instanceof Error ? e.message : "エラーが発生しました",
-      });
-    } finally {
-      setLoading(false);
+    // Check for existing data
+    if (!forceOverwrite) {
+      try {
+        const checkRes = await fetch(`/api/upload/payroll?year=${year}&month=${month}`);
+        const checkData = await checkRes.json();
+        if (checkData.exists) {
+          // Auto-overwrite when batch uploading
+        }
+      } catch { /* proceed */ }
     }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("year", String(year));
+    formData.append("month", String(month));
+
+    const res = await fetch("/api/upload/payroll", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return {
+        fileName: file.name,
+        year,
+        month,
+        records: 0,
+        error: data.error || "エラー",
+        unresolved: [],
+      };
+    }
+
+    return {
+      fileName: file.name,
+      year,
+      month,
+      records: data.records,
+      unresolved: data.unresolved || [],
+    };
   };
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setLoading(true);
-    setStatus(null);
-    setResult(null);
+    setResults([]);
 
-    try {
-      const checkRes = await fetch(`/api/upload/payroll?year=${year}&month=${month}`);
-      const checkData = await checkRes.json();
-
-      if (checkData.exists) {
-        setOverwriteWarning({ count: checkData.count });
-        setLoading(false);
-        return;
-      }
-    } catch {
-      // Check failed, proceed with upload anyway
+    const allResults = [];
+    for (const file of files) {
+      const result = await uploadSingleFile(file, true);
+      allResults.push(result);
     }
 
-    await doUpload();
+    setResults(allResults);
+    setLoading(false);
+    onSuccess?.();
   };
+
+  // Collect all unresolved from all results
+  const allUnresolved = results.flatMap((r) => r.unresolved);
+  // Deduplicate by employeeId
+  const uniqueUnresolved = allUnresolved.filter(
+    (emp, i, arr) => arr.findIndex((e) => e.employeeId === emp.employeeId) === i,
+  );
+
+  const totalRecords = results.reduce((s, r) => s + r.records, 0);
+  const hasErrors = results.some((r) => r.error);
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        クラウド給与から出力した支給控除一覧表（CSV）をアップロード
+        クラウド給与から出力した支給控除一覧表（CSV）をアップロード（複数選択可）
       </p>
-
-      <div className="grid grid-cols-2 gap-4">
-        <YearSelect value={year} onChange={setYear} />
-        <MonthSelect value={month} onChange={setMonth} />
-      </div>
 
       <FileDropzone
         accept=".csv,.xlsx,.xls"
-        file={file}
-        onFileSelect={(f) => {
-          setFile(f);
-          if (f) {
-            const detected = detectYearMonthFromFilename(f.name);
-            if (detected.year) { setYear(detected.year); setAutoDetected(true); }
-            if (detected.month) { setMonth(detected.month); setAutoDetected(true); }
-          }
+        multiple
+        files={files}
+        onFilesSelect={(newFiles) => {
+          setFiles((prev) => [...prev, ...newFiles]);
+          setResults([]);
         }}
-        onClear={() => {
-          setFile(null);
-          setResult(null);
-          setStatus(null);
-          setAutoDetected(false);
+        onRemoveFile={(i) => {
+          setFiles((prev) => prev.filter((_, idx) => idx !== i));
+          setResults([]);
         }}
       />
-      {autoDetected && file && (
-        <p className="text-sm text-green-600">
-          ファイル名から <strong>{year}年{month}月</strong> を自動検出しました
-        </p>
+
+      {files.length > 0 && (
+        <div className="text-xs text-gray-500">
+          {files.map((f) => {
+            const d = detectYearMonthFromFilename(f.name);
+            return d.year && d.month
+              ? <span key={f.name} className="inline-block mr-3 text-green-600">{f.name} → {d.year}年{d.month}月</span>
+              : <span key={f.name} className="inline-block mr-3 text-amber-600">{f.name} → 年月検出不可</span>;
+          })}
+        </div>
       )}
 
       <div className="flex gap-2">
-        <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
-          解析して保存する
+        <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0}>
+          {files.length <= 1 ? "解析して保存する" : `${files.length}件を一括アップロード`}
         </ActionButton>
       </div>
 
-      {overwriteWarning && (
-        <OverwriteWarning
-          message={`\u26A0\uFE0F ${year}年${month}月の人件費データが既に${overwriteWarning.count}件あります。上書きしますか？`}
-          onConfirm={doUpload}
-          onCancel={() => setOverwriteWarning(null)}
-          loading={loading}
-        />
+      {/* Results */}
+      {results.length > 0 && (
+        <div className="space-y-2">
+          {results.map((r, i) => (
+            <div
+              key={i}
+              className={`flex items-center gap-2 p-3 rounded-lg border text-sm ${
+                r.error
+                  ? "bg-red-50 border-red-200 text-red-700"
+                  : "bg-green-50 border-green-200 text-green-700"
+              }`}
+            >
+              {r.error ? (
+                <AlertCircle size={16} className="shrink-0" />
+              ) : (
+                <CheckCircle2 size={16} className="shrink-0" />
+              )}
+              <span className="flex-1">
+                {r.year}年{r.month}月 — {r.error || `${r.records}件保存`}
+                {r.unresolved.length > 0 && ` (未登録${r.unresolved.length}名)`}
+              </span>
+              <span className="text-xs opacity-70 truncate max-w-[200px]">{r.fileName}</span>
+            </div>
+          ))}
+          {!hasErrors && totalRecords > 0 && (
+            <p className="text-sm font-medium text-green-700">
+              合計 {totalRecords}件のデータを保存しました
+            </p>
+          )}
+        </div>
       )}
 
-      <StatusBanner status={status} />
-
-      {result && result.unresolved.length > 0 && (
+      {uniqueUnresolved.length > 0 && (
         <UnresolvedEmployeeSection
-          employees={result.unresolved}
+          employees={uniqueUnresolved}
           onRegistered={() => {
-            doUpload();
-            onSuccess?.();
+            handleUpload();
           }}
         />
       )}
