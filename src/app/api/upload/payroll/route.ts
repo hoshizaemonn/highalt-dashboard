@@ -156,14 +156,38 @@ export async function POST(request: NextRequest) {
       generalContributionCo: number;
     }
 
+    // Store name mapping from CSV section headers like 【東日本橋スタジオ】
+    const SECTION_STORE_MAP: Record<string, string> = {
+      "東日本橋": "東日本橋", "春日": "春日", "船橋": "船橋",
+      "巣鴨": "巣鴨", "祖師ヶ谷大蔵": "祖師ヶ谷大蔵",
+      "下北沢": "下北沢", "中目黒": "中目黒", "東陽町": "東陽町",
+      "本部": "本部（除外）",
+    };
+
+    function detectStoreFromSection(header: string): string | null {
+      const cleaned = header.replace(/[【】\s]/g, "").replace("ハイアルチ", "").replace("スタジオ", "");
+      for (const [key, store] of Object.entries(SECTION_STORE_MAP)) {
+        if (cleaned.includes(key)) return store;
+      }
+      return null;
+    }
+
     const records: PayrollRecord[] = [];
     const unresolved: UnresolvedEmployee[] = [];
+    let currentSectionStore: string | null = null;
 
     for (const row of dataRows) {
       if (row.length < 10) continue;
 
       const empIdStr = row[0]?.trim() || "";
-      if (!empIdStr || empIdStr.startsWith("【")) continue;
+
+      // Track section headers like 【東日本橋スタジオ】
+      if (empIdStr.startsWith("【")) {
+        currentSectionStore = detectStoreFromSection(empIdStr);
+        continue;
+      }
+
+      if (!empIdStr) continue;
 
       const empName = row[1]?.trim() || "";
       if (empName === "-") continue;
@@ -200,7 +224,12 @@ export async function POST(request: NextRequest) {
       const workersCompCo = col(95);
       const generalContributionCo = col(96);
 
-      const assignments = await resolveStore(empIdStr);
+      let assignments = await resolveStore(empIdStr);
+
+      // Fallback: use CSV section header (e.g. 【東日本橋スタジオ】)
+      if (assignments.length === 0 && currentSectionStore) {
+        assignments = [{ storeName: currentSectionStore, ratio: 100 }];
+      }
 
       if (assignments.length === 0) {
         unresolved.push({
