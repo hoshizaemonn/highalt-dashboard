@@ -91,6 +91,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ created }, { status: 201 });
     }
 
+    // Batch upsert from array
+    if (Array.isArray(body.overrides)) {
+      let created = 0;
+      for (const item of body.overrides) {
+        const empId = typeof item.employeeId === "string" ? parseInt(item.employeeId, 10) : item.employeeId;
+        const ratioVal = item.ratio ?? 100;
+        if (isNaN(empId) || !item.storeName) continue;
+        await prisma.storeOverride.upsert({
+          where: { employeeId_storeName: { employeeId: empId, storeName: item.storeName } },
+          update: { ratio: ratioVal },
+          create: { employeeId: empId, storeName: item.storeName, ratio: ratioVal },
+        });
+        created++;
+      }
+      return NextResponse.json({ created }, { status: 201 });
+    }
+
     // Single upsert
     const { employeeId, storeName, ratio } = body;
     if (!employeeId || !storeName) {
