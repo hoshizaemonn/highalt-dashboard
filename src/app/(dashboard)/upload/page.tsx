@@ -1380,24 +1380,21 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
 function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [store, setStore] = useState<string>(STORES[0]);
-  const [year, setYear] = useState(2026);
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
-  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
 
-  const doUpload = async () => {
+  const handleUpload = async () => {
+    if (!file) return;
     setLoading(true);
     setStatus({ type: "info", text: "取込中..." });
-    setOverwriteWarning(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file!);
+      formData.append("file", file);
       formData.append("type", "ma002");
       formData.append("store", store);
-      formData.append("year", String(year));
-      formData.append("month", String(month));
+      formData.append("year", "0");
+      formData.append("month", "0");
 
       const res = await fetch("/api/upload/hacomono", {
         method: "POST",
@@ -1413,7 +1410,7 @@ function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
 
       setStatus({
         type: "success",
-        text: `${store} の月次サマリを取り込みました（${data.records}件）`,
+        text: `${store} の月次サマリを取り込みました（${data.records}件）※年月はCSVから自動検出`,
       });
       onSuccess?.();
     } catch (e) {
@@ -1426,37 +1423,14 @@ function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
     }
   };
 
-  const handleUpload = async () => {
-    if (!file) return;
-    setLoading(true);
-    setStatus(null);
-
-    try {
-      const checkRes = await fetch(`/api/upload/hacomono?type=ma002&store=${encodeURIComponent(store)}&year=${year}&month=${month}`);
-      const checkData = await checkRes.json();
-
-      if (checkData.exists) {
-        setOverwriteWarning({ count: checkData.count });
-        setLoading(false);
-        return;
-      }
-    } catch {
-      // Check failed, proceed with upload anyway
-    }
-
-    await doUpload();
-  };
-
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        hacomono「月次サマリ」MA002 CSVをアップロード（複数月データ対応）
+        hacomono「月次サマリ」MA002 CSVをアップロード（年月はCSVから自動検出・複数月対応）
       </p>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <StoreSelect value={store} onChange={setStore} />
-        <YearSelect value={year} onChange={setYear} />
-        <MonthSelect value={month} onChange={setMonth} />
       </div>
 
       <FileDropzone
@@ -1466,22 +1440,12 @@ function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
         onClear={() => {
           setFile(null);
           setStatus(null);
-          setOverwriteWarning(null);
         }}
       />
 
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
+      <ActionButton onClick={handleUpload} loading={loading} disabled={!file}>
         取り込む
       </ActionButton>
-
-      {overwriteWarning && (
-        <OverwriteWarning
-          message={`\u26A0\uFE0F ${store} ${year}年${month}月の月次サマリデータが既に${overwriteWarning.count}件あります。上書きしますか？`}
-          onConfirm={doUpload}
-          onCancel={() => setOverwriteWarning(null)}
-          loading={loading}
-        />
-      )}
 
       <StatusBanner status={status} />
     </div>
