@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ created }, { status: 201 });
     }
 
-    // Single upsert
+    // Single upsert (supports dual assignment / 兼務)
     const { employeeId, storeName, ratio } = body;
     if (!employeeId || !storeName) {
       return NextResponse.json(
@@ -124,14 +124,22 @@ export async function POST(request: NextRequest) {
     const ratioVal =
       typeof ratio === "string" ? parseInt(ratio, 10) : ratio ?? 100;
 
-    // Delete old overrides for this employee before creating new one
-    await prisma.storeOverride.deleteMany({
-      where: { employeeId: empId },
+    // Upsert: only replace the same (employeeId, storeName) pair, not all
+    const existing = await prisma.storeOverride.findFirst({
+      where: { employeeId: empId, storeName },
     });
 
-    const override = await prisma.storeOverride.create({
-      data: { employeeId: empId, storeName, ratio: ratioVal },
-    });
+    let override;
+    if (existing) {
+      override = await prisma.storeOverride.update({
+        where: { id: existing.id },
+        data: { ratio: ratioVal },
+      });
+    } else {
+      override = await prisma.storeOverride.create({
+        data: { employeeId: empId, storeName, ratio: ratioVal },
+      });
+    }
 
     return NextResponse.json({ override }, { status: 201 });
   } catch (error) {

@@ -157,11 +157,23 @@ function OverridesTab() {
   const [addOpen, setAddOpen] = useState(false);
   const [addMode, setAddMode] = useState<"existing" | "new">("existing");
 
+  // Sorting
+  type SortKey = "employeeId" | "employeeName" | "storeName";
+  const [sortKey, setSortKey] = useState<SortKey>("employeeId");
+  const [sortAsc, setSortAsc] = useState(true);
+
+  // Dual assignment (兼務) dialog
+  const [dualTarget, setDualTarget] = useState<Override | null>(null);
+  const [dualStore, setDualStore] = useState(STORES[0]);
+  const [dualRatio, setDualRatio] = useState(50);
+
   // New employee form
   const [newEmpId, setNewEmpId] = useState("");
   const [newEmpName, setNewEmpName] = useState("");
   const [newStore, setNewStore] = useState(STORES[0]);
   const [newRatio, setNewRatio] = useState("100");
+  const [newDual, setNewDual] = useState(false);
+  const [newStore2, setNewStore2] = useState(STORES[1]);
 
   // Existing employee search
   const [existSearch, setExistSearch] = useState("");
@@ -170,6 +182,8 @@ function OverridesTab() {
   );
   const [existStore, setExistStore] = useState(STORES[0]);
   const [existRatio, setExistRatio] = useState("100");
+  const [existDual, setExistDual] = useState(false);
+  const [existStore2, setExistStore2] = useState(STORES[1]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -187,14 +201,35 @@ function OverridesTab() {
     fetchData();
   }, [fetchData]);
 
-  const filtered = overrides.filter((o) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      String(o.employeeId).includes(s) ||
-      o.employeeName.toLowerCase().includes(s)
-    );
-  });
+  const filtered = overrides
+    .filter((o) => {
+      if (!search) return true;
+      const s = search.toLowerCase();
+      return (
+        String(o.employeeId).includes(s) ||
+        o.employeeName.toLowerCase().includes(s) ||
+        o.storeName.toLowerCase().includes(s)
+      );
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "employeeId") cmp = a.employeeId - b.employeeId;
+      else if (sortKey === "employeeName") cmp = a.employeeName.localeCompare(b.employeeName, "ja");
+      else if (sortKey === "storeName") cmp = a.storeName.localeCompare(b.storeName, "ja");
+      return sortAsc ? cmp : -cmp;
+    });
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortKey(key);
+      setSortAsc(true);
+    }
+  }
+
+  const sortIndicator = (key: SortKey) =>
+    sortKey === key ? (sortAsc ? " ▲" : " ▼") : "";
 
   function handleEdit(
     id: number,
@@ -234,13 +269,35 @@ function OverridesTab() {
         if (deleteIds.has(id)) continue;
         const orig = overrides.find((o) => o.id === id);
         if (!orig) continue;
+        // For ratio edits, also update the sibling dual assignment
+        const newRatioVal = edit.ratio ?? orig.ratio;
+        const siblings = overrides.filter(
+          (o) => o.employeeId === orig.employeeId && o.id !== orig.id,
+        );
+        if (edit.ratio !== undefined && siblings.length === 1) {
+          // Auto-update the other store's ratio
+          const sibId = siblings[0].id;
+          setEdits((prev) => ({
+            ...prev,
+            [sibId]: { ...prev[sibId], ratio: 100 - newRatioVal },
+          }));
+          await fetch("/api/settings/overrides", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              employeeId: siblings[0].employeeId,
+              storeName: siblings[0].storeName,
+              ratio: 100 - newRatioVal,
+            }),
+          });
+        }
         await fetch("/api/settings/overrides", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             employeeId: orig.employeeId,
             storeName: edit.storeName ?? orig.storeName,
-            ratio: edit.ratio ?? orig.ratio,
+            ratio: newRatioVal,
           }),
         });
       }
@@ -273,38 +330,99 @@ function OverridesTab() {
     setSaving(false);
   }
 
+  // Handle dual assignment (兼務) registration
+  async function handleDualRegister() {
+    if (!dualTarget) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      // Update existing record ratio
+      await fetch("/api/settings/overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: dualTarget.employeeId,
+          storeName: dualTarget.storeName,
+          ratio: 100 - dualRatio,
+        }),
+      });
+      // Create second store
+      await fetch("/api/settings/overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: dualTarget.employeeId,
+          storeName: dualStore,
+          ratio: dualRatio,
+        }),
+      });
+      setDualTarget(null);
+      await fetchData();
+      setMessage("兼務登録しました");
+    } catch {
+      setMessage("兼務登録に失敗しました");
+    }
+    setSaving(false);
+  }
+
   async function handleAddEmployee() {
     setSaving(true);
     setMessage("");
     try {
       if (addMode === "new") {
+        const r1 = newDual ? parseInt(newRatio, 10) || 50 : 100;
         await fetch("/api/settings/overrides", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             employeeId: parseInt(newEmpId, 10),
             storeName: newStore,
-            ratio: parseInt(newRatio, 10) || 100,
+            ratio: r1,
           }),
         });
+        if (newDual) {
+          await fetch("/api/settings/overrides", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              employeeId: parseInt(newEmpId, 10),
+              storeName: newStore2,
+              ratio: 100 - r1,
+            }),
+          });
+        }
       } else if (selectedExisting) {
+        const r1 = existDual ? parseInt(existRatio, 10) || 50 : 100;
         await fetch("/api/settings/overrides", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             employeeId: selectedExisting.employeeId,
             storeName: existStore,
-            ratio: parseInt(existRatio, 10) || 100,
+            ratio: r1,
           }),
         });
+        if (existDual) {
+          await fetch("/api/settings/overrides", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              employeeId: selectedExisting.employeeId,
+              storeName: existStore2,
+              ratio: 100 - r1,
+            }),
+          });
+        }
       }
       await fetchData();
       setMessage("従業員を追加しました");
       setNewEmpId("");
       setNewEmpName("");
       setNewRatio("100");
+      setNewDual(false);
       setSelectedExisting(null);
       setExistRatio("100");
+      setExistDual(false);
     } catch {
       setMessage("追加に失敗しました");
     }
@@ -325,6 +443,10 @@ function OverridesTab() {
         (o) => o.employeeId === selectedExisting.employeeId,
       )
     : [];
+
+  // Check if employee already has dual assignment
+  const hasDual = (empId: number) =>
+    overrides.filter((o) => o.employeeId === empId).length > 1;
 
   return (
     <div>
@@ -361,17 +483,29 @@ function OverridesTab() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left px-3 py-2 font-medium text-gray-600">
-                    従業員番号
+                  <th
+                    onClick={() => handleSort("employeeId")}
+                    className="text-left px-3 py-2 font-medium text-gray-600 cursor-pointer hover:text-blue-600 select-none"
+                  >
+                    従業員番号{sortIndicator("employeeId")}
                   </th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600">
-                    氏名
+                  <th
+                    onClick={() => handleSort("employeeName")}
+                    className="text-left px-3 py-2 font-medium text-gray-600 cursor-pointer hover:text-blue-600 select-none"
+                  >
+                    氏名{sortIndicator("employeeName")}
                   </th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600">
-                    店舗
+                  <th
+                    onClick={() => handleSort("storeName")}
+                    className="text-left px-3 py-2 font-medium text-gray-600 cursor-pointer hover:text-blue-600 select-none"
+                  >
+                    店舗{sortIndicator("storeName")}
                   </th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">
                     比率(%)
+                  </th>
+                  <th className="text-center px-3 py-2 font-medium text-gray-600">
+                    兼務
                   </th>
                   <th className="text-center px-3 py-2 font-medium text-gray-600">
                     削除
@@ -414,6 +548,22 @@ function OverridesTab() {
                       />
                     </td>
                     <td className="px-3 py-2 text-center">
+                      {!hasDual(o.employeeId) && (
+                        <button
+                          onClick={() => {
+                            setDualTarget(o);
+                            setDualStore(
+                              STORES.find((s) => s !== o.storeName) || STORES[0],
+                            );
+                            setDualRatio(50);
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-800 underline"
+                        >
+                          兼務
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center">
                       <input
                         type="checkbox"
                         checked={deleteIds.has(o.id)}
@@ -425,7 +575,7 @@ function OverridesTab() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-4 text-center text-gray-400">
+                    <td colSpan={6} className="px-3 py-4 text-center text-gray-400">
                       データがありません
                     </td>
                   </tr>
@@ -443,6 +593,66 @@ function OverridesTab() {
               {saving ? "保存中..." : "保存"}
             </button>
           </div>
+
+          {/* Dual assignment dialog */}
+          {dualTarget && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+                <h3 className="text-base font-bold text-gray-800 mb-3">
+                  兼務登録
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  {dualTarget.employeeName}（{dualTarget.employeeId}）を2店舗に割り当てます
+                </p>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded">
+                    <span className="text-sm font-medium w-16">店舗1</span>
+                    <span className="text-sm flex-1">{dualTarget.storeName}</span>
+                    <span className="text-sm font-bold text-blue-700">{100 - dualRatio}%</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 rounded">
+                    <span className="text-sm font-medium w-16">店舗2</span>
+                    <select
+                      value={dualStore}
+                      onChange={(e) => setDualStore(e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1 text-sm flex-1"
+                    >
+                      {ALL_STORES.filter((s) => s !== dualTarget.storeName).map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={dualRatio}
+                      onChange={(e) => setDualRatio(parseInt(e.target.value, 10) || 0)}
+                      className="border border-gray-300 rounded px-2 py-1 text-sm w-16 text-right"
+                    />
+                    <span className="text-sm">%</span>
+                  </div>
+                  <p className="text-xs text-gray-500 text-right">
+                    合計: {100 - dualRatio} + {dualRatio} = 100%
+                  </p>
+                </div>
+                <div className="flex gap-2 justify-end mt-4">
+                  <button
+                    onClick={() => setDualTarget(null)}
+                    className="text-sm bg-white border rounded px-4 py-2 hover:bg-gray-50 text-gray-600"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleDualRegister}
+                    disabled={saving || dualRatio <= 0 || dualRatio >= 100}
+                    className="text-sm bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {saving ? "登録中..." : "兼務登録する"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Expandable: Add/Dual employee */}
           <div className="mt-6 border-t border-gray-200 pt-4">
@@ -489,7 +699,6 @@ function OverridesTab() {
                     />
                     {existSearch && existingFiltered.length > 0 && !selectedExisting && (
                       <div className="border border-gray-200 rounded bg-white max-h-40 overflow-y-auto">
-                        {/* Deduplicate by employeeId */}
                         {[
                           ...new Map(
                             existingFiltered.map((o) => [o.employeeId, o]),
@@ -522,27 +731,50 @@ function OverridesTab() {
                             </span>
                           ))}
                         </div>
-                        <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={existDual}
+                            onChange={(e) => setExistDual(e.target.checked)}
+                          />
+                          兼務（2店舗に割り当て）
+                        </label>
+                        <div className="flex flex-wrap items-center gap-3">
                           <select
                             value={existStore}
                             onChange={(e) => setExistStore(e.target.value)}
                             className="border border-gray-300 rounded px-2 py-1 text-sm"
                           >
                             {ALL_STORES.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
+                              <option key={s} value={s}>{s}</option>
                             ))}
                           </select>
                           <input
                             type="number"
-                            min={0}
-                            max={100}
+                            min={1}
+                            max={existDual ? 99 : 100}
                             value={existRatio}
                             onChange={(e) => setExistRatio(e.target.value)}
                             placeholder="比率(%)"
                             className="border border-gray-300 rounded px-2 py-1 text-sm w-24"
                           />
+                          {existDual && (
+                            <>
+                              <span className="text-sm text-gray-500">+</span>
+                              <select
+                                value={existStore2}
+                                onChange={(e) => setExistStore2(e.target.value)}
+                                className="border border-gray-300 rounded px-2 py-1 text-sm"
+                              >
+                                {ALL_STORES.filter((s) => s !== existStore).map((s) => (
+                                  <option key={s} value={s}>{s}</option>
+                                ))}
+                              </select>
+                              <span className="text-sm font-medium text-blue-700">
+                                {100 - (parseInt(existRatio, 10) || 0)}%
+                              </span>
+                            </>
+                          )}
                           <button
                             onClick={handleAddEmployee}
                             disabled={saving}
@@ -556,6 +788,14 @@ function OverridesTab() {
                   </div>
                 ) : (
                   <div className="space-y-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={newDual}
+                        onChange={(e) => setNewDual(e.target.checked)}
+                      />
+                      兼務（2店舗に割り当て）
+                    </label>
                     <div className="flex flex-wrap items-center gap-3">
                       <input
                         type="text"
@@ -577,20 +817,35 @@ function OverridesTab() {
                         className="border border-gray-300 rounded px-2 py-2 text-sm"
                       >
                         {ALL_STORES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
+                          <option key={s} value={s}>{s}</option>
                         ))}
                       </select>
                       <input
                         type="number"
-                        min={0}
-                        max={100}
+                        min={1}
+                        max={newDual ? 99 : 100}
                         value={newRatio}
                         onChange={(e) => setNewRatio(e.target.value)}
                         placeholder="比率(%)"
                         className="border border-gray-300 rounded px-2 py-2 text-sm w-24"
                       />
+                      {newDual && (
+                        <>
+                          <span className="text-sm text-gray-500">+</span>
+                          <select
+                            value={newStore2}
+                            onChange={(e) => setNewStore2(e.target.value)}
+                            className="border border-gray-300 rounded px-2 py-2 text-sm"
+                          >
+                            {ALL_STORES.filter((s) => s !== newStore).map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                          <span className="text-sm font-medium text-blue-700">
+                            {100 - (parseInt(newRatio, 10) || 0)}%
+                          </span>
+                        </>
+                      )}
                       <button
                         onClick={handleAddEmployee}
                         disabled={saving || !newEmpId}
