@@ -24,7 +24,6 @@ interface DashboardShellProps {
 const NAV_ITEMS = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/upload", label: "アップロード", icon: Upload },
-  { href: "/promotion", label: "販促報告", icon: ClipboardList },
   { href: "/settings", label: "設定", icon: Settings },
 ];
 
