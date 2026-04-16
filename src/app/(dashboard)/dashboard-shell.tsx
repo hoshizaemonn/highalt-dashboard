@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Upload,
+  ClipboardList,
   Settings,
   LogOut,
   Menu,
@@ -23,6 +24,7 @@ interface DashboardShellProps {
 const NAV_ITEMS = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/upload", label: "アップロード", icon: Upload },
+  { href: "/promotion", label: "販促報告", icon: ClipboardList },
   { href: "/settings", label: "設定", icon: Settings },
 ];
 

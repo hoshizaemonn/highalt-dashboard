@@ -278,3 +278,57 @@ model BreakdownRule {
   @@unique([storeName, category, subcategory])
   @@map("breakdown_rules")
 }
+
+// ─── Promotion Report (販促報告) ────────────────────────────
+
+model PromotionReport {
+  id                    Int    @id @default(autoincrement())
+  year                  Int
+  month                 Int
+  storeName             String @map("store_name")
+
+  // 体験数
+  trialReferral         Int    @default(0) @map("trial_referral")
+  trialNonReferral      Int    @default(0) @map("trial_non_referral")
+  trialTotal            Int    @default(0) @map("trial_total")
+  trialJoinRate         Float  @default(0) @map("trial_join_rate")
+  trialSameDayRate      Float  @default(0) @map("trial_same_day_rate")
+
+  // ポスティング
+  postingStaff          Int    @default(0) @map("posting_staff")
+  postingVendor         Int    @default(0) @map("posting_vendor")
+  postingTotal          Int    @default(0) @map("posting_total")
+
+  // 広告宣伝費 内訳
+  adGoogle              Int    @default(0) @map("ad_google")
+  adMeta                Int    @default(0) @map("ad_meta")
+  adPosting             Int    @default(0) @map("ad_posting")
+  adDesign              Int    @default(0) @map("ad_design")
+  adPrint               Int    @default(0) @map("ad_print")
+  adGift                Int    @default(0) @map("ad_gift")
+  adEvent               Int    @default(0) @map("ad_event")
+  adRecruit             Int    @default(0) @map("ad_recruit")
+  adOther               Int    @default(0) @map("ad_other")
+  adTotal               Int    @default(0) @map("ad_total")
+
+  // 客単価
+  unitPrice             Int    @default(0) @map("unit_price")
+
+  // オプション
+  optAthlete4           Int    @default(0) @map("opt_athlete_4")
+  optAthlete8           Int    @default(0) @map("opt_athlete_8")
+  optDrinkHyalchi       Int    @default(0) @map("opt_drink_hyalchi")
+  optDrinkNmn           Int    @default(0) @map("opt_drink_nmn")
+  optBoost4             Int    @default(0) @map("opt_boost_4")
+  optBoost8             Int    @default(0) @map("opt_boost_8")
+
+  // パーソナル・物販
+  personalRevenue       Int    @default(0) @map("personal_revenue")
+  merchandiseRevenue    Int    @default(0) @map("merchandise_revenue")
+
+  // コメント
+  comment               String @default("")
+
+  @@unique([year, month, storeName])
+  @@map("promotion_reports")
+}
