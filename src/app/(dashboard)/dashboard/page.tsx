@@ -117,6 +117,11 @@ interface MonthlyEntry {
   labor_cost: number;
   expense: number;
   operating_profit: number;
+  fulltime_gross: number;
+  parttime_gross: number;
+  gross_total: number;
+  legal_welfare: number;
+  total_hours: number;
   fulltime_count: number;
   parttime_count: number;
   employee_count: number;
@@ -212,6 +217,197 @@ function KPICard({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-lg font-bold text-gray-700 mt-8 mb-3">{children}</h2>;
+}
+
+// ─── Editable Member Section (MA002) ─────────────────────
+
+interface MemberFields {
+  total_members: number;
+  plan_subscribers: number;
+  new_plan_signups: number;
+  cancellations: number;
+  suspensions: number;
+  cancellation_rate: string;
+  plan_changes: number;
+}
+
+function EditableMemberSection({
+  data,
+  isAllStores,
+  year,
+  month,
+  store,
+  onSaved,
+}: {
+  data: DashboardData["member"];
+  isAllStores: boolean;
+  year: number;
+  month: number;
+  store: string;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [fields, setFields] = useState<MemberFields>({
+    total_members: 0,
+    plan_subscribers: 0,
+    new_plan_signups: 0,
+    cancellations: 0,
+    suspensions: 0,
+    cancellation_rate: "",
+    plan_changes: 0,
+  });
+
+  useEffect(() => {
+    if (data) {
+      setFields({
+        total_members: data.total_members,
+        plan_subscribers: data.plan_subscribers,
+        new_plan_signups: data.new_plan_signups,
+        cancellations: data.cancellations,
+        suspensions: data.suspensions,
+        cancellation_rate: data.cancellation_rate,
+        plan_changes: data.plan_changes,
+      });
+    }
+  }, [data]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/dashboard/member-summary", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year,
+          month,
+          storeName: store,
+          fields,
+        }),
+      });
+      if (!res.ok) throw new Error("保存に失敗しました");
+      setEditing(false);
+      onSaved();
+    } catch {
+      alert("保存に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setField = (key: keyof MemberFields, value: string) => {
+    setFields((prev) => ({
+      ...prev,
+      [key]: key === "cancellation_rate" ? value : (parseInt(value, 10) || 0),
+    }));
+  };
+
+  function EditableKPI({
+    title,
+    fieldKey,
+    color,
+    isRate,
+  }: {
+    title: string;
+    fieldKey: keyof MemberFields;
+    color: string;
+    isRate?: boolean;
+  }) {
+    const val = fields[fieldKey];
+    if (!editing) {
+      return (
+        <KPICard
+          title={title}
+          value={isRate ? (String(val) || "-") : numFormat.format(Number(val))}
+          color={color}
+        />
+      );
+    }
+    return (
+      <div className="bg-white rounded-lg border shadow-sm p-4 ring-2 ring-blue-200">
+        <p className="text-xs text-gray-500 font-medium">{title}</p>
+        <input
+          type={isRate ? "text" : "number"}
+          value={String(val)}
+          onChange={(e) => setField(fieldKey, e.target.value)}
+          className="text-xl font-bold mt-1 w-full border-b-2 border-blue-300 outline-none bg-transparent"
+          style={{ color }}
+        />
+      </div>
+    );
+  }
+
+  // When in "全体" mode and no editing, show read-only
+  if (isAllStores) {
+    return (
+      <>
+        <SectionTitle>会員情報 (MA002)</SectionTitle>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPICard
+            title="在籍会員数"
+            value={data ? numFormat.format(data.total_members) : "-"}
+            color={COLORS.blue}
+          />
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex items-center gap-3 mt-8 mb-3">
+        <h2 className="text-lg font-bold text-gray-700">会員情報 (MA002)</h2>
+        {!editing ? (
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs bg-white border rounded px-3 py-1 hover:bg-gray-50 text-gray-600"
+          >
+            修正
+          </button>
+        ) : (
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="text-xs bg-blue-600 text-white rounded px-3 py-1 hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? "保存中..." : "保存"}
+            </button>
+            <button
+              onClick={() => {
+                setEditing(false);
+                if (data) {
+                  setFields({
+                    total_members: data.total_members,
+                    plan_subscribers: data.plan_subscribers,
+                    new_plan_signups: data.new_plan_signups,
+                    cancellations: data.cancellations,
+                    suspensions: data.suspensions,
+                    cancellation_rate: data.cancellation_rate,
+                    plan_changes: data.plan_changes,
+                  });
+                }
+              }}
+              className="text-xs bg-white border rounded px-3 py-1 hover:bg-gray-50 text-gray-600"
+            >
+              キャンセル
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <EditableKPI title="プラン契約者数" fieldKey="plan_subscribers" color={COLORS.blue} />
+        <EditableKPI title="新規入会" fieldKey="new_plan_signups" color={COLORS.green} />
+        <EditableKPI title="退会率" fieldKey="cancellation_rate" color={COLORS.red} isRate />
+        <EditableKPI title="プラン変更" fieldKey="plan_changes" color={COLORS.orange} />
+      </div>
+      <div className="grid grid-cols-3 gap-4 mt-3">
+        <EditableKPI title="新規申込" fieldKey="new_plan_signups" color={COLORS.teal} />
+        <EditableKPI title="退会" fieldKey="cancellations" color={COLORS.red} />
+        <EditableKPI title="休会" fieldKey="suspensions" color={COLORS.gray} />
+      </div>
+    </>
+  );
 }
 
 // ─── Promotion section (monthly) ──────────────────────────
@@ -1202,6 +1398,7 @@ function MonthlyView({
   store,
   isAdmin,
   sessionStoreName,
+  onRefresh,
 }: {
   data: DashboardData;
   isAllStores: boolean;
@@ -1210,6 +1407,7 @@ function MonthlyView({
   store: string;
   isAdmin: boolean;
   sessionStoreName: string | null;
+  onRefresh: () => void;
 }) {
   const budgetRows = useMemo(() => {
     if (isAllStores || Object.keys(data.budget).length === 0) return [];
@@ -1391,63 +1589,15 @@ function MonthlyView({
         </table>
       </div>
 
-      {/* Member Info */}
-      {data.member && (
-        <>
-          <SectionTitle>会員情報 (MA002)</SectionTitle>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {isAllStores ? (
-              <KPICard
-                title="在籍会員数"
-                value={numFormat.format(data.member.total_members)}
-                color={COLORS.blue}
-              />
-            ) : (
-              <>
-                <KPICard
-                  title="プラン契約者数"
-                  value={numFormat.format(data.member.plan_subscribers)}
-                  color={COLORS.blue}
-                />
-                <KPICard
-                  title="新規入会"
-                  value={numFormat.format(data.member.new_plan_signups)}
-                  color={COLORS.green}
-                />
-                <KPICard
-                  title="退会率"
-                  value={data.member.cancellation_rate || "-"}
-                  color={COLORS.red}
-                />
-                <KPICard
-                  title="プラン変更"
-                  value={numFormat.format(data.member.plan_changes)}
-                  color={COLORS.orange}
-                />
-              </>
-            )}
-          </div>
-          {!isAllStores && (
-            <div className="grid grid-cols-3 gap-4 mt-3">
-              <KPICard
-                title="新規申込"
-                value={numFormat.format(data.member.new_plan_signups)}
-                color={COLORS.teal}
-              />
-              <KPICard
-                title="退会"
-                value={numFormat.format(data.member.cancellations)}
-                color={COLORS.red}
-              />
-              <KPICard
-                title="休会"
-                value={numFormat.format(data.member.suspensions)}
-                color={COLORS.gray}
-              />
-            </div>
-          )}
-        </>
-      )}
+      {/* Member Info (editable) */}
+      <EditableMemberSection
+        data={data.member}
+        isAllStores={isAllStores}
+        year={year}
+        month={month}
+        store={store}
+        onSaved={onRefresh}
+      />
 
       {/* Promotion Report */}
       {!isAllStores && (
@@ -2029,76 +2179,195 @@ function PeriodView({
         </>
       )}
 
-      {/* PL Monthly Breakdown Table */}
-      <SectionTitle>月次PL推移</SectionTitle>
-      <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-gray-50">
-              <th className="text-left px-3 py-2 font-medium text-gray-600 sticky left-0 bg-gray-50 min-w-[100px]">
-                科目
-              </th>
-              {monthly.map((m) => (
-                <th
-                  key={m.month_label}
-                  className="text-right px-3 py-2 font-medium text-gray-600 min-w-[100px]"
-                >
-                  {m.month_label}
-                </th>
-              ))}
-              <th className="text-right px-3 py-2 font-medium text-gray-700 bg-gray-100 min-w-[110px]">
-                合計
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="border-b font-bold text-blue-700">
-              <td className="px-3 py-1.5 sticky left-0 bg-white">売上</td>
-              {monthly.map((m, i) => (
-                <td key={i} className="px-3 py-1.5 text-right">
-                  {formatYen(m.revenue)}
-                </td>
-              ))}
-              <td className="px-3 py-1.5 text-right bg-gray-50">
-                {formatYen(totals.revenue)}
-              </td>
-            </tr>
-            <tr className="border-b font-bold text-red-700">
-              <td className="px-3 py-1.5 sticky left-0 bg-white">人件費</td>
-              {monthly.map((m, i) => (
-                <td key={i} className="px-3 py-1.5 text-right">
-                  {formatYen(m.labor_cost)}
-                </td>
-              ))}
-              <td className="px-3 py-1.5 text-right bg-gray-50">
-                {formatYen(totals.labor)}
-              </td>
-            </tr>
-            <tr className="border-b font-bold text-orange-700">
-              <td className="px-3 py-1.5 sticky left-0 bg-white">経費</td>
-              {monthly.map((m, i) => (
-                <td key={i} className="px-3 py-1.5 text-right">
-                  {formatYen(m.expense)}
-                </td>
-              ))}
-              <td className="px-3 py-1.5 text-right bg-gray-50">
-                {formatYen(totals.expense)}
-              </td>
-            </tr>
-            <tr className="border-b font-bold text-green-700 bg-green-50/50">
-              <td className="px-3 py-2 sticky left-0 bg-green-50/50">営業利益</td>
-              {monthly.map((m, i) => (
-                <td key={i} className="px-3 py-2 text-right">
-                  {formatYen(m.operating_profit)}
-                </td>
-              ))}
-              <td className="px-3 py-2 text-right bg-green-50">
-                {formatYen(totals.profit)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {/* PL Monthly Breakdown Table (detailed) */}
+      <SectionTitle>
+        {monthly.length >= 12 ? "年間" : "半期"}PL一覧
+      </SectionTitle>
+      {(() => {
+        // Collect all expense categories that appear
+        const allExpCats = new Set<string>();
+        for (const m of monthly) {
+          for (const cat of Object.keys(m.expense_by_category)) {
+            if (m.expense_by_category[cat] > 0) allExpCats.add(cat);
+          }
+        }
+        const expCats = [...allExpCats].sort();
+
+        // Build rows: { label, values[], total, bold?, color? }
+        type PLRow = {
+          label: string;
+          values: (string | number)[];
+          total: string | number;
+          avg: string | number;
+          bold?: boolean;
+          color?: string;
+          isHours?: boolean;
+        };
+
+        const nMonths = monthly.filter(
+          (m) => m.revenue > 0 || m.labor_cost > 0 || m.expense > 0,
+        ).length || 1;
+
+        const rows: PLRow[] = [];
+
+        // Revenue
+        rows.push({
+          label: "売上高",
+          values: monthly.map((m) => m.revenue),
+          total: totals.revenue,
+          avg: Math.round(totals.revenue / nMonths),
+          bold: true,
+          color: "text-blue-700",
+        });
+
+        // Payroll detail
+        const hasPayroll = monthly.some((m) => m.gross_total > 0);
+        if (hasPayroll) {
+          const ftSum = monthly.reduce((s, m) => s + (m.fulltime_gross || 0), 0);
+          const ptSum = monthly.reduce((s, m) => s + (m.parttime_gross || 0), 0);
+          const grossSum = monthly.reduce((s, m) => s + (m.gross_total || 0), 0);
+          const welfareSum = monthly.reduce((s, m) => s + (m.legal_welfare || 0), 0);
+          const hoursSum = monthly.reduce((s, m) => s + (m.total_hours || 0), 0);
+
+          rows.push({
+            label: "  正社員給与",
+            values: monthly.map((m) => m.fulltime_gross || 0),
+            total: ftSum,
+            avg: Math.round(ftSum / nMonths),
+          });
+          rows.push({
+            label: "  契約社員給与",
+            values: monthly.map((m) => m.parttime_gross || 0),
+            total: ptSum,
+            avg: Math.round(ptSum / nMonths),
+          });
+          rows.push({
+            label: "  人件費（課税支給合計）",
+            values: monthly.map((m) => m.gross_total || 0),
+            total: grossSum,
+            avg: Math.round(grossSum / nMonths),
+            bold: true,
+          });
+          rows.push({
+            label: "  法定福利費",
+            values: monthly.map((m) => m.legal_welfare || 0),
+            total: welfareSum,
+            avg: Math.round(welfareSum / nMonths),
+          });
+        }
+
+        rows.push({
+          label: "人件費合計",
+          values: monthly.map((m) => m.labor_cost),
+          total: totals.labor,
+          avg: Math.round(totals.labor / nMonths),
+          bold: true,
+          color: "text-red-700",
+        });
+
+        if (hasPayroll) {
+          const hoursSum = monthly.reduce((s, m) => s + (m.total_hours || 0), 0);
+          rows.push({
+            label: "  総勤務時間",
+            values: monthly.map((m) => m.total_hours || 0),
+            total: hoursSum,
+            avg: hoursSum / nMonths,
+            isHours: true,
+          });
+        }
+
+        // Expense total
+        rows.push({
+          label: "経費合計",
+          values: monthly.map((m) => m.expense),
+          total: totals.expense,
+          avg: Math.round(totals.expense / nMonths),
+          bold: true,
+          color: "text-orange-700",
+        });
+
+        // Expense breakdown
+        for (const cat of expCats) {
+          const catSum = monthly.reduce(
+            (s, m) => s + (m.expense_by_category[cat] || 0),
+            0,
+          );
+          rows.push({
+            label: `  ${cat}`,
+            values: monthly.map((m) => m.expense_by_category[cat] || 0),
+            total: catSum,
+            avg: Math.round(catSum / nMonths),
+          });
+        }
+
+        // Operating profit
+        rows.push({
+          label: "営業利益",
+          values: monthly.map((m) => m.operating_profit),
+          total: totals.profit,
+          avg: Math.round(totals.profit / nMonths),
+          bold: true,
+          color: "text-green-700",
+        });
+
+        const fmtCell = (v: string | number, isHours?: boolean) => {
+          if (isHours) return typeof v === "number" ? (v > 0 ? `${v.toFixed(1)}h` : "-") : "-";
+          return typeof v === "number" ? formatYen(v) : v;
+        };
+
+        return (
+          <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 sticky left-0 bg-gray-50 min-w-[160px]">
+                    科目
+                  </th>
+                  {monthly.map((m) => (
+                    <th
+                      key={m.month_label}
+                      className="text-right px-3 py-2 font-medium text-gray-600 min-w-[100px]"
+                    >
+                      {m.month_label}
+                    </th>
+                  ))}
+                  <th className="text-right px-3 py-2 font-medium text-gray-700 bg-gray-100 min-w-[110px]">
+                    {monthly.length >= 12 ? "年間合計" : "合計"}
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-700 bg-gray-100 min-w-[100px]">
+                    月平均
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr
+                    key={i}
+                    className={`border-b ${row.bold ? "font-bold" : ""} ${row.color || ""} ${row.label === "営業利益" ? "bg-green-50/50" : ""}`}
+                  >
+                    <td
+                      className={`px-3 py-1.5 sticky left-0 ${row.label === "営業利益" ? "bg-green-50/50" : "bg-white"} whitespace-nowrap`}
+                    >
+                      {row.label}
+                    </td>
+                    {row.values.map((v, j) => (
+                      <td key={j} className="px-3 py-1.5 text-right whitespace-nowrap">
+                        {fmtCell(v, row.isHours)}
+                      </td>
+                    ))}
+                    <td className="px-3 py-1.5 text-right bg-gray-50 whitespace-nowrap">
+                      {fmtCell(row.total, row.isHours)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right bg-gray-50 whitespace-nowrap">
+                      {fmtCell(row.avg, row.isHours)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       {/* Headcount Trend Table */}
       {monthly.some((m) => m.employee_count > 0) && (
@@ -2196,6 +2465,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [sessionStoreName, setSessionStoreName] = useState<string | null>(null);
+  const [refreshCount, setRefreshCount] = useState(0);
 
   // Check admin status and store name from session cookie (read via API)
   useEffect(() => {
@@ -2402,7 +2672,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [year, period, store, isMonthly, isAllStores, getCalendarYearMonth, buildMonthsParam]);
+  }, [year, period, store, isMonthly, isAllStores, getCalendarYearMonth, buildMonthsParam, refreshCount]);
 
   // Compute calendar year/month for MonthlyView props
   const calendarYM = useMemo(() => {
@@ -2441,6 +2711,7 @@ export default function DashboardPage() {
           store={store}
           isAdmin={isAdmin}
           sessionStoreName={sessionStoreName}
+          onRefresh={() => setRefreshCount((c) => c + 1)}
         />
       )}
 
