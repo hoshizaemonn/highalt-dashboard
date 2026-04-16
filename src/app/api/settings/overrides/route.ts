@@ -98,10 +98,12 @@ export async function POST(request: NextRequest) {
         const empId = typeof item.employeeId === "string" ? parseInt(item.employeeId, 10) : item.employeeId;
         const ratioVal = item.ratio ?? 100;
         if (isNaN(empId) || !item.storeName) continue;
-        await prisma.storeOverride.upsert({
-          where: { employeeId_storeName: { employeeId: empId, storeName: item.storeName } },
-          update: { ratio: ratioVal },
-          create: { employeeId: empId, storeName: item.storeName, ratio: ratioVal },
+        // Delete old overrides for this employee before creating new one
+        await prisma.storeOverride.deleteMany({
+          where: { employeeId: empId },
+        });
+        await prisma.storeOverride.create({
+          data: { employeeId: empId, storeName: item.storeName, ratio: ratioVal },
         });
         created++;
       }
@@ -122,12 +124,13 @@ export async function POST(request: NextRequest) {
     const ratioVal =
       typeof ratio === "string" ? parseInt(ratio, 10) : ratio ?? 100;
 
-    const override = await prisma.storeOverride.upsert({
-      where: {
-        employeeId_storeName: { employeeId: empId, storeName },
-      },
-      update: { ratio: ratioVal },
-      create: { employeeId: empId, storeName, ratio: ratioVal },
+    // Delete old overrides for this employee before creating new one
+    await prisma.storeOverride.deleteMany({
+      where: { employeeId: empId },
+    });
+
+    const override = await prisma.storeOverride.create({
+      data: { employeeId: empId, storeName, ratio: ratioVal },
     });
 
     return NextResponse.json({ override }, { status: 201 });
