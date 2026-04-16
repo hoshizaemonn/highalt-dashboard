@@ -332,6 +332,197 @@ function detectYearMonthFromFilename(filename: string): { year?: number; month?:
   return {};
 }
 
+// ─── Unresolved Employee Section ───────────────────────────
+
+function UnresolvedEmployeeSection({
+  employees,
+  onRegistered,
+}: {
+  employees: { employeeId: string; employeeName: string; contractType: string; grossTotal: number }[];
+  onRegistered: () => void;
+}) {
+  const THOUSAND_DIGIT_MAP: Record<number, string> = {
+    1: "東日本橋", 2: "春日", 3: "船橋", 4: "巣鴨",
+    5: "東日本橋", 6: "祖師ヶ谷大蔵", 7: "下北沢", 8: "中目黒",
+  };
+
+  // Auto-detect store from employee ID thousand digit
+  const detectStore = (empId: string) => {
+    const num = parseInt(empId, 10);
+    if (isNaN(num)) return "";
+    const thousandDigit = Math.floor(num / 1000);
+    return THOUSAND_DIGIT_MAP[thousandDigit] || "";
+  };
+
+  const [assignments, setAssignments] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const emp of employees) {
+      init[emp.employeeId] = detectStore(emp.employeeId);
+    }
+    return init;
+  });
+  const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const allAssigned = Object.values(assignments).every((s) => s !== "");
+
+  const handleRegister = async () => {
+    setSaving(true);
+    try {
+      const overrides = Object.entries(assignments)
+        .filter(([, store]) => store !== "")
+        .map(([empId, store]) => ({
+          employeeId: parseInt(empId, 10),
+          storeName: store,
+          ratio: 100,
+        }));
+
+      const res = await fetch("/api/settings/overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overrides }),
+      });
+
+      if (!res.ok) throw new Error("登録に失敗しました");
+      setConfirming(false);
+      onRegistered();
+    } catch {
+      alert("登録に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-medium text-yellow-800">
+          店舗未登録の従業員 ({employees.length}名)
+        </h4>
+        {!editing && (
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs bg-white border border-yellow-300 rounded px-3 py-1 hover:bg-yellow-50 text-yellow-700"
+          >
+            編集
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-yellow-600 mb-3">
+        {editing
+          ? "店舗を選択してから「この内容で登録する」を押してください。"
+          : "設定画面から店舗オーバーライドを登録してから再アップロードしてください。"}
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-yellow-200">
+              <th className="text-left py-1 px-2">ID</th>
+              <th className="text-left py-1 px-2">氏名</th>
+              <th className="text-left py-1 px-2">雇用形態</th>
+              <th className="text-right py-1 px-2">総支給額</th>
+              {editing && <th className="text-left py-1 px-2">店舗</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {employees.map((emp) => (
+              <tr key={emp.employeeId} className="border-b border-yellow-100">
+                <td className="py-1 px-2">{emp.employeeId}</td>
+                <td className="py-1 px-2">{emp.employeeName}</td>
+                <td className="py-1 px-2">{emp.contractType}</td>
+                <td className="py-1 px-2 text-right">
+                  {emp.grossTotal.toLocaleString()}円
+                </td>
+                {editing && (
+                  <td className="py-1 px-2">
+                    <select
+                      value={assignments[emp.employeeId] || ""}
+                      onChange={(e) =>
+                        setAssignments((prev) => ({
+                          ...prev,
+                          [emp.employeeId]: e.target.value,
+                        }))
+                      }
+                      className={`border rounded px-2 py-0.5 text-xs w-full ${
+                        assignments[emp.employeeId] ? "" : "border-red-300 bg-red-50"
+                      }`}
+                    >
+                      <option value="">-- 選択 --</option>
+                      {STORES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={() => setConfirming(true)}
+            disabled={!allAssigned}
+            className="text-xs bg-blue-600 text-white rounded px-4 py-1.5 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            この内容で登録する
+          </button>
+          <button
+            onClick={() => setEditing(false)}
+            className="text-xs bg-white border rounded px-3 py-1.5 hover:bg-gray-50 text-gray-600"
+          >
+            キャンセル
+          </button>
+        </div>
+      )}
+
+      {/* Confirmation dialog */}
+      {confirming && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-base font-bold text-gray-800 mb-3">
+              以下の内容で登録しますか？
+            </h3>
+            <div className="bg-gray-50 rounded p-3 mb-4 max-h-48 overflow-y-auto">
+              {employees.map((emp) => (
+                <div key={emp.employeeId} className="flex justify-between text-sm py-1 border-b border-gray-100 last:border-0">
+                  <span>{emp.employeeName}（{emp.employeeId}）</span>
+                  <span className="font-medium text-blue-700">
+                    {assignments[emp.employeeId]}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              登録後、人件費データを再アップロードして店舗に反映します。
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setConfirming(false)}
+                className="text-sm bg-white border rounded px-4 py-2 hover:bg-gray-50 text-gray-600"
+              >
+                戻る
+              </button>
+              <button
+                onClick={handleRegister}
+                disabled={saving}
+                className="text-sm bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saving ? "登録中..." : "登録する"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Payroll Tab ───────────────────────────────────────────
+
 function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [year, setYear] = useState(2026);
@@ -460,38 +651,13 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
       <StatusBanner status={status} />
 
       {result && result.unresolved.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <h4 className="text-sm font-medium text-yellow-800 mb-2">
-            店舗未登録の従業員 ({result.unresolved.length}名)
-          </h4>
-          <p className="text-xs text-yellow-600 mb-3">
-            設定画面から店舗オーバーライドを登録してから再アップロードしてください。
-          </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-yellow-200">
-                  <th className="text-left py-1 px-2">ID</th>
-                  <th className="text-left py-1 px-2">氏名</th>
-                  <th className="text-left py-1 px-2">雇用形態</th>
-                  <th className="text-right py-1 px-2">総支給額</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.unresolved.map((emp) => (
-                  <tr key={emp.employeeId} className="border-b border-yellow-100">
-                    <td className="py-1 px-2">{emp.employeeId}</td>
-                    <td className="py-1 px-2">{emp.employeeName}</td>
-                    <td className="py-1 px-2">{emp.contractType}</td>
-                    <td className="py-1 px-2 text-right">
-                      {emp.grossTotal.toLocaleString()}円
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <UnresolvedEmployeeSection
+          employees={result.unresolved}
+          onRegistered={() => {
+            doUpload();
+            onSuccess?.();
+          }}
+        />
       )}
     </div>
   );
