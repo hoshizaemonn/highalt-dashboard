@@ -587,22 +587,14 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
     error?: string;
     unresolved: { employeeId: string; employeeName: string; contractType: string; grossTotal: number }[];
   }[]>([]);
+  const [overwriteWarning, setOverwriteWarning] = useState<{
+    existing: { fileName: string; year: number; month: number; count: number }[];
+  } | null>(null);
 
-  const uploadSingleFile = async (file: File, forceOverwrite = false) => {
+  const uploadSingleFile = async (file: File) => {
     const detected = detectYearMonthFromFilename(file.name);
     const year = detected.year || new Date().getFullYear();
     const month = detected.month || (new Date().getMonth() + 1);
-
-    // Check for existing data
-    if (!forceOverwrite) {
-      try {
-        const checkRes = await fetch(`/api/upload/payroll?year=${year}&month=${month}`);
-        const checkData = await checkRes.json();
-        if (checkData.exists) {
-          // Auto-overwrite when batch uploading
-        }
-      } catch { /* proceed */ }
-    }
 
     const formData = new FormData();
     formData.append("file", file);
@@ -636,20 +628,50 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
     };
   };
 
-  const handleUpload = async () => {
-    if (files.length === 0) return;
+  const doUploadAll = async () => {
     setLoading(true);
     setResults([]);
+    setOverwriteWarning(null);
 
     const allResults = [];
     for (const file of files) {
-      const result = await uploadSingleFile(file, true);
+      const result = await uploadSingleFile(file);
       allResults.push(result);
     }
 
     setResults(allResults);
     setLoading(false);
     onSuccess?.();
+  };
+
+  const handleUpload = async () => {
+    if (files.length === 0) return;
+    setLoading(true);
+    setResults([]);
+    setOverwriteWarning(null);
+
+    // Check all files for existing data first
+    const existingList: { fileName: string; year: number; month: number; count: number }[] = [];
+    for (const file of files) {
+      const detected = detectYearMonthFromFilename(file.name);
+      const year = detected.year || new Date().getFullYear();
+      const month = detected.month || (new Date().getMonth() + 1);
+      try {
+        const checkRes = await fetch(`/api/upload/payroll?year=${year}&month=${month}`);
+        const checkData = await checkRes.json();
+        if (checkData.exists) {
+          existingList.push({ fileName: file.name, year, month, count: checkData.count });
+        }
+      } catch { /* proceed */ }
+    }
+
+    if (existingList.length > 0) {
+      setOverwriteWarning({ existing: existingList });
+      setLoading(false);
+      return;
+    }
+
+    await doUploadAll();
   };
 
   // Collect all unresolved from all results
@@ -694,10 +716,40 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
       )}
 
       <div className="flex gap-2">
-        <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0}>
+        <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0 || !!overwriteWarning}>
           {files.length <= 1 ? "解析して保存する" : `${files.length}件を一括アップロード`}
         </ActionButton>
       </div>
+
+      {overwriteWarning && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
+          <p className="text-sm font-medium text-amber-800 mb-2">
+            ⚠️ 以下の月は既にデータがあります。上書きしますか？
+          </p>
+          <ul className="text-sm text-amber-700 mb-3 space-y-1">
+            {overwriteWarning.existing.map((e, i) => (
+              <li key={i}>
+                {e.year}年{e.month}月 — 既存{e.count}件（{e.fileName}）
+              </li>
+            ))}
+          </ul>
+          <div className="flex gap-2">
+            <button
+              onClick={doUploadAll}
+              disabled={loading}
+              className="text-sm bg-amber-600 text-white rounded px-4 py-1.5 hover:bg-amber-700 disabled:opacity-50"
+            >
+              {loading ? "アップロード中..." : "上書きする"}
+            </button>
+            <button
+              onClick={() => setOverwriteWarning(null)}
+              className="text-sm bg-white border rounded px-4 py-1.5 hover:bg-gray-50 text-gray-600"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Results */}
       {results.length > 0 && (
