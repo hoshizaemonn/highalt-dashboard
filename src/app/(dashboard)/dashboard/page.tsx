@@ -10,6 +10,8 @@ import {
   Cell,
   LineChart,
   Line,
+  PieChart,
+  Pie,
   XAxis,
   YAxis,
   Tooltip,
@@ -28,6 +30,12 @@ const COLORS = {
   purple: "#9C27B0",
   teal: "#009688",
 };
+
+const PIE_COLORS = [
+  "#2196F3", "#4CAF50", "#FF9800", "#9C27B0", "#009688",
+  "#F44336", "#3F51B5", "#FF5722", "#607D8B", "#E91E63",
+  "#00BCD4", "#8BC34A", "#FFC107", "#795548",
+];
 
 const FISCAL_MONTHS = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -218,6 +226,95 @@ function KPICard({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-lg font-bold text-gray-700 mt-8 mb-3">{children}</h2>;
+}
+
+// ─── Plan Breakdown Pie Chart (monthly) ─────────────────
+
+function PlanBreakdownPie({
+  year,
+  month,
+  store,
+}: {
+  year: number;
+  month: number;
+  store: string;
+}) {
+  const [plans, setPlans] = useState<{ name: string; count: number }[] | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      year: String(year),
+      month: String(month),
+      store,
+    });
+    fetch(`/api/dashboard/plan-breakdown?${params}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.plans && data.plans.length > 0) {
+          setPlans(data.plans.filter((p: { count: number }) => p.count > 0));
+        } else {
+          setPlans(null);
+        }
+      })
+      .catch(() => setPlans(null));
+  }, [year, month, store]);
+
+  if (!plans || plans.length === 0) return null;
+
+  const total = plans.reduce((s, p) => s + p.count, 0);
+
+  return (
+    <>
+      <SectionTitle>プラン別会員数</SectionTitle>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={plans}
+                dataKey="count"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={100}
+                label
+              >
+                {plans.map((_, i) => (
+                  <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value) => [
+                  `${Number(value)}人（${((Number(value) / total) * 100).toFixed(1)}%）`,
+                ]}
+              />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">
+            合計: {total}人
+          </p>
+          <div className="space-y-1.5 max-h-[280px] overflow-y-auto">
+            {plans.map((p, i) => (
+              <div key={p.name} className="flex items-center gap-2 text-sm">
+                <span
+                  className="w-3 h-3 rounded-full shrink-0"
+                  style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+                />
+                <span className="flex-1 truncate">{p.name}</span>
+                <span className="font-medium">{p.count}人</span>
+                <span className="text-gray-400 text-xs w-12 text-right">
+                  {((p.count / total) * 100).toFixed(1)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }
 
 function RecalculateButton({
@@ -1752,6 +1849,11 @@ function MonthlyView({
         store={store}
         onSaved={onRefresh}
       />
+
+      {/* Plan Breakdown Pie Chart */}
+      {!isAllStores && (
+        <PlanBreakdownPie year={year} month={month} store={store} />
+      )}
 
       {/* Promotion Report */}
       {!isAllStores && (
