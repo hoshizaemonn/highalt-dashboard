@@ -185,6 +185,9 @@ function OverridesTab() {
   const [existDual, setExistDual] = useState(false);
   const [existStore2, setExistStore2] = useState(STORES[1]);
 
+  // Inline error for add form
+  const [addError, setAddError] = useState("");
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -236,13 +239,21 @@ function OverridesTab() {
     field: "storeName" | "ratio",
     value: string,
   ) {
-    setEdits((prev) => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        [field]: field === "ratio" ? parseInt(value, 10) || 0 : value,
-      },
-    }));
+    if (field === "ratio") {
+      let num = parseInt(value, 10);
+      if (isNaN(num)) num = 0;
+      if (num < 0) num = 0;
+      if (num > 100) num = 100;
+      setEdits((prev) => ({
+        ...prev,
+        [id]: { ...prev[id], ratio: num },
+      }));
+    } else {
+      setEdits((prev) => ({
+        ...prev,
+        [id]: { ...prev[id], [field]: value },
+      }));
+    }
   }
 
   function toggleDelete(id: number) {
@@ -378,6 +389,7 @@ function OverridesTab() {
   async function handleAddEmployee() {
     setSaving(true);
     setMessage("");
+    setAddError("");
     try {
       if (addMode === "new") {
         const empId = parseInt(newEmpId, 10);
@@ -385,7 +397,7 @@ function OverridesTab() {
         const isDuplicate = overrides.some((o) => o.employeeId === empId);
         if (isDuplicate) {
           const dupName = overrides.find((o) => o.employeeId === empId)?.employeeName || "";
-          setMessage(`従業員番号 ${empId}${dupName ? `（${dupName}）` : ""} は既に登録されています。「既存の従業員（兼務・変更）」から操作してください。`);
+          setAddError(`従業員番号 ${empId}${dupName ? `（${dupName}）` : ""} は既に登録されています。「既存の従業員（兼務・変更）」から操作してください。`);
           setSaving(false);
           return;
         }
@@ -891,6 +903,11 @@ function OverridesTab() {
                         追加
                       </button>
                     </div>
+                    {addError && (
+                      <div className="mt-2 px-3 py-2 bg-red-50 text-red-700 border border-red-200 rounded text-sm">
+                        {addError}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
