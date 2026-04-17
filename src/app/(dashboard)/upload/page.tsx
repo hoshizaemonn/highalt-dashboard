@@ -783,41 +783,23 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
         クラウド給与から出力した支給控除一覧表（CSV）をアップロード（複数選択可）
       </p>
 
-      <FileDropzone
-        accept=".csv,.xlsx,.xls"
-        multiple
-        files={files}
-        onFilesSelect={(newFiles) => {
-          const newEntries = newFiles.map((f) => {
-            const d = detectYearMonthFromFilename(f.name);
-            return {
-              file: f,
-              year: d.year || new Date().getFullYear(),
-              month: d.month || (new Date().getMonth() + 1),
-            };
-          });
-          setFileEntries((prev) => [...prev, ...newEntries]);
-          setResults([]);
-        }}
-        onRemoveFile={(i) => {
-          setFileEntries((prev) => prev.filter((_, idx) => idx !== i));
-          setResults([]);
-        }}
-      />
-
+      {/* File list with year/month selectors */}
       {fileEntries.length > 0 && (
         <div className="space-y-2">
           {fileEntries.map((entry, i) => (
-            <div key={`${entry.file.name}-${i}`} className="flex items-center gap-3 text-sm">
-              <span className="text-gray-600 truncate max-w-[250px]">{entry.file.name}</span>
-              <span className="text-gray-400">→</span>
+            <div key={`${entry.file.name}-${i}`} className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <FileUp size={18} className="text-blue-600 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-blue-800 truncate">{entry.file.name}</p>
+                <p className="text-xs text-blue-600">{(entry.file.size / 1024).toFixed(1)} KB</p>
+              </div>
               <select
                 value={entry.year}
                 onChange={(e) => {
                   const y = parseInt(e.target.value, 10);
                   setFileEntries((prev) => prev.map((fe, idx) => idx === i ? { ...fe, year: y } : fe));
                 }}
-                className="border border-gray-300 rounded px-2 py-1 text-sm"
+                className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
               >
                 {[2024, 2025, 2026, 2027].map((y) => (
                   <option key={y} value={y}>{y}年</option>
@@ -829,15 +811,62 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
                   const m = parseInt(e.target.value, 10);
                   setFileEntries((prev) => prev.map((fe, idx) => idx === i ? { ...fe, month: m } : fe));
                 }}
-                className="border border-gray-300 rounded px-2 py-1 text-sm"
+                className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
               >
                 {Array.from({ length: 12 }, (_, j) => j + 1).map((m) => (
                   <option key={m} value={m}>{m}月</option>
                 ))}
               </select>
+              <button
+                onClick={() => {
+                  setFileEntries((prev) => prev.filter((_, idx) => idx !== i));
+                  setResults([]);
+                }}
+                className="text-blue-400 hover:text-red-500 transition-colors"
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
           ))}
+          <FileDropzone
+            accept=".csv,.xlsx,.xls"
+            multiple
+            files={[]}
+            onFilesSelect={(newFiles) => {
+              const newEntries = newFiles.map((f) => {
+                const d = detectYearMonthFromFilename(f.name);
+                return {
+                  file: f,
+                  year: d.year || new Date().getFullYear(),
+                  month: d.month || (new Date().getMonth() + 1),
+                };
+              });
+              setFileEntries((prev) => [...prev, ...newEntries]);
+              setResults([]);
+            }}
+          />
         </div>
+      )}
+
+      {/* Empty dropzone when no files */}
+      {fileEntries.length === 0 && (
+        <FileDropzone
+          accept=".csv,.xlsx,.xls"
+          multiple
+          files={[]}
+          onFilesSelect={(newFiles) => {
+            const newEntries = newFiles.map((f) => {
+              const d = detectYearMonthFromFilename(f.name);
+              return {
+                file: f,
+                year: d.year || new Date().getFullYear(),
+                month: d.month || (new Date().getMonth() + 1),
+              };
+            });
+            setFileEntries(newEntries);
+            setResults([]);
+          }}
+        />
       )}
 
       <div className="flex gap-2">
