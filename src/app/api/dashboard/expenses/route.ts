@@ -152,6 +152,31 @@ export async function PUT(request: NextRequest) {
         data,
       });
       results.push(result);
+
+      // Auto-register expense rule when category is set
+      if (update.category && result.description) {
+        const keyword = result.description.trim();
+        if (keyword && keyword.length >= 2) {
+          const existingRule = await prisma.expenseRule.findFirst({
+            where: { keyword },
+          });
+          if (!existingRule) {
+            try {
+              await prisma.expenseRule.create({
+                data: { keyword, category: update.category },
+              });
+            } catch {
+              // Ignore duplicate key errors
+            }
+          } else if (existingRule.category !== update.category) {
+            // Update existing rule to new category
+            await prisma.expenseRule.update({
+              where: { id: existingRule.id },
+              data: { category: update.category },
+            });
+          }
+        }
+      }
     }
 
     return NextResponse.json({ updated: results.length });
