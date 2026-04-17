@@ -576,8 +576,16 @@ function UnresolvedEmployeeSection({
 
 // ─── Payroll Tab ───────────────────────────────────────────
 
+interface FileWithYM {
+  file: File;
+  year: number;
+  month: number;
+}
+
 function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
-  const [files, setFiles] = useState<File[]>([]);
+  const [fileEntries, setFileEntries] = useState<FileWithYM[]>([]);
+  // Keep a derived files array for FileDropzone compatibility
+  const files = fileEntries.map((e) => e.file);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<{
     fileName: string;
@@ -597,14 +605,11 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
     conflicts: { employeeId: string; csvName: string; existingName: string }[];
   } | null>(null);
   const [nameResolutions, setNameResolutions] = useState<Record<string, string>>({});
-  // Pending files after name conflict resolution
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [currentFileIndex, setCurrentFileIndex] = useState(0);
+  // Pending entries after name conflict resolution
+  const [pendingEntries, setPendingEntries] = useState<FileWithYM[]>([]);
 
-  const uploadSingleFile = async (file: File, resolutions?: Record<string, string>) => {
-    const detected = detectYearMonthFromFilename(file.name);
-    const year = detected.year || new Date().getFullYear();
-    const month = detected.month || (new Date().getMonth() + 1);
+  const uploadSingleFile = async (entry: FileWithYM, resolutions?: Record<string, string>) => {
+    const { file, year, month } = entry;
 
     const formData = new FormData();
     formData.append("file", file);
@@ -646,28 +651,26 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
     };
   };
 
-  const doUploadAll = async (filesToUpload?: File[]) => {
-    const targetFiles = filesToUpload || files;
+  const doUploadAll = async (entriesToUpload?: FileWithYM[]) => {
+    const targetEntries = entriesToUpload || fileEntries;
     setLoading(true);
     setResults([]);
     setOverwriteWarning(null);
 
     const allResults: typeof results = [];
-    for (let i = 0; i < targetFiles.length; i++) {
-      const file = targetFiles[i];
-      const result = await uploadSingleFile(file);
+    for (let i = 0; i < targetEntries.length; i++) {
+      const entry = targetEntries[i];
+      const result = await uploadSingleFile(entry);
 
       // If name conflicts detected, pause and show dialog
       if (result.needsConfirmation && result.nameConflicts.length > 0) {
-        setNameConflicts({ file, conflicts: result.nameConflicts });
-        // Default: use CSV names
+        setNameConflicts({ file: entry.file, conflicts: result.nameConflicts });
         const defaults: Record<string, string> = {};
         for (const c of result.nameConflicts) {
           defaults[c.employeeId] = c.csvName;
         }
         setNameResolutions(defaults);
-        setPendingFiles(targetFiles.slice(i));
-        setCurrentFileIndex(0);
+        setPendingEntries(targetEntries.slice(i));
         setResults(allResults);
         setLoading(false);
         return;
@@ -690,11 +693,12 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
 
   // Continue upload after name conflict resolution
   const handleNameConflictResolve = async () => {
-    if (!nameConflicts) return;
+    if (!nameConflicts || pendingEntries.length === 0) return;
     setLoading(true);
 
-    // Re-upload current file with resolutions
-    const result = await uploadSingleFile(nameConflicts.file, nameResolutions);
+    // Re-upload current entry with resolutions
+    const currentEntry = pendingEntries[0];
+    const result = await uploadSingleFile(currentEntry, nameResolutions);
 
     const currentResults = [...results, {
       fileName: result.fileName,
@@ -707,19 +711,18 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
     setNameConflicts(null);
     setResults(currentResults);
 
-    // Continue with remaining files
-    const remaining = pendingFiles.slice(1);
+    // Continue with remaining entries
+    const remaining = pendingEntries.slice(1);
     if (remaining.length > 0) {
-      // Continue uploading remaining files
       const moreResults = [...currentResults];
-      for (const file of remaining) {
-        const r = await uploadSingleFile(file);
+      for (let i = 0; i < remaining.length; i++) {
+        const r = await uploadSingleFile(remaining[i]);
         if (r.needsConfirmation && r.nameConflicts.length > 0) {
-          setNameConflicts({ file, conflicts: r.nameConflicts });
+          setNameConflicts({ file: remaining[i].file, conflicts: r.nameConflicts });
           const defaults: Record<string, string> = {};
           for (const c of r.nameConflicts) defaults[c.employeeId] = c.csvName;
           setNameResolutions(defaults);
-          setPendingFiles(remaining.slice(remaining.indexOf(file)));
+          setPendingEntries(remaining.slice(i));
           setResults(moreResults);
           setLoading(false);
           return;
@@ -732,28 +735,25 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
       setResults(moreResults);
     }
 
-    setPendingFiles([]);
+    setPendingEntries([]);
     setLoading(false);
     onSuccess?.();
   };
 
   const handleUpload = async () => {
-    if (files.length === 0) return;
+    if (fileEntries.length === 0) return;
     setLoading(true);
     setResults([]);
     setOverwriteWarning(null);
 
     // Check all files for existing data first
     const existingList: { fileName: string; year: number; month: number; count: number }[] = [];
-    for (const file of files) {
-      const detected = detectYearMonthFromFilename(file.name);
-      const year = detected.year || new Date().getFullYear();
-      const month = detected.month || (new Date().getMonth() + 1);
+    for (const entry of fileEntries) {
       try {
-        const checkRes = await fetch(`/api/upload/payroll?year=${year}&month=${month}`);
+        const checkRes = await fetch(`/api/upload/payroll?year=${entry.year}&month=${entry.month}`);
         const checkData = await checkRes.json();
         if (checkData.exists) {
-          existingList.push({ fileName: file.name, year, month, count: checkData.count });
+          existingList.push({ fileName: entry.file.name, year: entry.year, month: entry.month, count: checkData.count });
         }
       } catch { /* proceed */ }
     }
@@ -788,29 +788,61 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
         multiple
         files={files}
         onFilesSelect={(newFiles) => {
-          setFiles((prev) => [...prev, ...newFiles]);
+          const newEntries = newFiles.map((f) => {
+            const d = detectYearMonthFromFilename(f.name);
+            return {
+              file: f,
+              year: d.year || new Date().getFullYear(),
+              month: d.month || (new Date().getMonth() + 1),
+            };
+          });
+          setFileEntries((prev) => [...prev, ...newEntries]);
           setResults([]);
         }}
         onRemoveFile={(i) => {
-          setFiles((prev) => prev.filter((_, idx) => idx !== i));
+          setFileEntries((prev) => prev.filter((_, idx) => idx !== i));
           setResults([]);
         }}
       />
 
-      {files.length > 0 && (
-        <div className="text-xs text-gray-500">
-          {files.map((f) => {
-            const d = detectYearMonthFromFilename(f.name);
-            return d.year && d.month
-              ? <span key={f.name} className="inline-block mr-3 text-green-600">{f.name} → {d.year}年{d.month}月</span>
-              : <span key={f.name} className="inline-block mr-3 text-amber-600">{f.name} → 年月検出不可</span>;
-          })}
+      {fileEntries.length > 0 && (
+        <div className="space-y-2">
+          {fileEntries.map((entry, i) => (
+            <div key={`${entry.file.name}-${i}`} className="flex items-center gap-3 text-sm">
+              <span className="text-gray-600 truncate max-w-[250px]">{entry.file.name}</span>
+              <span className="text-gray-400">→</span>
+              <select
+                value={entry.year}
+                onChange={(e) => {
+                  const y = parseInt(e.target.value, 10);
+                  setFileEntries((prev) => prev.map((fe, idx) => idx === i ? { ...fe, year: y } : fe));
+                }}
+                className="border border-gray-300 rounded px-2 py-1 text-sm"
+              >
+                {[2024, 2025, 2026, 2027].map((y) => (
+                  <option key={y} value={y}>{y}年</option>
+                ))}
+              </select>
+              <select
+                value={entry.month}
+                onChange={(e) => {
+                  const m = parseInt(e.target.value, 10);
+                  setFileEntries((prev) => prev.map((fe, idx) => idx === i ? { ...fe, month: m } : fe));
+                }}
+                className="border border-gray-300 rounded px-2 py-1 text-sm"
+              >
+                {Array.from({ length: 12 }, (_, j) => j + 1).map((m) => (
+                  <option key={m} value={m}>{m}月</option>
+                ))}
+              </select>
+            </div>
+          ))}
         </div>
       )}
 
       <div className="flex gap-2">
-        <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0 || !!overwriteWarning}>
-          {files.length <= 1 ? "解析して保存する" : `${files.length}件を一括アップロード`}
+        <ActionButton onClick={handleUpload} loading={loading} disabled={fileEntries.length === 0 || !!overwriteWarning}>
+          {fileEntries.length <= 1 ? "解析して保存する" : `${fileEntries.length}件を一括アップロード`}
         </ActionButton>
       </div>
 
@@ -889,7 +921,7 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
               <button
                 onClick={() => {
                   setNameConflicts(null);
-                  setPendingFiles([]);
+                  setPendingEntries([]);
                 }}
                 className="text-sm bg-white border rounded px-4 py-2 hover:bg-gray-50 text-gray-600"
               >
