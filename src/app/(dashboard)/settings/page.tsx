@@ -1410,7 +1410,7 @@ function ExpenseRulesTab() {
       });
       const data = await res.json();
       await fetchData();
-      setMessage(`勘定科目: ${data.created}件追加、${data.updated}件更新`);
+      setMessage(`勘定科目: ${data.created}件追加、${data.updated}件更新${data.rulesCreated > 0 ? `、経費分類ルール ${data.rulesCreated}件を自動生成` : ""}`);
     } catch {
       setMessage("CSVの読み込みに失敗しました");
     }
