@@ -255,6 +255,20 @@ function OverridesTab() {
   }
 
   async function handleSave() {
+    // Validate: check total ratios per employee don't exceed 100
+    const ratioByEmp: Record<number, number> = {};
+    for (const o of overrides) {
+      if (deleteIds.has(o.id)) continue;
+      const r = edits[o.id]?.ratio ?? o.ratio;
+      ratioByEmp[o.employeeId] = (ratioByEmp[o.employeeId] || 0) + r;
+    }
+    const over100 = Object.entries(ratioByEmp).find(([, total]) => total > 100);
+    if (over100) {
+      const empName = overrides.find((o) => o.employeeId === Number(over100[0]))?.employeeName || over100[0];
+      setMessage(`${empName}（${over100[0]}）の比率合計が${over100[1]}%で100%を超えています。修正してください。`);
+      return;
+    }
+
     setSaving(true);
     setMessage("");
     try {
@@ -263,34 +277,36 @@ function OverridesTab() {
         await fetch(`/api/settings/overrides?id=${id}`, { method: "DELETE" });
       }
 
-      // Save edits
+      // Save edits + auto-delete 0% records
       for (const [idStr, edit] of Object.entries(edits)) {
         const id = parseInt(idStr, 10);
         if (deleteIds.has(id)) continue;
         const orig = overrides.find((o) => o.id === id);
         if (!orig) continue;
-        // For ratio edits, also update the sibling dual assignment
+
         const newRatioVal = edit.ratio ?? orig.ratio;
-        const siblings = overrides.filter(
-          (o) => o.employeeId === orig.employeeId && o.id !== orig.id,
-        );
-        if (edit.ratio !== undefined && siblings.length === 1) {
-          // Auto-update the other store's ratio
-          const sibId = siblings[0].id;
-          setEdits((prev) => ({
-            ...prev,
-            [sibId]: { ...prev[sibId], ratio: 100 - newRatioVal },
-          }));
-          await fetch("/api/settings/overrides", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              employeeId: siblings[0].employeeId,
-              storeName: siblings[0].storeName,
-              ratio: 100 - newRatioVal,
-            }),
-          });
+
+        // If ratio is 0, delete this record
+        if (newRatioVal <= 0) {
+          await fetch(`/api/settings/overrides?id=${id}`, { method: "DELETE" });
+          // If there's a sibling, set it to 100%
+          const siblings = overrides.filter(
+            (o) => o.employeeId === orig.employeeId && o.id !== orig.id,
+          );
+          if (siblings.length === 1) {
+            await fetch("/api/settings/overrides", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                employeeId: siblings[0].employeeId,
+                storeName: siblings[0].storeName,
+                ratio: 100,
+              }),
+            });
+          }
+          continue;
         }
+
         await fetch("/api/settings/overrides", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -365,15 +381,11 @@ function OverridesTab() {
     try {
       if (addMode === "new") {
         const empId = parseInt(newEmpId, 10);
-        // Check duplicate
-        const checkRes = await fetch("/api/settings/overrides", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "check-duplicate", employeeId: empId }),
-        });
-        const checkData = await checkRes.json();
-        if (checkData.exists) {
-          setMessage(`従業員番号 ${empId} は既に登録されています。既存の従業員（兼務・変更）から操作してください。`);
+        // Check duplicate against current data
+        const isDuplicate = overrides.some((o) => o.employeeId === empId);
+        if (isDuplicate) {
+          const dupName = overrides.find((o) => o.employeeId === empId)?.employeeName || "";
+          setMessage(`従業員番号 ${empId}${dupName ? `（${dupName}）` : ""} は既に登録されています。「既存の従業員（兼務・変更）」から操作してください。`);
           setSaving(false);
           return;
         }
@@ -490,7 +502,11 @@ function OverridesTab() {
       </div>
 
       {message && (
-        <div className="mb-4 px-4 py-2 bg-blue-50 text-blue-700 rounded text-sm">
+        <div className={`mb-4 px-4 py-2 rounded text-sm ${
+          message.includes("超えています") || message.includes("既に登録") || message.includes("失敗")
+            ? "bg-red-50 text-red-700 border border-red-200"
+            : "bg-blue-50 text-blue-700"
+        }`}>
           {message}
         </div>
       )}
