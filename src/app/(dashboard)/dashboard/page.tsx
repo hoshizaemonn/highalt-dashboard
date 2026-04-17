@@ -1044,9 +1044,9 @@ function PeriodSelector({
           className="w-full border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300 appearance-none"
           style={{ WebkitAppearance: "menulist" }}
         >
-          <option value={2025}>2025年</option>
-          <option value={2026}>2026年</option>
-          <option value={2027}>2027年</option>
+          {Array.from({ length: new Date().getFullYear() - 2020 + 6 }, (_, i) => 2020 + i).map((y) => (
+            <option key={y} value={y}>{y}年</option>
+          ))}
         </select>
       </div>
       <div className="relative">
