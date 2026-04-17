@@ -34,10 +34,16 @@ export async function GET(request: NextRequest) {
     });
 
     // Match Amazon orders to fill breakdown for AMAZON expenses
-    // Try amazon_orders first, then fall back to product master
+    // Include orders for this month + orders with no payment date
+    const monthPrefix = `${year}/${String(month).padStart(2, "0")}`;
     const amazonRows = await prisma.amazonOrder.findMany({
       where: {
-        paymentDate: { startsWith: `${year}/${String(month).padStart(2, "0")}` },
+        OR: [
+          { paymentDate: { startsWith: monthPrefix } },
+          { paymentDate: "該当無し" },
+          { paymentDate: "" },
+          { paymentDate: null },
+        ],
       },
       select: {
         shortName: true,
@@ -45,6 +51,7 @@ export async function GET(request: NextRequest) {
         amount: true,
         orderTotal: true,
         paymentDate: true,
+        orderDate: true,
         storeName: true,
         asin: true,
       },
