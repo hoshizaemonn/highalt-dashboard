@@ -55,6 +55,18 @@ model StoreOverride {
   @@map("store_overrides")
 }
 
+// ─── Expense Categories (勘定科目マスタ) ────────────────────
+
+model ExpenseCategory {
+  id           Int    @id @default(autoincrement())
+  name         String @unique
+  description  String @default("")
+  examples     String @default("")
+  categoryType String @default("expense") @map("category_type")
+
+  @@map("expense_categories")
+}
+
 // ─── Expense Rules ──────────────────────────────────────────
 
 model ExpenseRule {

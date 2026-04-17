@@ -87,6 +87,7 @@ function useSessionRole() {
 
 const TABS = [
   { key: "overrides", label: "従業員→店舗マッピング" },
+  { key: "expense-categories", label: "勘定科目" },
   { key: "expense-rules", label: "経費分類ルール" },
   { key: "amazon-master", label: "Amazon商品マスタ" },
   { key: "users", label: "ユーザー管理" },
@@ -132,6 +133,7 @@ export default function SettingsPage() {
       {/* Tab Content */}
       <div className="bg-white rounded-lg shadow-sm p-6">
         {activeTab === "overrides" && <OverridesTab />}
+        {activeTab === "expense-categories" && <ExpenseCategoriesTab />}
         {activeTab === "expense-rules" && <ExpenseRulesTab />}
         {activeTab === "amazon-master" && <AmazonMasterTab />}
         {activeTab === "users" && role === "admin" && <UsersTab />}
@@ -937,6 +939,320 @@ function OverridesTab() {
                 )}
               </div>
             )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tab: 勘定科目マスタ
+// ═══════════════════════════════════════════════════════════════════
+
+interface ExpenseCategoryRow {
+  id: number;
+  name: string;
+  description: string;
+  examples: string;
+  categoryType: string;
+}
+
+function ExpenseCategoriesTab() {
+  const [categories, setCategories] = useState<ExpenseCategoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [deleteIds, setDeleteIds] = useState<Set<number>>(new Set());
+
+  // New category form
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newExamples, setNewExamples] = useState("");
+  const [newType, setNewType] = useState("expense");
+
+  // CSV import
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/settings/expense-categories");
+      const data = await res.json();
+      setCategories(data.categories || []);
+    } catch {
+      setMessage("データの取得に失敗しました");
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  function toggleDelete(id: number) {
+    setDeleteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setMessage("");
+    try {
+      for (const id of deleteIds) {
+        await fetch(`/api/settings/expense-categories?id=${id}`, { method: "DELETE" });
+      }
+      setDeleteIds(new Set());
+      await fetchData();
+      setMessage("保存しました");
+    } catch {
+      setMessage("保存に失敗しました");
+    }
+    setSaving(false);
+  }
+
+  async function handleAdd() {
+    if (!newName.trim()) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      await fetch("/api/settings/expense-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newName.trim(),
+          description: newDesc.trim(),
+          examples: newExamples.trim(),
+          categoryType: newType,
+        }),
+      });
+      setNewName("");
+      setNewDesc("");
+      setNewExamples("");
+      await fetchData();
+      setMessage("追加しました");
+    } catch {
+      setMessage("追加に失敗しました");
+    }
+    setSaving(false);
+  }
+
+  async function handleCsvImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSaving(true);
+    setMessage("");
+
+    try {
+      const text = await file.text();
+      const lines = text.split("\n").map((l) => l.split(",").map((c) => c.trim().replace(/^"|"$/g, "")));
+
+      // Skip header rows (first 2 lines)
+      const dataLines = lines.slice(2).filter((cols) => cols[0] && cols[0] !== "");
+
+      // Detect category type from section headers
+      let currentType = "expense";
+      const parsed: { name: string; description: string; examples: string; categoryType: string }[] = [];
+
+      for (const cols of dataLines) {
+        const name = cols[0] || "";
+        // Section headers like 【売上】【経費】
+        if (name.startsWith("【") || name.startsWith("（")) {
+          if (name.includes("売上")) currentType = "revenue";
+          else if (name.includes("経費")) currentType = "expense";
+          else if (name.includes("人件費")) currentType = "labor";
+          continue;
+        }
+        if (!name) continue;
+        parsed.push({
+          name,
+          description: cols[1] || "",
+          examples: cols[2] || "",
+          categoryType: currentType,
+        });
+      }
+
+      if (parsed.length === 0) {
+        setMessage("CSVから勘定科目を検出できませんでした");
+        setSaving(false);
+        return;
+      }
+
+      const res = await fetch("/api/settings/expense-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categories: parsed }),
+      });
+      const data = await res.json();
+      await fetchData();
+      setMessage(`${data.created}件追加、${data.updated}件更新しました`);
+    } catch {
+      setMessage("CSVの読み込みに失敗しました");
+    }
+    setSaving(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  const typeLabel = (t: string) => {
+    if (t === "revenue") return "売上";
+    if (t === "labor") return "人件費";
+    return "経費";
+  };
+
+  const typeColor = (t: string) => {
+    if (t === "revenue") return "text-blue-600 bg-blue-50";
+    if (t === "labor") return "text-red-600 bg-red-50";
+    return "text-orange-600 bg-orange-50";
+  };
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={saving}
+          className="bg-[#567FC0] hover:bg-[#4a6fa8] text-white px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          CSVから一括インポート
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv"
+          onChange={handleCsvImport}
+          className="hidden"
+        />
+        <span className="text-xs text-gray-400">勘定科目一覧表CSVをアップロード</span>
+      </div>
+
+      {message && (
+        <div className={`mb-4 px-4 py-2 rounded text-sm ${
+          message.includes("失敗") ? "bg-red-50 text-red-700" : "bg-blue-50 text-blue-700"
+        }`}>
+          {message}
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-gray-500 text-sm">読み込み中...</p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">勘定科目</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">区分</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">内容</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">具体例</th>
+                  <th className="text-center px-3 py-2 font-medium text-gray-600">削除</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((cat) => (
+                  <tr
+                    key={cat.id}
+                    className={`border-b border-gray-100 ${deleteIds.has(cat.id) ? "bg-red-50" : "hover:bg-gray-50"}`}
+                  >
+                    <td className="px-3 py-2 font-medium">{cat.name}</td>
+                    <td className="px-3 py-2">
+                      <span className={`text-xs px-2 py-0.5 rounded ${typeColor(cat.categoryType)}`}>
+                        {typeLabel(cat.categoryType)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-gray-600 text-xs">{cat.description}</td>
+                    <td className="px-3 py-2 text-gray-500 text-xs">{cat.examples}</td>
+                    <td className="px-3 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={deleteIds.has(cat.id)}
+                        onChange={() => toggleDelete(cat.id)}
+                        className="w-4 h-4"
+                      />
+                    </td>
+                  </tr>
+                ))}
+                {categories.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-4 text-center text-gray-400">
+                      勘定科目がありません。CSVからインポートしてください。
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {deleteIds.size > 0 && (
+            <div className="mt-4">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded text-sm font-medium disabled:opacity-50"
+              >
+                {saving ? "削除中..." : `${deleteIds.size}件を削除`}
+              </button>
+            </div>
+          )}
+
+          {/* Manual add */}
+          <div className="mt-6 border-t border-gray-200 pt-4">
+            <p className="text-sm font-medium text-gray-700 mb-3">手動で追加</p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">勘定科目名</label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="消耗品費"
+                  className="border border-gray-300 rounded px-3 py-2 text-sm w-40"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">区分</label>
+                <select
+                  value={newType}
+                  onChange={(e) => setNewType(e.target.value)}
+                  className="border border-gray-300 rounded px-2 py-2 text-sm"
+                >
+                  <option value="expense">経費</option>
+                  <option value="revenue">売上</option>
+                  <option value="labor">人件費</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">内容</label>
+                <input
+                  type="text"
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                  placeholder="文房具やPC周辺機器など"
+                  className="border border-gray-300 rounded px-3 py-2 text-sm w-48"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">具体例</label>
+                <input
+                  type="text"
+                  value={newExamples}
+                  onChange={(e) => setNewExamples(e.target.value)}
+                  placeholder="Amazon・アスクル発注分"
+                  className="border border-gray-300 rounded px-3 py-2 text-sm w-48"
+                />
+              </div>
+              <button
+                onClick={handleAdd}
+                disabled={saving || !newName.trim()}
+                className="bg-[#567FC0] hover:bg-[#4a6fa8] text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
+              >
+                追加
+              </button>
+            </div>
           </div>
         </>
       )}
