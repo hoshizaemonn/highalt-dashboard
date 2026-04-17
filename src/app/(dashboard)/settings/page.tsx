@@ -402,7 +402,17 @@ function OverridesTab() {
           return;
         }
 
-        const r1 = newDual ? parseInt(newRatio, 10) || 50 : 100;
+        const r1 = newDual ? parseInt(newRatio, 10) || 50 : parseInt(newRatio, 10) || 100;
+        if (r1 > 100 || r1 < 0) {
+          setAddError("比率は0〜100%の範囲で入力してください。");
+          setSaving(false);
+          return;
+        }
+        if (newDual && r1 >= 100) {
+          setAddError("兼務の場合、比率は99%以下にしてください（2店舗目に割り当てる分が必要です）。");
+          setSaving(false);
+          return;
+        }
         if (newDual) {
           await fetch("/api/settings/overrides", {
             method: "POST",
@@ -430,7 +440,17 @@ function OverridesTab() {
           });
         }
       } else if (selectedExisting) {
-        const r1 = existDual ? parseInt(existRatio, 10) || 50 : 100;
+        const r1 = existDual ? parseInt(existRatio, 10) || 50 : parseInt(existRatio, 10) || 100;
+        if (r1 > 100 || r1 < 0) {
+          setAddError("比率は0〜100%の範囲で入力してください。");
+          setSaving(false);
+          return;
+        }
+        if (existDual && r1 >= 100) {
+          setAddError("兼務の場合、比率は99%以下にしてください。");
+          setSaving(false);
+          return;
+        }
         if (existDual) {
           await fetch("/api/settings/overrides", {
             method: "POST",
@@ -832,6 +852,11 @@ function OverridesTab() {
                             追加
                           </button>
                         </div>
+                        {addError && (
+                          <div className="mt-2 px-3 py-2 bg-red-50 text-red-700 border border-red-200 rounded text-sm">
+                            {addError}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
