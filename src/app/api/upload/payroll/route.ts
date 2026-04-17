@@ -276,6 +276,73 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Check for name conflicts with existing data
+    interface NameConflict {
+      employeeId: string;
+      csvName: string;
+      existingName: string;
+    }
+    const nameConflicts: NameConflict[] = [];
+
+    // Collect unique employees from this CSV
+    const csvEmployees = new Map<string, string>();
+    for (const rec of records) {
+      if (rec.employeeName && !csvEmployees.has(rec.employeeId)) {
+        csvEmployees.set(rec.employeeId, rec.employeeName);
+      }
+    }
+
+    // Check against existing payroll_data and store_overrides
+    const existingPayroll = await prisma.payrollData.findMany({
+      where: { employeeId: { in: [...csvEmployees.keys()] } },
+      select: { employeeId: true, employeeName: true },
+      distinct: ["employeeId"],
+    });
+    const existingOverrides = await prisma.storeOverride.findMany({
+      where: { employeeId: { in: [...csvEmployees.keys()].map((id) => parseInt(id, 10)).filter((n) => !isNaN(n)) } },
+      select: { employeeId: true, employeeName: true },
+    });
+
+    // Build existing name map (prefer override name, fallback to payroll)
+    const existingNameMap = new Map<string, string>();
+    for (const p of existingPayroll) {
+      if (p.employeeName) existingNameMap.set(p.employeeId, p.employeeName);
+    }
+    for (const o of existingOverrides) {
+      if (o.employeeName) existingNameMap.set(String(o.employeeId), o.employeeName);
+    }
+
+    for (const [empId, csvName] of csvEmployees) {
+      const existingName = existingNameMap.get(empId);
+      if (existingName && existingName !== csvName) {
+        nameConflicts.push({ employeeId: empId, csvName, existingName });
+      }
+    }
+
+    // If there are name conflicts and no override flag, return conflicts for user to resolve
+    const forceNames = formData.get("forceNames") === "true";
+    if (nameConflicts.length > 0 && !forceNames) {
+      return NextResponse.json({
+        records: 0,
+        unresolved,
+        nameConflicts,
+        needsConfirmation: true,
+      });
+    }
+
+    // Apply name resolutions if provided
+    const nameResolutionsRaw = formData.get("nameResolutions") as string | null;
+    if (nameResolutionsRaw) {
+      try {
+        const resolutions = JSON.parse(nameResolutionsRaw) as Record<string, string>;
+        for (const rec of records) {
+          if (resolutions[rec.employeeId]) {
+            rec.employeeName = resolutions[rec.employeeId];
+          }
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
     // Delete existing payroll data for this year/month, then insert
     await prisma.$transaction(async (tx) => {
       await tx.payrollData.deleteMany({ where: { year, month } });
@@ -301,9 +368,20 @@ export async function POST(request: NextRequest) {
       });
     });
 
+    // Update store_overrides names if CSV has newer names
+    for (const [empId, csvName] of csvEmployees) {
+      const empIdNum = parseInt(empId, 10);
+      if (isNaN(empIdNum)) continue;
+      await prisma.storeOverride.updateMany({
+        where: { employeeId: empIdNum, employeeName: "" },
+        data: { employeeName: csvName },
+      });
+    }
+
     return NextResponse.json({
       records: records.length,
       unresolved,
+      nameConflicts: [],
     });
   } catch (error) {
     console.error("Payroll upload error:", error);

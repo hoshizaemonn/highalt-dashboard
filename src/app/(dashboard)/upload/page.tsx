@@ -591,7 +591,17 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
     existing: { fileName: string; year: number; month: number; count: number }[];
   } | null>(null);
 
-  const uploadSingleFile = async (file: File) => {
+  // Name conflict state
+  const [nameConflicts, setNameConflicts] = useState<{
+    file: File;
+    conflicts: { employeeId: string; csvName: string; existingName: string }[];
+  } | null>(null);
+  const [nameResolutions, setNameResolutions] = useState<Record<string, string>>({});
+  // Pending files after name conflict resolution
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
+
+  const uploadSingleFile = async (file: File, resolutions?: Record<string, string>) => {
     const detected = detectYearMonthFromFilename(file.name);
     const year = detected.year || new Date().getFullYear();
     const month = detected.month || (new Date().getMonth() + 1);
@@ -600,6 +610,10 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
     formData.append("file", file);
     formData.append("year", String(year));
     formData.append("month", String(month));
+    if (resolutions) {
+      formData.append("forceNames", "true");
+      formData.append("nameResolutions", JSON.stringify(resolutions));
+    }
 
     const res = await fetch("/api/upload/payroll", {
       method: "POST",
@@ -615,7 +629,9 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
         month,
         records: 0,
         error: data.error || "エラー",
-        unresolved: [],
+        unresolved: [] as { employeeId: string; employeeName: string; contractType: string; grossTotal: number }[],
+        nameConflicts: [] as { employeeId: string; csvName: string; existingName: string }[],
+        needsConfirmation: false,
       };
     }
 
@@ -623,23 +639,100 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
       fileName: file.name,
       year,
       month,
-      records: data.records,
-      unresolved: data.unresolved || [],
+      records: data.records as number,
+      unresolved: (data.unresolved || []) as { employeeId: string; employeeName: string; contractType: string; grossTotal: number }[],
+      nameConflicts: (data.nameConflicts || []) as { employeeId: string; csvName: string; existingName: string }[],
+      needsConfirmation: !!data.needsConfirmation,
     };
   };
 
-  const doUploadAll = async () => {
+  const doUploadAll = async (filesToUpload?: File[]) => {
+    const targetFiles = filesToUpload || files;
     setLoading(true);
     setResults([]);
     setOverwriteWarning(null);
 
-    const allResults = [];
-    for (const file of files) {
+    const allResults: typeof results = [];
+    for (let i = 0; i < targetFiles.length; i++) {
+      const file = targetFiles[i];
       const result = await uploadSingleFile(file);
-      allResults.push(result);
+
+      // If name conflicts detected, pause and show dialog
+      if (result.needsConfirmation && result.nameConflicts.length > 0) {
+        setNameConflicts({ file, conflicts: result.nameConflicts });
+        // Default: use CSV names
+        const defaults: Record<string, string> = {};
+        for (const c of result.nameConflicts) {
+          defaults[c.employeeId] = c.csvName;
+        }
+        setNameResolutions(defaults);
+        setPendingFiles(targetFiles.slice(i));
+        setCurrentFileIndex(0);
+        setResults(allResults);
+        setLoading(false);
+        return;
+      }
+
+      allResults.push({
+        fileName: result.fileName,
+        year: result.year,
+        month: result.month,
+        records: result.records,
+        error: result.records === 0 && !result.needsConfirmation ? result.error : undefined,
+        unresolved: result.unresolved,
+      });
     }
 
     setResults(allResults);
+    setLoading(false);
+    onSuccess?.();
+  };
+
+  // Continue upload after name conflict resolution
+  const handleNameConflictResolve = async () => {
+    if (!nameConflicts) return;
+    setLoading(true);
+
+    // Re-upload current file with resolutions
+    const result = await uploadSingleFile(nameConflicts.file, nameResolutions);
+
+    const currentResults = [...results, {
+      fileName: result.fileName,
+      year: result.year,
+      month: result.month,
+      records: result.records,
+      unresolved: result.unresolved,
+    }];
+
+    setNameConflicts(null);
+    setResults(currentResults);
+
+    // Continue with remaining files
+    const remaining = pendingFiles.slice(1);
+    if (remaining.length > 0) {
+      // Continue uploading remaining files
+      const moreResults = [...currentResults];
+      for (const file of remaining) {
+        const r = await uploadSingleFile(file);
+        if (r.needsConfirmation && r.nameConflicts.length > 0) {
+          setNameConflicts({ file, conflicts: r.nameConflicts });
+          const defaults: Record<string, string> = {};
+          for (const c of r.nameConflicts) defaults[c.employeeId] = c.csvName;
+          setNameResolutions(defaults);
+          setPendingFiles(remaining.slice(remaining.indexOf(file)));
+          setResults(moreResults);
+          setLoading(false);
+          return;
+        }
+        moreResults.push({
+          fileName: r.fileName, year: r.year, month: r.month,
+          records: r.records, unresolved: r.unresolved,
+        });
+      }
+      setResults(moreResults);
+    }
+
+    setPendingFiles([]);
     setLoading(false);
     onSuccess?.();
   };
@@ -735,7 +828,7 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
           </ul>
           <div className="flex gap-2">
             <button
-              onClick={doUploadAll}
+              onClick={() => doUploadAll()}
               disabled={loading}
               className="text-sm bg-amber-600 text-white rounded px-4 py-1.5 hover:bg-amber-700 disabled:opacity-50"
             >
@@ -747,6 +840,69 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
             >
               キャンセル
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Name conflict dialog */}
+      {nameConflicts && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4">
+            <h3 className="text-base font-bold text-gray-800 mb-2">
+              従業員名が異なります
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              同じ従業員番号で名前が異なるデータがあります。どちらが正しいですか？
+            </p>
+            <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
+              {nameConflicts.conflicts.map((c) => (
+                <div key={c.employeeId} className="border rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-2">従業員番号: {c.employeeId}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setNameResolutions((prev) => ({ ...prev, [c.employeeId]: c.csvName }))}
+                      className={`flex-1 text-sm rounded px-3 py-2 border-2 transition-colors ${
+                        nameResolutions[c.employeeId] === c.csvName
+                          ? "border-blue-500 bg-blue-50 text-blue-700 font-medium"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <span className="text-xs text-gray-500 block">CSVの名前</span>
+                      {c.csvName}
+                    </button>
+                    <button
+                      onClick={() => setNameResolutions((prev) => ({ ...prev, [c.employeeId]: c.existingName }))}
+                      className={`flex-1 text-sm rounded px-3 py-2 border-2 transition-colors ${
+                        nameResolutions[c.employeeId] === c.existingName
+                          ? "border-blue-500 bg-blue-50 text-blue-700 font-medium"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <span className="text-xs text-gray-500 block">既存の名前</span>
+                      {c.existingName}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setNameConflicts(null);
+                  setPendingFiles([]);
+                }}
+                className="text-sm bg-white border rounded px-4 py-2 hover:bg-gray-50 text-gray-600"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleNameConflictResolve}
+                disabled={loading}
+                className="text-sm bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? "処理中..." : "この名前で保存する"}
+              </button>
+            </div>
           </div>
         </div>
       )}
