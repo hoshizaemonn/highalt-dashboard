@@ -7,6 +7,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
   LineChart,
   Line,
   XAxis,
@@ -1643,6 +1644,104 @@ function MonthlyView({
           </tbody>
         </table>
       </div>
+
+      {/* PL Charts */}
+      {(data.total_revenue > 0 || data.total_labor > 0 || data.total_expense > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+          {/* Revenue / Labor / Expense / Profit bar chart */}
+          <div className="bg-white rounded-lg border shadow-sm p-4">
+            <p className="text-sm font-medium text-gray-600 mb-3">損益サマリ</p>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart
+                data={[
+                  { name: "売上", value: data.total_revenue, fill: COLORS.blue },
+                  { name: "人件費", value: data.total_labor, fill: COLORS.red },
+                  { name: "経費", value: data.total_expense, fill: COLORS.orange },
+                  { name: "営業利益", value: data.operating_profit, fill: data.operating_profit >= 0 ? COLORS.green : COLORS.red },
+                ]}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" fontSize={11} />
+                <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                <Tooltip content={<ChartTooltip />} />
+                <Bar dataKey="value" name="金額" radius={[4, 4, 0, 0]}>
+                  {[COLORS.blue, COLORS.red, COLORS.orange, data.operating_profit >= 0 ? COLORS.green : COLORS.red].map(
+                    (color, i) => (
+                      <Cell key={i} fill={color} />
+                    ),
+                  )}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Sales category breakdown (if revenue data exists) */}
+          {Object.keys(data.revenue.by_category).length > 0 && (
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">売上カテゴリ内訳</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart
+                  data={Object.entries(data.revenue.by_category)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([cat, amt]) => ({ name: cat, 金額: amt }))}
+                  layout="vertical"
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <YAxis type="category" dataKey="name" width={80} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="金額" fill={COLORS.blue} radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Expense category breakdown (if expense data exists) */}
+          {Object.keys(data.expense.by_category).length > 0 && (
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">経費カテゴリ内訳</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart
+                  data={Object.entries(data.expense.by_category)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([cat, amt]) => ({ name: cat, 金額: amt }))}
+                  layout="vertical"
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <YAxis type="category" dataKey="name" width={80} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="金額" fill={COLORS.orange} radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Labor breakdown (if payroll data exists) */}
+          {data.total_labor > 0 && (
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">人件費内訳</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart
+                  data={[
+                    data.payroll.fulltime_gross > 0 && { name: "正社員給与", 金額: data.payroll.fulltime_gross },
+                    data.payroll.parttime_gross > 0 && { name: "契約社員給与", 金額: data.payroll.parttime_gross },
+                    data.payroll.commute > 0 && { name: "通勤手当", 金額: data.payroll.commute },
+                    data.payroll.legal_welfare > 0 && { name: "法定福利費", 金額: data.payroll.legal_welfare },
+                  ].filter(Boolean) as { name: string; 金額: number }[]}
+                  layout="vertical"
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <YAxis type="category" dataKey="name" width={90} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="金額" fill={COLORS.red} radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Member Info (editable) */}
       <EditableMemberSection
