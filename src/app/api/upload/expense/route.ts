@@ -4,6 +4,20 @@ import { getSession } from "@/lib/auth";
 import { decodeFileBuffer, parseCSV, safeFloat } from "@/lib/csv-utils";
 
 /**
+ * Extract a meaningful keyword from a PayPay bank description.
+ * e.g. "Vデビット AMAZON.CO.JP 1A055001" → "AMAZON.CO.JP"
+ */
+function extractKeyword(desc: string): string {
+  let cleaned = desc.replace(/^Vデビット\s+/i, "");
+  cleaned = cleaned.replace(/\s+[0-9A-Z]{6,}$/i, "").trim();
+  if (cleaned.startsWith("振込") && cleaned.includes("）")) {
+    const afterParen = cleaned.split("）").slice(1).join("）").trim();
+    if (afterParen) return afterParen;
+  }
+  return cleaned || desc;
+}
+
+/**
  * Classify a transaction description using expense_rules table.
  * Returns { category, isRevenue }.
  */
@@ -145,9 +159,8 @@ export async function POST(request: NextRequest) {
         // Auto-register expense rules for manually classified items
         for (const rec of inputRecords) {
           if (rec.category && !rec.isAutoClassified && rec.description) {
-            // Extract a keyword from description (first meaningful word/phrase)
-            const keyword = rec.description.trim();
-            if (keyword) {
+            const keyword = extractKeyword(rec.description.trim());
+            if (keyword && keyword.length >= 2) {
               await tx.expenseRule.upsert({
                 where: { keyword },
                 update: { category: rec.category },
