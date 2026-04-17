@@ -15,15 +15,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { year, month } = body;
+    const { year, month, allMonths } = body;
 
-    if (!year || !month) {
-      return NextResponse.json({ error: "year and month are required" }, { status: 400 });
+    if (!year) {
+      return NextResponse.json({ error: "year is required" }, { status: 400 });
     }
 
-    // Get all payroll records for this month
+    // Get payroll records — all months or specific month
+    const whereClause = allMonths ? { year } : { year, month };
     const payrollRows = await prisma.payrollData.findMany({
-      where: { year, month },
+      where: whereClause,
     });
 
     if (payrollRows.length === 0) {
@@ -39,19 +40,23 @@ export async function POST(request: NextRequest) {
       overrideMap.set(o.employeeId, list);
     }
 
-    // Group payroll by employee
-    const empGroups = new Map<string, typeof payrollRows>();
+    // Group by employee + month for correct per-month handling
+    const empMonthGroups = new Map<string, typeof payrollRows>();
     for (const row of payrollRows) {
-      const list = empGroups.get(row.employeeId) || [];
+      const key = `${row.employeeId}__${row.year}_${row.month}`;
+      const list = empMonthGroups.get(key) || [];
       list.push(row);
-      empGroups.set(row.employeeId, list);
+      empMonthGroups.set(key, list);
     }
 
     // Rebuild records with correct store assignments
     let updated = 0;
     let deleted = 0;
 
-    for (const [empId, rows] of empGroups) {
+    for (const [, rows] of empMonthGroups) {
+      const empId = rows[0].employeeId;
+      const rowYear = rows[0].year;
+      const rowMonth = rows[0].month;
       const empIdNum = parseInt(empId, 10);
 
       // Determine assignments
@@ -102,7 +107,7 @@ export async function POST(request: NextRequest) {
 
       // Delete old rows for this employee/month
       await prisma.payrollData.deleteMany({
-        where: { year, month, employeeId: empId },
+        where: { year: rowYear, month: rowMonth, employeeId: empId },
       });
       deleted += rows.length;
 
@@ -111,8 +116,8 @@ export async function POST(request: NextRequest) {
         const r = assign.ratio / 100;
         await prisma.payrollData.create({
           data: {
-            year,
-            month,
+            year: rowYear,
+            month: rowMonth,
             employeeId: empId,
             employeeName: sumRow.employeeName,
             contractType: sumRow.contractType,
@@ -147,7 +152,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       updated,
       deleted,
-      employees: empGroups.size,
+      employees: empMonthGroups.size,
     });
   } catch (error) {
     console.error("Recalculate store error:", error);

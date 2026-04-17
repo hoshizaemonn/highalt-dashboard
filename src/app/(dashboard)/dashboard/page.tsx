@@ -231,19 +231,20 @@ function RecalculateButton({
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const handleRecalc = async () => {
-    if (!confirm(`${year}年${month}月の人件費データを最新の店舗マッピングで再計算します。よろしいですか？`)) return;
+  const doRecalc = async (allMonths: boolean) => {
+    const label = allMonths ? `${year}年の全月` : `${year}年${month}月`;
+    if (!confirm(`${label}の人件費データを最新の店舗マッピングで再計算します。よろしいですか？`)) return;
     setLoading(true);
     setMsg("");
     try {
       const res = await fetch("/api/dashboard/recalculate-store", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ year, month }),
+        body: JSON.stringify(allMonths ? { year, allMonths: true } : { year, month }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "エラー");
-      setMsg(`${data.employees}名の店舗割り当てを再計算しました`);
+      setMsg(`${data.employees}件の店舗割り当てを再計算しました`);
       onDone();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "エラーが発生しました");
@@ -252,16 +253,23 @@ function RecalculateButton({
   };
 
   return (
-    <>
+    <div className="flex items-center gap-2 flex-wrap">
       <button
-        onClick={handleRecalc}
+        onClick={() => doRecalc(false)}
         disabled={loading}
         className="text-sm bg-white border rounded-lg px-4 py-2 hover:bg-gray-50 text-gray-700 shadow-sm disabled:opacity-50"
       >
-        {loading ? "再計算中..." : "🔄 店舗割り当てを再計算"}
+        {loading ? "再計算中..." : `🔄 ${month}月の店舗割り当てを再計算`}
       </button>
-      {msg && <span className="text-sm text-green-600 self-center">{msg}</span>}
-    </>
+      <button
+        onClick={() => doRecalc(true)}
+        disabled={loading}
+        className="text-sm bg-white border rounded-lg px-4 py-2 hover:bg-gray-50 text-gray-700 shadow-sm disabled:opacity-50"
+      >
+        {loading ? "再計算中..." : `🔄 ${year}年の全月を再計算`}
+      </button>
+      {msg && <span className="text-sm text-green-600">{msg}</span>}
+    </div>
   );
 }
 
@@ -1774,6 +1782,13 @@ function MonthlyView({
         </>
       )}
 
+      {/* Recalculate store assignments (admin only) */}
+      {isAdmin && (
+        <div className="mt-6 flex items-center gap-3">
+          <RecalculateButton year={year} month={month} onDone={onRefresh} />
+        </div>
+      )}
+
       {/* Employee Payroll Detail (admin or own-store manager) */}
       {!isAllStores && (
         <PayrollDetailSection
@@ -1785,9 +1800,9 @@ function MonthlyView({
         />
       )}
 
-      {/* Payroll Summary Download + Recalculate (admin only) */}
+      {/* Payroll Summary Download (admin only) */}
       {isAdmin && (
-        <div className="mt-6 flex gap-3 flex-wrap">
+        <div className="mt-6">
           <button
             onClick={() => {
               const params = new URLSearchParams({
@@ -1800,7 +1815,6 @@ function MonthlyView({
           >
             📥 人件費サマリをダウンロード
           </button>
-          <RecalculateButton year={year} month={month} onDone={onRefresh} />
         </div>
       )}
 
