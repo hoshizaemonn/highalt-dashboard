@@ -155,12 +155,37 @@ export async function PUT(request: NextRequest) {
 
       // Auto-register expense rule when category is set
       if (update.category && result.description) {
-        const keyword = result.description.trim();
+        const rawDesc = result.description.trim();
+
+        // Extract a meaningful keyword from the description
+        // e.g. "Vデビット AMAZON.CO.JP 1A055001" → "AMAZON.CO.JP"
+        // e.g. "SMBC（セコム）" → "SMBC（セコム）"
+        // e.g. "振込手数料" → "振込手数料"
+        // e.g. "Vデビット 印刷通販プリントパック 1A055002" → "印刷通販プリントパック"
+        // e.g. "振込 カ）テレポ" → "テレポ"
+        function extractKeyword(desc: string): string {
+          // Remove "Vデビット " prefix
+          let cleaned = desc.replace(/^Vデビット\s+/i, "");
+          // Remove trailing transaction IDs (alphanumeric 6+ chars at end)
+          cleaned = cleaned.replace(/\s+[0-9A-Z]{6,}$/i, "").trim();
+          // If still has spaces, take the main part (skip "振込 カ）" prefix)
+          if (cleaned.startsWith("振込") && cleaned.includes("）")) {
+            const afterParen = cleaned.split("）").slice(1).join("）").trim();
+            if (afterParen) return afterParen;
+          }
+          return cleaned || desc;
+        }
+
+        const keyword = extractKeyword(rawDesc);
         if (keyword && keyword.length >= 2) {
-          const existingRule = await prisma.expenseRule.findFirst({
-            where: { keyword },
-          });
-          if (!existingRule) {
+          // Check if any existing rule already covers this keyword (partial match)
+          const allRules = await prisma.expenseRule.findMany();
+          const alreadyCovered = allRules.some(
+            (r) => keyword.toUpperCase().includes(r.keyword.toUpperCase()) ||
+                   r.keyword.toUpperCase().includes(keyword.toUpperCase()),
+          );
+
+          if (!alreadyCovered) {
             try {
               await prisma.expenseRule.create({
                 data: { keyword, category: update.category },
@@ -168,12 +193,17 @@ export async function PUT(request: NextRequest) {
             } catch {
               // Ignore duplicate key errors
             }
-          } else if (existingRule.category !== update.category) {
-            // Update existing rule to new category
-            await prisma.expenseRule.update({
-              where: { id: existingRule.id },
-              data: { category: update.category },
-            });
+          } else {
+            // Update the most specific matching rule's category
+            const exactMatch = allRules.find(
+              (r) => r.keyword.toUpperCase() === keyword.toUpperCase(),
+            );
+            if (exactMatch && exactMatch.category !== update.category) {
+              await prisma.expenseRule.update({
+                where: { id: exactMatch.id },
+                data: { category: update.category },
+              });
+            }
           }
         }
       }
