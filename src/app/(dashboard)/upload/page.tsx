@@ -256,7 +256,7 @@ function YearSelect({
         onChange={(e) => onChange(parseInt(e.target.value))}
         className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
       >
-        {[2024, 2025, 2026, 2027].map((y) => (
+        {[2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030].map((y) => (
           <option key={y} value={y}>
             {y}年
           </option>
@@ -801,7 +801,7 @@ function PayrollTab({ onSuccess }: { onSuccess?: () => void }) {
                 }}
                 className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
               >
-                {[2024, 2025, 2026, 2027].map((y) => (
+                {[2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030].map((y) => (
                   <option key={y} value={y}>{y}年</option>
                 ))}
               </select>
@@ -2028,7 +2028,7 @@ function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
             onChange={(e) => setFiscalYear(parseInt(e.target.value))}
             className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
           >
-            {[2024, 2025, 2026, 2027].map((y) => (
+            {[2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030].map((y) => (
               <option key={y} value={y}>
                 {y}年度
               </option>
