@@ -1355,7 +1355,7 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
 }
 
 function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
@@ -1401,24 +1401,29 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   };
 
   const handleParse = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setLoading(true);
     setStatus({ type: "info", text: "解析中..." });
     setAllRegistered(false);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      // Upload all files and merge results
+      let allRecords: { asin: string; productName: string; shortName: string; amazonCategory: string; expenseCategory: string }[] = [];
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/upload/amazon", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) {
+          setStatus({ type: "error", text: data.error || `${file.name}: エラー` });
+          return;
+        }
+        allRecords = allRecords.concat(data.records || []);
+      }
 
-      const res = await fetch("/api/upload/amazon", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus({ type: "error", text: data.error || "エラーが発生しました" });
+      const data = { records: allRecords };
+      if (!data.records || data.records.length === 0) {
+        setStatus({ type: "error", text: "データが見つかりませんでした" });
         return;
       }
 
@@ -1519,7 +1524,7 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
       onSuccess?.();
       setNewRecords([]);
       setSkippedCount(0);
-      setFile(null);
+      setFiles([]);
     } catch (e) {
       setStatus({
         type: "error",
@@ -1548,16 +1553,16 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
 
       <FileDropzone
         accept=".csv"
-        file={file}
-        onFileSelect={(f) => {
-          setFile(f);
+        multiple
+        files={files}
+        onFilesSelect={(newFiles) => {
+          setFiles((prev) => [...prev, ...newFiles]);
           setNewRecords([]);
           setSkippedCount(0);
           setAllRegistered(false);
         }}
-        onClear={() => {
-          setFile(null);
-          setStatus(null);
+        onRemoveFile={(i) => {
+          setFiles((prev) => prev.filter((_, idx) => idx !== i));
           setNewRecords([]);
           setSkippedCount(0);
           setAllRegistered(false);
@@ -1577,7 +1582,7 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
       )}
 
       <div className="flex gap-2">
-        <ActionButton onClick={handleParse} loading={loading} disabled={!file || parsed}>
+        <ActionButton onClick={handleParse} loading={loading} disabled={files.length === 0 || parsed}>
           解析する
         </ActionButton>
         {newRecords.length > 0 && (
@@ -1677,103 +1682,65 @@ function SalesTab({ onSuccess }: { onSuccess?: () => void }) {
 }
 
 function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [store, setStore] = useState<string>(STORES[0]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
-  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
+  const [results, setResults] = useState<string[]>([]);
 
-  const doUpload = async () => {
+  const handleUpload = async () => {
+    if (files.length === 0) return;
     setLoading(true);
     setStatus({ type: "info", text: "取込中..." });
-    setOverwriteWarning(null);
+    setResults([]);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file!);
-      formData.append("type", "ml001");
-      formData.append("store", store);
+      const msgs: string[] = [];
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type", "ml001");
+        formData.append("store", store);
 
-      const res = await fetch("/api/upload/hacomono", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus({ type: "error", text: data.error || "エラーが発生しました" });
-        return;
+        const res = await fetch("/api/upload/hacomono", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) {
+          msgs.push(`${file.name}: ${data.error || "エラー"}`);
+          continue;
+        }
+        msgs.push(`${store} ${data.records}名取込（${file.name}）`);
       }
-
-      setStatus({
-        type: "success",
-        text: `${store} の会員データを取り込みました（${data.records}名）`,
-      });
+      setResults(msgs);
+      setStatus({ type: "success", text: `${files.length}件のファイルを処理しました` });
       onSuccess?.();
     } catch (e) {
-      setStatus({
-        type: "error",
-        text: e instanceof Error ? e.message : "エラーが発生しました",
-      });
+      setStatus({ type: "error", text: e instanceof Error ? e.message : "エラー" });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpload = async () => {
-    if (!file) return;
-    setLoading(true);
-    setStatus(null);
-
-    try {
-      const checkRes = await fetch(`/api/upload/hacomono?type=ml001&store=${encodeURIComponent(store)}`);
-      const checkData = await checkRes.json();
-
-      if (checkData.exists) {
-        setOverwriteWarning({ count: checkData.count });
-        setLoading(false);
-        return;
-      }
-    } catch {
-      // Check failed, proceed with upload anyway
-    }
-
-    await doUpload();
-  };
-
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        hacomono「メンバー一覧」CSVをアップロード -- 常に最新データに上書きされます
+        hacomono「メンバー一覧」CSVをアップロード（複数選択可）
       </p>
-
       <div className="grid grid-cols-1 gap-4">
         <StoreSelect value={store} onChange={setStore} />
       </div>
-
-      <FileDropzone
-        accept=".csv"
-        file={file}
-        onFileSelect={setFile}
-        onClear={() => {
-          setFile(null);
-          setStatus(null);
-          setOverwriteWarning(null);
-        }}
+      <FileDropzone accept=".csv" multiple files={files}
+        onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); }}
+        onRemoveFile={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
       />
-
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
-        取り込む
+      <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0}>
+        {files.length <= 1 ? "取り込む" : `${files.length}件を取り込む`}
       </ActionButton>
-
-      {overwriteWarning && (
-        <OverwriteWarning
-          message={`\u26A0\uFE0F ${store}の会員データが既に${overwriteWarning.count}件あります。上書きしますか？`}
-          onConfirm={doUpload}
-          onCancel={() => setOverwriteWarning(null)}
-          loading={loading}
-        />
+      {results.length > 0 && (
+        <div className="space-y-1">
+          {results.map((r, i) => (
+            <p key={i} className={`text-sm ${r.includes("エラー") ? "text-red-600" : "text-green-600"}`}>{r}</p>
+          ))}
+        </div>
       )}
 
       <StatusBanner status={status} />
@@ -1782,45 +1749,41 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
 }
 
 function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [store, setStore] = useState<string>(STORES[0]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [results, setResults] = useState<string[]>([]);
 
   const doUpload = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "取込中..." });
+    setResults([]);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file!);
-      formData.append("type", "pl001");
-      formData.append("store", store);
-      formData.append("year", "0");
-      formData.append("month", "0");
+      const msgs: string[] = [];
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type", "pl001");
+        formData.append("store", store);
+        formData.append("year", "0");
+        formData.append("month", "0");
 
-      const res = await fetch("/api/upload/hacomono", {
-        method: "POST",
-        body: formData,
-      });
+        const res = await fetch("/api/upload/hacomono", { method: "POST", body: formData });
+        const data = await res.json();
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus({ type: "error", text: data.error || "エラーが発生しました" });
-        return;
+        if (!res.ok) {
+          msgs.push(`${file.name}: ${data.error || "エラー"}`);
+          continue;
+        }
+        msgs.push(`${store} ${data.year}年${data.month}月 ${data.records}件`);
       }
-
-      setStatus({
-        type: "success",
-        text: `${store} ${data.year}年${data.month}月の売上明細を取り込みました（${data.records}件）`,
-      });
+      setResults(msgs);
+      setStatus({ type: "success", text: `${files.length}件のファイルを処理しました` });
       onSuccess?.();
     } catch (e) {
-      setStatus({
-        type: "error",
-        text: e instanceof Error ? e.message : "エラーが発生しました",
-      });
+      setStatus({ type: "error", text: e instanceof Error ? e.message : "エラー" });
     } finally {
       setLoading(false);
     }
@@ -1829,73 +1792,66 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        hacomono「売上明細」PL001 CSVをアップロード（年月はCSVから自動検出）
+        hacomono「売上明細」PL001 CSVをアップロード（複数選択可・年月は自動検出）
       </p>
-
       <div className="grid grid-cols-1 gap-4">
         <StoreSelect value={store} onChange={setStore} />
       </div>
-
-      <FileDropzone
-        accept=".csv"
-        file={file}
-        onFileSelect={setFile}
-        onClear={() => {
-          setFile(null);
-          setStatus(null);
-        }}
+      <FileDropzone accept=".csv" multiple files={files}
+        onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); }}
+        onRemoveFile={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
       />
-
-      <ActionButton onClick={doUpload} loading={loading} disabled={!file}>
-        取り込む
+      <ActionButton onClick={doUpload} loading={loading} disabled={files.length === 0}>
+        {files.length <= 1 ? "取り込む" : `${files.length}件を取り込む`}
       </ActionButton>
-
+      {results.length > 0 && (
+        <div className="space-y-1">
+          {results.map((r, i) => (
+            <p key={i} className={`text-sm ${r.includes("エラー") ? "text-red-600" : "text-green-600"}`}>{r}</p>
+          ))}
+        </div>
+      )}
       <StatusBanner status={status} />
     </div>
   );
 }
 
 function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [store, setStore] = useState<string>(STORES[0]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [results, setResults] = useState<string[]>([]);
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setLoading(true);
     setStatus({ type: "info", text: "取込中..." });
+    setResults([]);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", "ma002");
-      formData.append("store", store);
-      formData.append("year", "0");
-      formData.append("month", "0");
+      const msgs: string[] = [];
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type", "ma002");
+        formData.append("store", store);
+        formData.append("year", "0");
+        formData.append("month", "0");
 
-      const res = await fetch("/api/upload/hacomono", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus({ type: "error", text: data.error || "エラーが発生しました" });
-        return;
+        const res = await fetch("/api/upload/hacomono", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) {
+          msgs.push(`${file.name}: ${data.error || "エラー"}`);
+          continue;
+        }
+        msgs.push(`${store} ${data.records}件取込（${file.name}）`);
       }
-
-      setStatus({
-        type: "success",
-        text: `${store} の月次サマリを取り込みました（${data.records}件）※年月はCSVから自動検出`,
-      });
+      setResults(msgs);
+      setStatus({ type: "success", text: `${files.length}件のファイルを処理しました` });
       onSuccess?.();
     } catch (e) {
-      setStatus({
-        type: "error",
-        text: e instanceof Error ? e.message : "エラーが発生しました",
-      });
+      setStatus({ type: "error", text: e instanceof Error ? e.message : "エラー" });
     } finally {
       setLoading(false);
     }
@@ -1904,27 +1860,25 @@ function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        hacomono「月次サマリ」MA002 CSVをアップロード（年月はCSVから自動検出・複数月対応）
+        hacomono「月次サマリ」MA002 CSVをアップロード（複数選択可・年月は自動検出）
       </p>
-
       <div className="grid grid-cols-1 gap-4">
         <StoreSelect value={store} onChange={setStore} />
       </div>
-
-      <FileDropzone
-        accept=".csv"
-        file={file}
-        onFileSelect={setFile}
-        onClear={() => {
-          setFile(null);
-          setStatus(null);
-        }}
+      <FileDropzone accept=".csv" multiple files={files}
+        onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); }}
+        onRemoveFile={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
       />
-
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file}>
-        取り込む
+      <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0}>
+        {files.length <= 1 ? "取り込む" : `${files.length}件を取り込む`}
       </ActionButton>
-
+      {results.length > 0 && (
+        <div className="space-y-1">
+          {results.map((r, i) => (
+            <p key={i} className={`text-sm ${r.includes("エラー") ? "text-red-600" : "text-green-600"}`}>{r}</p>
+          ))}
+        </div>
+      )}
       <StatusBanner status={status} />
     </div>
   );
