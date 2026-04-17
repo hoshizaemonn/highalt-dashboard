@@ -219,6 +219,52 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-lg font-bold text-gray-700 mt-8 mb-3">{children}</h2>;
 }
 
+function RecalculateButton({
+  year,
+  month,
+  onDone,
+}: {
+  year: number;
+  month: number;
+  onDone: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const handleRecalc = async () => {
+    if (!confirm(`${year}年${month}月の人件費データを最新の店舗マッピングで再計算します。よろしいですか？`)) return;
+    setLoading(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/dashboard/recalculate-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year, month }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "エラー");
+      setMsg(`${data.employees}名の店舗割り当てを再計算しました`);
+      onDone();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "エラーが発生しました");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <>
+      <button
+        onClick={handleRecalc}
+        disabled={loading}
+        className="text-sm bg-white border rounded-lg px-4 py-2 hover:bg-gray-50 text-gray-700 shadow-sm disabled:opacity-50"
+      >
+        {loading ? "再計算中..." : "🔄 店舗割り当てを再計算"}
+      </button>
+      {msg && <span className="text-sm text-green-600 self-center">{msg}</span>}
+    </>
+  );
+}
+
 // ─── Editable Member Section (MA002) ─────────────────────
 
 interface MemberFields {
@@ -1739,9 +1785,9 @@ function MonthlyView({
         />
       )}
 
-      {/* Payroll Summary Download (admin only) */}
+      {/* Payroll Summary Download + Recalculate (admin only) */}
       {isAdmin && (
-        <div className="mt-6">
+        <div className="mt-6 flex gap-3 flex-wrap">
           <button
             onClick={() => {
               const params = new URLSearchParams({
@@ -1754,6 +1800,7 @@ function MonthlyView({
           >
             📥 人件費サマリをダウンロード
           </button>
+          <RecalculateButton year={year} month={month} onDone={onRefresh} />
         </div>
       )}
 
