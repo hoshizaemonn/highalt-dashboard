@@ -1580,7 +1580,7 @@ function MonthlyView({
     if (budgetRows.length === 0) return [];
     return budgetRows
       .filter((r) =>
-        ["売上合計", "人件費", "経費合計", "営業利益"].includes(r.category),
+        ["売上合計", "人件費合計", "経費合計", "営業利益"].includes(r.category),
       )
       .map((r) => ({
         name: r.category,
