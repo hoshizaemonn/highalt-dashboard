@@ -68,6 +68,28 @@ export async function GET(request: NextRequest) {
       return s.replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
     }
 
+    // Pre-compute payment groups: group amazon orders by (paymentDate, orderTotal)
+    // to match shipment-level payments (multiple items in one payment)
+    const paymentGroups = new Map<string, typeof amazonRows>();
+    for (const a of amazonRows) {
+      if (!a.paymentDate || a.paymentDate === "該当無し") continue;
+      // Group by payment date + order ID (same shipment)
+      const key = `${a.paymentDate}_${a.orderTotal}`;
+      const group = paymentGroups.get(key) || [];
+      group.push(a);
+      paymentGroups.set(key, group);
+    }
+
+    // Also group by payment date only, summing amounts per shipment
+    // A "shipment" is identified by same paymentDate + same orderDate + same orderTotal
+    const shipmentPayments = new Map<number, typeof amazonRows>();
+    for (const [, group] of paymentGroups) {
+      const totalPayment = group.reduce((s, a) => s + a.amount, 0);
+      if (!shipmentPayments.has(totalPayment)) {
+        shipmentPayments.set(totalPayment, group);
+      }
+    }
+
     const enriched = rows.map((row) => {
       if (row.breakdown && row.breakdown.trim()) return row;
 
@@ -76,36 +98,34 @@ export async function GET(request: NextRequest) {
 
       const amt = Math.round(row.amount);
 
-      // Try amazon_orders matching (payment_date + amount)
       if (amazonRows.length > 0) {
         const dayStr = `${year}/${String(month).padStart(2, "0")}/${String(row.day).padStart(2, "0")}`;
 
+        // 1. Exact: payment_date + order_total
         let matched = amazonRows.filter(
           (a) => a.paymentDate === dayStr && a.orderTotal === amt,
         );
+
+        // 2. order_total only
         if (matched.length === 0) {
           matched = amazonRows.filter((a) => a.orderTotal === amt);
         }
+
+        // 3. Individual product amount
         if (matched.length === 0) {
           matched = amazonRows.filter((a) => a.amount === amt);
         }
 
-        if (matched.length > 0) {
-          const names = [...new Set(matched.map((m) => m.shortName || m.productName).filter(Boolean))];
-          if (names.length > 0) {
-            return { ...row, breakdown: names.join(" / ") };
+        // 4. Shipment payment sum (multiple products in one payment = expense amount)
+        if (matched.length === 0) {
+          const shipmentMatch = shipmentPayments.get(amt);
+          if (shipmentMatch) {
+            matched = shipmentMatch;
           }
         }
-      }
 
-      // Fall back: try to extract order number from description and match
-      // Description like: Vデビット AMAZON.CO.JP 1A032001
-      const orderNumMatch = desc.match(/([0-9A-Z]{8,})\s*$/);
-      if (orderNumMatch) {
-        // Look up any amazon_order or product with matching amount
-        const amtMatched = amazonRows.filter((a) => a.amount === amt || a.orderTotal === amt);
-        if (amtMatched.length > 0) {
-          const names = [...new Set(amtMatched.map((m) => m.shortName || m.productName).filter(Boolean))];
+        if (matched.length > 0) {
+          const names = [...new Set(matched.map((m) => m.shortName || m.productName).filter(Boolean))];
           if (names.length > 0) {
             return { ...row, breakdown: names.join(" / ") };
           }
