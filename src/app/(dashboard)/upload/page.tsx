@@ -1359,7 +1359,6 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
-  const [autoSetFromCategory, setAutoSetFromCategory] = useState(true);
   // Only unregistered (new) products to confirm
   const [newRecords, setNewRecords] = useState<
     {
@@ -1451,9 +1450,6 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
           registered++;
         } else {
           // Apply auto-set from Amazon category
-          if (autoSetFromCategory && rec.amazonCategory) {
-            entry.expenseCategory = amazonCategoryToExpense[rec.amazonCategory] || "";
-          }
           unregistered.push(entry);
         }
       }
@@ -1568,18 +1564,6 @@ function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
           setAllRegistered(false);
         }}
       />
-
-      {!parsed && (
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={autoSetFromCategory}
-            onChange={(e) => setAutoSetFromCategory(e.target.checked)}
-            className="rounded"
-          />
-          <span className="text-sm text-gray-600">未分類にAmazonカテゴリから初期値を自動セット</span>
-        </label>
-      )}
 
       <div className="flex gap-2">
         <ActionButton onClick={handleParse} loading={loading} disabled={files.length === 0 || parsed}>
