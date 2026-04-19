@@ -73,10 +73,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Budget CSV (予算実績対比表) format:
-    // Each month has 4 columns: 予算/実績/予算差/予算比 starting from col index 1
+    // Budget CSV supports two formats:
+    // A) 予算実績対比表: each month has 4 columns (予算/実績/予算差/予算比)
+    // B) 予算書: each month has 1 column (予算のみ)
     // Values are in thousands (千円単位) → multiply by 1000
     // Fiscal year: Oct(fy-1) to Sep(fy)
+
+    // Auto-detect format: check if header row contains "予算" or "実績"
+    // 対比表 has ~49+ columns (1 + 12*4), 予算書 has ~14 columns (1 + 12 + 1合計)
+    const headerRow = allRows[0] || [];
+    const hasJisseki = headerRow.some((h: string) =>
+      h && (h.includes("実績") || h.includes("予算差") || h.includes("予算比")),
+    );
+    // Also check by column count: >20 columns likely means 対比表 format
+    const maxCols = Math.max(...allRows.map((r: string[]) => r.length));
+    const is対比表 = hasJisseki || maxCols > 20;
+    const colsPerMonth = is対比表 ? 4 : 1;
 
     // Build fiscal year month mapping: [(2025,10),(2025,11),(2025,12),(2026,1),...,(2026,9)]
     const fyMonths: { year: number; month: number }[] = [];
@@ -100,16 +112,20 @@ export async function POST(request: NextRequest) {
       const categoryName = row[0].trim();
       if (!budgetItemSet.has(categoryName)) continue;
 
-      // Each month has 4 columns: 予算/実績/予算差/予算比 starting from col index 1
       for (let i = 0; i < fyMonths.length; i++) {
-        const colIdx = 1 + i * 4; // 予算 column (first of each group of 4)
+        const colIdx = 1 + i * colsPerMonth; // 対比表: 4列おき, 予算書: 1列おき
         if (colIdx >= row.length) break;
 
         const valStr = row[colIdx].trim().replace(/,/g, "").replace(/"/g, "").replace(/ /g, "");
         if (!valStr || valStr === "0" || valStr === "-") continue;
 
+        // Skip percentage values (e.g. "66%", "100%")
+        if (valStr.includes("%")) continue;
+        // Skip negative parenthesized values like "(64)"
+        const cleanVal = valStr.replace(/[()（）]/g, "");
+
         try {
-          const amount = parseInt(valStr, 10) * 1000; // 千円単位 → 円
+          const amount = parseInt(cleanVal, 10) * 1000; // 千円単位 → 円
           if (isNaN(amount)) continue;
 
           records.push({
@@ -117,7 +133,7 @@ export async function POST(request: NextRequest) {
             year: fyMonths[i].year,
             month: fyMonths[i].month,
             category: categoryName,
-            amount,
+            amount: valStr.startsWith("(") || valStr.startsWith("（") ? -amount : amount,
           });
         } catch {
           // Skip invalid values
