@@ -269,54 +269,85 @@ function PlanBreakdownPie({
 
   const total = plans.reduce((s, p) => s + p.count, 0);
 
+  // Custom label: show % on slices with enough space (>= 4%)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderLabel = (props: any) => {
+    const { cx, cy, midAngle, innerRadius, outerRadius, index } = props;
+    if (!plans[index]) return null;
+    const pct = (plans[index].count / total) * 100;
+    if (pct < 4) return null;
+    const RADIAN = Math.PI / 180;
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="#fff"
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={11}
+        fontWeight={600}
+      >
+        {pct.toFixed(0)}%
+      </text>
+    );
+  };
+
   return (
     <>
       <SectionTitle>プラン別会員数</SectionTitle>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white rounded-lg border shadow-sm p-4">
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={plans}
-                dataKey="count"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={100}
-                innerRadius={40}
-                paddingAngle={1}
-                label={false}
-              >
-                {plans.map((_, i) => (
-                  <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value) => [
-                  `${Number(value)}人（${((Number(value) / total) * 100).toFixed(1)}%）`,
-                ]}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="bg-white rounded-lg border shadow-sm p-4">
-          <p className="text-sm font-medium text-gray-600 mb-3">
-            合計: {total}人
-          </p>
-          <div className="space-y-1.5 max-h-[280px] overflow-y-auto">
-            {plans.map((p, i) => (
-              <div key={p.name} className="flex items-center gap-2 text-sm">
-                <span
-                  className="w-3 h-3 rounded-full shrink-0"
-                  style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+      <div className="bg-white rounded-lg border shadow-sm p-4">
+        <div className="flex flex-col lg:flex-row items-center gap-4">
+          {/* Chart */}
+          <div className="w-full lg:w-auto shrink-0">
+            <ResponsiveContainer width={280} height={280}>
+              <PieChart>
+                <Pie
+                  data={plans}
+                  dataKey="count"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={120}
+                  innerRadius={50}
+                  paddingAngle={1}
+                  label={renderLabel}
+                  labelLine={false}
+                >
+                  {plans.map((_, i) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value) => [
+                    `${Number(value)}人（${((Number(value) / total) * 100).toFixed(1)}%）`,
+                  ]}
                 />
-                <span className="flex-1 truncate">{p.name}</span>
-                <span className="font-medium">{p.count}人</span>
-                <span className="text-gray-400 text-xs w-12 text-right">
-                  {((p.count / total) * 100).toFixed(1)}%
-                </span>
-              </div>
-            ))}
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          {/* Legend */}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-600 mb-3">
+              合計: {total}人
+            </p>
+            <div className="space-y-1.5 max-h-[260px] overflow-y-auto">
+              {plans.map((p, i) => (
+                <div key={p.name} className="flex items-center gap-2 text-sm">
+                  <span
+                    className="w-3 h-3 rounded-full shrink-0"
+                    style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+                  />
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="font-medium">{p.count}人</span>
+                  <span className="text-gray-400 text-xs w-12 text-right">
+                    {((p.count / total) * 100).toFixed(1)}%
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
