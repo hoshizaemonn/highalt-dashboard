@@ -35,7 +35,8 @@ export default async function seed() {
   // Only seed if users table is empty
   const userCount = await prisma.user.count();
   if (userCount === 0) {
-    const hashedPassword = await hashPassword("admin123");
+    const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || "admin123";
+    const hashedPassword = await hashPassword(initialPassword);
     await prisma.user.create({
       data: {
         username: "admin",
