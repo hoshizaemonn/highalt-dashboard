@@ -283,7 +283,9 @@ function PlanBreakdownPie({
                 cx="50%"
                 cy="50%"
                 outerRadius={100}
-                label
+                innerRadius={40}
+                paddingAngle={1}
+                label={false}
               >
                 {plans.map((_, i) => (
                   <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
@@ -294,7 +296,6 @@ function PlanBreakdownPie({
                   `${Number(value)}人（${((Number(value) / total) * 100).toFixed(1)}%）`,
                 ]}
               />
-              <Legend />
             </PieChart>
           </ResponsiveContainer>
         </div>
