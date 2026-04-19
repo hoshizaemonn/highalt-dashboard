@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
       memberRows.length > 0
         ? {
             plan_subscribers: memberRows.reduce((s, r) => s + r.planSubscribers, 0),
-            new_plan_signups: memberRows.reduce((s, r) => s + r.newPlanSignups, 0),
+            new_plan_signups: memberRows.reduce((s, r) => s + (r.newPlanSignups || r.newPlanApplications), 0),
             cancellations: memberRows.reduce((s, r) => s + r.cancellations, 0),
             suspensions: memberRows.reduce((s, r) => s + r.suspensions, 0),
             cancellation_rate: memberRows[0].cancellationRate,

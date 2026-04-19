@@ -218,7 +218,7 @@ export async function GET(request: NextRequest) {
         parttime_count: ptCount,
         ma_total_members: ms.reduce((s, r) => s + (r.totalMembers || r.planSubscribers), 0),
         ma_plan_subscribers: ms.reduce((s, r) => s + r.planSubscribers, 0),
-        ma_new_signups: ms.reduce((s, r) => s + r.newPlanSignups, 0),
+        ma_new_signups: ms.reduce((s, r) => s + (r.newPlanSignups || r.newPlanApplications), 0),
         ma_cancellations: ms.reduce((s, r) => s + r.cancellations, 0),
         ma_suspensions: ms.reduce((s, r) => s + r.suspensions, 0),
         ma_cancel_rate: ms.length > 0 ? ms[0].cancellationRate : "",
