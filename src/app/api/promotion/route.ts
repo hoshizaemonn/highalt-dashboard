@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
       adOther: fields.adOther ?? 0,
       adTotal,
       unitPrice: fields.unitPrice ?? 0,
+      unitPriceBudget: fields.unitPriceBudget ?? 0,
       optAthlete4: fields.optAthlete4 ?? 0,
       optAthlete8: fields.optAthlete8 ?? 0,
       optDrinkHyalchi: fields.optDrinkHyalchi ?? 0,

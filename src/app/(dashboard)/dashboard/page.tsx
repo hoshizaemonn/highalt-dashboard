@@ -153,6 +153,12 @@ interface PlanBreakdownEntry {
   count: number;
 }
 
+interface StorePlanBreakdown {
+  store: string;
+  plans: PlanBreakdownEntry[];
+  total: number;
+}
+
 interface AnnualData {
   store: string | null;
   monthly_data: MonthlyEntry[];
@@ -584,6 +590,7 @@ interface PromotionData {
   adOther: number;
   adTotal: number;
   unitPrice: number;
+  unitPriceBudget: number;
   optAthlete4: number;
   optAthlete8: number;
   optDrinkHyalchi: number;
@@ -693,7 +700,12 @@ function PromotionSection({
 
       {/* Options + KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-        <KPICard title="客単価" value={formatYen(data.unitPrice)} color={COLORS.blue} />
+        <KPICard
+          title="客単価"
+          value={formatYen(data.unitPrice)}
+          color={COLORS.blue}
+          sub={data.unitPriceBudget > 0 ? `予算: ${formatYen(data.unitPriceBudget)}（差: ${formatYen(data.unitPrice - data.unitPriceBudget)}）` : undefined}
+        />
         <KPICard title="パーソナル売上" value={formatYen(data.personalRevenue)} color={COLORS.green} />
         <KPICard title="物販売上" value={formatYen(data.merchandiseRevenue)} color={COLORS.teal} />
       </div>
@@ -2036,6 +2048,7 @@ function PeriodView({
   budgetData,
   store,
   planBreakdown,
+  storePlanBreakdown,
   fiscalYear,
 }: {
   annualData: AnnualData;
@@ -2044,6 +2057,7 @@ function PeriodView({
   budgetData: Record<string, number>;
   store: string;
   planBreakdown: PlanBreakdownEntry[] | null;
+  storePlanBreakdown: StorePlanBreakdown[] | null;
   fiscalYear: number;
 }) {
   const monthly = annualData.monthly_data;
@@ -2713,6 +2727,61 @@ function PeriodView({
           </div>
         </>
       )}
+
+      {/* Store-level Plan Breakdown Pie Charts */}
+      {storePlanBreakdown && storePlanBreakdown.length > 0 && (
+        <>
+          <SectionTitle>店舗別 プラン割合</SectionTitle>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+            {storePlanBreakdown.map((storeData) => (
+              <div key={storeData.store} className="bg-white rounded-lg border shadow-sm p-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  {storeData.store}
+                  <span className="text-gray-400 ml-2 text-xs">({storeData.total}人)</span>
+                </p>
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={storeData.plans}
+                      dataKey="count"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={70}
+                      innerRadius={30}
+                      paddingAngle={1}
+                    >
+                      {storeData.plans.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value) => [
+                        `${Number(value)}人（${((Number(value) / storeData.total) * 100).toFixed(1)}%）`,
+                      ]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1 mt-2 max-h-[120px] overflow-y-auto">
+                  {storeData.plans.map((p, i) => (
+                    <div key={p.name} className="flex items-center gap-1.5 text-xs">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+                      />
+                      <span className="flex-1 truncate">{p.name}</span>
+                      <span className="font-medium">{p.count}</span>
+                      <span className="text-gray-400 w-10 text-right">
+                        {((p.count / storeData.total) * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -2749,6 +2818,7 @@ export default function DashboardPage() {
   const [storeCompareData, setStoreCompareData] = useState<StoreCompareData | null>(null);
   const [periodBudget, setPeriodBudget] = useState<Record<string, number>>({});
   const [planBreakdown, setPlanBreakdown] = useState<PlanBreakdownEntry[] | null>(null);
+  const [storePlanBreakdown, setStorePlanBreakdown] = useState<StorePlanBreakdown[] | null>(null);
 
   const isMonthly = !["通期", "上期", "下期"].includes(period);
   const isAllStores = store === "全体";
@@ -2800,6 +2870,7 @@ export default function DashboardPage() {
       setStoreCompareData(null);
       setPeriodBudget({});
       setPlanBreakdown(null);
+      setStorePlanBreakdown(null);
 
       try {
         if (isMonthly) {
@@ -2911,11 +2982,15 @@ export default function DashboardPage() {
                 month: String(latestMonth.month),
               });
               if (!isAllStores) planParams.set("store", store);
+              if (isAllStores) planParams.set("byStore", "1");
               try {
                 const planRes = await fetch(`/api/dashboard/plan-breakdown?${planParams}`);
                 if (planRes.ok) {
                   const planJson = await planRes.json();
-                  if (!cancelled) setPlanBreakdown(planJson.plans ?? null);
+                  if (!cancelled) {
+                    setPlanBreakdown(planJson.plans ?? null);
+                    setStorePlanBreakdown(planJson.byStore ?? null);
+                  }
                 }
               } catch {
                 // Plan breakdown is optional, don't fail
@@ -2987,6 +3062,7 @@ export default function DashboardPage() {
           budgetData={periodBudget}
           store={store}
           planBreakdown={planBreakdown}
+          storePlanBreakdown={storePlanBreakdown}
           fiscalYear={year}
         />
       )}

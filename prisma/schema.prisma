@@ -326,6 +326,7 @@ model PromotionReport {
 
   // 客単価
   unitPrice             Int    @default(0) @map("unit_price")
+  unitPriceBudget       Int    @default(0) @map("unit_price_budget")
 
   // オプション
   optAthlete4           Int    @default(0) @map("opt_athlete_4")
