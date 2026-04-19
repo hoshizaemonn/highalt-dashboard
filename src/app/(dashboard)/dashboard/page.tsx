@@ -323,6 +323,92 @@ function PlanBreakdownPie({
   );
 }
 
+// ─── Store-level Plan Breakdown (monthly, all stores) ──────
+
+function StorePlanBreakdownSection({
+  year,
+  month,
+}: {
+  year: number;
+  month: number;
+}) {
+  const [data, setData] = useState<StorePlanBreakdown[] | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      year: String(year),
+      month: String(month),
+      byStore: "1",
+    });
+    fetch(`/api/dashboard/plan-breakdown?${params}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (json?.byStore && json.byStore.length > 0) {
+          setData(json.byStore);
+        } else {
+          setData(null);
+        }
+      })
+      .catch(() => setData(null));
+  }, [year, month]);
+
+  if (!data || data.length === 0) return null;
+
+  return (
+    <>
+      <SectionTitle>店舗別 プラン割合</SectionTitle>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+        {data.map((storeData) => (
+          <div key={storeData.store} className="bg-white rounded-lg border shadow-sm p-4">
+            <p className="text-sm font-medium text-gray-700 mb-2">
+              {storeData.store}
+              <span className="text-gray-400 ml-2 text-xs">({storeData.total}人)</span>
+            </p>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie
+                  data={storeData.plans}
+                  dataKey="count"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={70}
+                  innerRadius={30}
+                  paddingAngle={1}
+                >
+                  {storeData.plans.map((_, i) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value) => [
+                    `${Number(value)}人（${((Number(value) / storeData.total) * 100).toFixed(1)}%）`,
+                  ]}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-1 mt-2 max-h-[120px] overflow-y-auto">
+              {storeData.plans.map((p, i) => (
+                <div key={p.name} className="flex items-center gap-1.5 text-xs">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+                  />
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="font-medium">{p.count}</span>
+                  <span className="text-gray-400 w-10 text-right">
+                    {((p.count / storeData.total) * 100).toFixed(0)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function RecalculateButton({
   year,
   month,
@@ -1865,6 +1951,11 @@ function MonthlyView({
       {/* Plan Breakdown Pie Chart */}
       {!isAllStores && (
         <PlanBreakdownPie year={year} month={month} store={store} />
+      )}
+
+      {/* Store-level Plan Breakdown Pie Charts (all stores) */}
+      {isAllStores && (
+        <StorePlanBreakdownSection year={year} month={month} />
       )}
 
       {/* Promotion Report */}
