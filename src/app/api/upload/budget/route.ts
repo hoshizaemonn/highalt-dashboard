@@ -79,15 +79,17 @@ export async function POST(request: NextRequest) {
     // Values are in thousands (千円単位) → multiply by 1000
     // Fiscal year: Oct(fy-1) to Sep(fy)
 
-    // Auto-detect format: check if header row contains "予算" or "実績"
-    // 対比表 has ~49+ columns (1 + 12*4), 予算書 has ~14 columns (1 + 12 + 1合計)
-    const headerRow = allRows[0] || [];
-    const hasJisseki = headerRow.some((h: string) =>
-      h && (h.includes("実績") || h.includes("予算差") || h.includes("予算比")),
+    // Auto-detect format: check if header/month row contains "実績"/"予算差"/"予算比"
+    // 対比表 has 4 columns per month (予算/実績/予算差/予算比)
+    // 予算書 has 1 column per month (予算のみ)
+    // Prioritize header content over column count (some CSVs have extra columns)
+    const headerRows = allRows.slice(0, 3);
+    const hasJisseki = headerRows.some((row: string[]) =>
+      row?.some((h: string) =>
+        h && (h.includes("実績") || h.includes("予算差") || h.includes("予算比")),
+      ),
     );
-    // Also check by column count: >20 columns likely means 対比表 format
-    const maxCols = Math.max(...allRows.map((r: string[]) => r.length));
-    const is対比表 = hasJisseki || maxCols > 20;
+    const is対比表 = hasJisseki;
     const colsPerMonth = is対比表 ? 4 : 1;
 
     // Build fiscal year month mapping: [(2025,10),(2025,11),(2025,12),(2026,1),...,(2026,9)]
