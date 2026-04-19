@@ -201,7 +201,7 @@ export async function GET(request: NextRequest) {
             suspensions: memberRows.reduce((s, r) => s + r.suspensions, 0),
             cancellation_rate: memberRows[0].cancellationRate,
             plan_changes: memberRows.reduce((s, r) => s + r.planChanges, 0),
-            total_members: memberRows.reduce((s, r) => s + r.totalMembers, 0),
+            total_members: memberRows.reduce((s, r) => s + (r.totalMembers || r.planSubscribers), 0),
           }
         : null;
 
