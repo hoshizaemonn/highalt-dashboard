@@ -301,32 +301,30 @@ function PlanBreakdownPie({
       <div className="bg-white rounded-lg border shadow-sm p-4">
         <div className="flex flex-col lg:flex-row items-center gap-4">
           {/* Chart */}
-          <div className="w-full lg:w-auto shrink-0">
-            <ResponsiveContainer width={280} height={280}>
-              <PieChart>
-                <Pie
-                  data={plans}
-                  dataKey="count"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={120}
-                  innerRadius={50}
-                  paddingAngle={1}
-                  label={renderLabel}
-                  labelLine={false}
-                >
-                  {plans.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value) => [
-                    `${Number(value)}人（${((Number(value) / total) * 100).toFixed(1)}%）`,
-                  ]}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="shrink-0">
+            <PieChart width={280} height={280}>
+              <Pie
+                data={plans}
+                dataKey="count"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={120}
+                innerRadius={50}
+                paddingAngle={1}
+                label={renderLabel}
+                labelLine={false}
+              >
+                {plans.map((_, i) => (
+                  <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value) => [
+                  `${Number(value)}人（${((Number(value) / total) * 100).toFixed(1)}%）`,
+                ]}
+              />
+            </PieChart>
           </div>
           {/* Legend */}
           <div className="flex-1 min-w-0">
