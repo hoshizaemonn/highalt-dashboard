@@ -2756,20 +2756,21 @@ export default function DashboardPage() {
   // Build fiscal year months string for store-compare API
   const buildMonthsParam = useCallback(
     (y: number, p: string) => {
+      // y = fiscal year (e.g. 2026 means 2025/10 ~ 2026/9)
       const pairs: string[] = [];
       if (p === "通期") {
         for (let m = 10; m <= 12; m++)
-          pairs.push(`${y}-${String(m).padStart(2, "0")}`);
+          pairs.push(`${y - 1}-${String(m).padStart(2, "0")}`);
         for (let m = 1; m <= 9; m++)
-          pairs.push(`${y + 1}-${String(m).padStart(2, "0")}`);
+          pairs.push(`${y}-${String(m).padStart(2, "0")}`);
       } else if (p === "上期") {
         for (let m = 10; m <= 12; m++)
-          pairs.push(`${y}-${String(m).padStart(2, "0")}`);
+          pairs.push(`${y - 1}-${String(m).padStart(2, "0")}`);
         for (let m = 1; m <= 3; m++)
-          pairs.push(`${y + 1}-${String(m).padStart(2, "0")}`);
+          pairs.push(`${y}-${String(m).padStart(2, "0")}`);
       } else if (p === "下期") {
         for (let m = 4; m <= 9; m++)
-          pairs.push(`${y + 1}-${String(m).padStart(2, "0")}`);
+          pairs.push(`${y}-${String(m).padStart(2, "0")}`);
       }
       return pairs.join(",");
     },
