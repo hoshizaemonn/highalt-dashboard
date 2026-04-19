@@ -1667,7 +1667,6 @@ function SalesTab({ onSuccess }: { onSuccess?: () => void }) {
 
 function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
   const [files, setFiles] = useState<File[]>([]);
-  const [store, setStore] = useState<string>(STORES[0]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [results, setResults] = useState<string[]>([]);
@@ -1684,7 +1683,7 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("type", "ml001");
-        formData.append("store", store);
+        formData.append("store", "");
 
         const res = await fetch("/api/upload/hacomono", { method: "POST", body: formData });
         const data = await res.json();
@@ -1692,7 +1691,8 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
           msgs.push(`${file.name}: ${data.error || "エラー"}`);
           continue;
         }
-        msgs.push(`${store} ${data.records}名取込（${file.name}）`);
+        const stores = data.detectedStores?.join(", ") || data.store || "";
+        msgs.push(`${stores} ${data.records}名取込（${file.name}）`);
       }
       setResults(msgs);
       setStatus({ type: "success", text: `${files.length}件のファイルを処理しました` });
@@ -1707,11 +1707,8 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        hacomono「メンバー一覧」CSVをアップロード（複数選択可）
+        hacomono「メンバー一覧」CSVをアップロード（複数選択可・店舗は自動検出）
       </p>
-      <div className="grid grid-cols-1 gap-4">
-        <StoreSelect value={store} onChange={setStore} />
-      </div>
       <FileDropzone accept=".csv" multiple files={files}
         onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); }}
         onRemoveFile={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
@@ -1734,7 +1731,6 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
 
 function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
   const [files, setFiles] = useState<File[]>([]);
-  const [store, setStore] = useState<string>(STORES[0]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [results, setResults] = useState<string[]>([]);
@@ -1750,7 +1746,7 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("type", "pl001");
-        formData.append("store", store);
+        formData.append("store", "");
         formData.append("year", "0");
         formData.append("month", "0");
 
@@ -1761,7 +1757,8 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
           msgs.push(`${file.name}: ${data.error || "エラー"}`);
           continue;
         }
-        msgs.push(`${store} ${data.year}年${data.month}月 ${data.records}件`);
+        const stores = data.detectedStores?.join(", ") || data.store || "";
+        msgs.push(`${stores} ${data.year}年${data.month}月 ${data.records}件`);
       }
       setResults(msgs);
       setStatus({ type: "success", text: `${files.length}件のファイルを処理しました` });
@@ -1776,11 +1773,8 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        hacomono「売上明細」PL001 CSVをアップロード（複数選択可・年月は自動検出）
+        hacomono「売上明細」PL001 CSVをアップロード（複数選択可・店舗&年月は自動検出）
       </p>
-      <div className="grid grid-cols-1 gap-4">
-        <StoreSelect value={store} onChange={setStore} />
-      </div>
       <FileDropzone accept=".csv" multiple files={files}
         onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); }}
         onRemoveFile={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}

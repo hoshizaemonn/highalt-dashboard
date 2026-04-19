@@ -142,12 +142,7 @@ export async function POST(request: NextRequest) {
 
     // ─── ML001: Member Data ───────────────────────────────────
     if (type === "ml001") {
-      if (!store) {
-        return NextResponse.json(
-          { error: "store is required for ML001" },
-          { status: 400 },
-        );
-      }
+      // store is now optional — auto-detected from CSV "所属店舗名" column
 
       const colIdx = (name: string, fallback: number) =>
         hmap[name] !== undefined ? hmap[name] : fallback;
@@ -253,11 +248,17 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Delete existing member data for this store, then insert
+      // Get unique stores from the CSV data
+      const detectedStores = [...new Set(records.map((r) => r.storeName))];
+      const primaryStore = detectedStores[0] || store || "不明";
+
+      // Delete existing member data for each detected store, then insert
       await prisma.$transaction(async (tx) => {
-        await tx.memberData.deleteMany({
-          where: { storeName: store },
-        });
+        for (const s of detectedStores) {
+          await tx.memberData.deleteMany({
+            where: { storeName: s },
+          });
+        }
 
         if (records.length > 0) {
           await tx.memberData.createMany({ data: records });
@@ -269,7 +270,7 @@ export async function POST(request: NextRequest) {
             userName:
               session.displayName || session.storeName || "ユーザー",
             dataType: "hacomono_ml001",
-            storeName: store,
+            storeName: primaryStore,
             year: effectiveYear,
             month: effectiveMonth,
             fileName: file.name,
@@ -281,17 +282,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         records: records.length,
         type: "ml001",
+        store: primaryStore,
+        detectedStores,
       });
     }
 
     // ─── PL001: Sales Detail ──────────────────────────────────
     if (type === "pl001") {
-      if (!store || isNaN(year) || isNaN(month)) {
-        return NextResponse.json(
-          { error: "store, year, month are required for PL001" },
-          { status: 400 },
-        );
-      }
+      // store is now optional — auto-detected from CSV "購入店舗" column
 
       const getVal = (row: string[], colName: string): string => {
         const idx = hmap[colName];
@@ -384,10 +382,17 @@ export async function POST(request: NextRequest) {
         r.month = saveMonth;
       }
 
+      // Get unique stores from the CSV data
+      const detectedStores = [...new Set(records.map((r) => r.storeName))];
+      const primaryStore = detectedStores[0] || store || "不明";
+
       await prisma.$transaction(async (tx) => {
-        await tx.salesDetail.deleteMany({
-          where: { year: saveYear, month: saveMonth, storeName: store },
-        });
+        // Delete existing data for each detected store + month
+        for (const s of detectedStores) {
+          await tx.salesDetail.deleteMany({
+            where: { year: saveYear, month: saveMonth, storeName: s },
+          });
+        }
 
         if (records.length > 0) {
           await tx.salesDetail.createMany({ data: records });
@@ -399,7 +404,7 @@ export async function POST(request: NextRequest) {
             userName:
               session.displayName || session.storeName || "ユーザー",
             dataType: "hacomono_pl001",
-            storeName: store,
+            storeName: primaryStore,
             year: saveYear,
             month: saveMonth,
             fileName: file.name,
@@ -413,6 +418,8 @@ export async function POST(request: NextRequest) {
         type: "pl001",
         year: saveYear,
         month: saveMonth,
+        store: primaryStore,
+        detectedStores,
       });
     }
 
