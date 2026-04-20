@@ -4,3 +4,16 @@ node_modules/
 .env
 src/generated/
 .vercel
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Debug
+npm-debug.log*

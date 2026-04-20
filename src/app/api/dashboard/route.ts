@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE } from "@/lib/constants";
+import { requireSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const { searchParams } = request.nextUrl;
     const year = parseInt(searchParams.get("year") ?? "", 10);
     const monthParam = searchParams.get("month");
@@ -196,12 +200,12 @@ export async function GET(request: NextRequest) {
       memberRows.length > 0
         ? {
             plan_subscribers: memberRows.reduce((s, r) => s + r.planSubscribers, 0),
-            new_plan_signups: memberRows.reduce((s, r) => s + (r.newPlanSignups || r.newPlanApplications), 0),
+            new_plan_signups: memberRows.reduce((s, r) => s + r.newPlanSignups, 0),
             cancellations: memberRows.reduce((s, r) => s + r.cancellations, 0),
             suspensions: memberRows.reduce((s, r) => s + r.suspensions, 0),
             cancellation_rate: memberRows[0].cancellationRate,
             plan_changes: memberRows.reduce((s, r) => s + r.planChanges, 0),
-            total_members: memberRows.reduce((s, r) => s + (r.totalMembers || r.planSubscribers), 0),
+            total_members: memberRows.reduce((s, r) => s + r.totalMembers, 0),
           }
         : null;
 
@@ -243,7 +247,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Dashboard API error:", error);
     return NextResponse.json(
-      { error: "Internal server error", detail: error instanceof Error ? error.message : String(error) },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }

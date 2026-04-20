@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
+
     const { searchParams } = request.nextUrl;
     const year = parseInt(searchParams.get("year") ?? "", 10);
     const month = parseInt(searchParams.get("month") ?? "", 10);

@@ -96,8 +96,7 @@ export async function GET(request: NextRequest) {
     console.error("Hacomono check error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: "Internal server error",
       },
       { status: 500 },
     );
@@ -125,6 +124,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { validateUploadedFile } = await import("@/lib/upload-validation");
+    const fileError = validateUploadedFile(file);
+    if (fileError) {
+      return NextResponse.json({ error: fileError }, { status: 400 });
+    }
+
     const buffer = await file.arrayBuffer();
     const text = decodeFileBuffer(buffer);
     const allRows = parseCSV(text);
@@ -142,7 +147,12 @@ export async function POST(request: NextRequest) {
 
     // ─── ML001: Member Data ───────────────────────────────────
     if (type === "ml001") {
-      // store is now optional — auto-detected from CSV "所属店舗名" column
+      if (!store) {
+        return NextResponse.json(
+          { error: "store is required for ML001" },
+          { status: 400 },
+        );
+      }
 
       const colIdx = (name: string, fallback: number) =>
         hmap[name] !== undefined ? hmap[name] : fallback;
@@ -248,17 +258,11 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Get unique stores from the CSV data
-      const detectedStores = [...new Set(records.map((r) => r.storeName))];
-      const primaryStore = detectedStores[0] || store || "不明";
-
-      // Delete existing member data for each detected store, then insert
+      // Delete existing member data for this store, then insert
       await prisma.$transaction(async (tx) => {
-        for (const s of detectedStores) {
-          await tx.memberData.deleteMany({
-            where: { storeName: s },
-          });
-        }
+        await tx.memberData.deleteMany({
+          where: { storeName: store },
+        });
 
         if (records.length > 0) {
           await tx.memberData.createMany({ data: records });
@@ -270,7 +274,7 @@ export async function POST(request: NextRequest) {
             userName:
               session.displayName || session.storeName || "ユーザー",
             dataType: "hacomono_ml001",
-            storeName: primaryStore,
+            storeName: store,
             year: effectiveYear,
             month: effectiveMonth,
             fileName: file.name,
@@ -282,14 +286,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         records: records.length,
         type: "ml001",
-        store: primaryStore,
-        detectedStores,
       });
     }
 
     // ─── PL001: Sales Detail ──────────────────────────────────
     if (type === "pl001") {
-      // store is now optional — auto-detected from CSV "購入店舗" column
+      if (!store || isNaN(year) || isNaN(month)) {
+        return NextResponse.json(
+          { error: "store, year, month are required for PL001" },
+          { status: 400 },
+        );
+      }
 
       const getVal = (row: string[], colName: string): string => {
         const idx = hmap[colName];
@@ -382,17 +389,10 @@ export async function POST(request: NextRequest) {
         r.month = saveMonth;
       }
 
-      // Get unique stores from the CSV data
-      const detectedStores = [...new Set(records.map((r) => r.storeName))];
-      const primaryStore = detectedStores[0] || store || "不明";
-
       await prisma.$transaction(async (tx) => {
-        // Delete existing data for each detected store + month
-        for (const s of detectedStores) {
-          await tx.salesDetail.deleteMany({
-            where: { year: saveYear, month: saveMonth, storeName: s },
-          });
-        }
+        await tx.salesDetail.deleteMany({
+          where: { year: saveYear, month: saveMonth, storeName: store },
+        });
 
         if (records.length > 0) {
           await tx.salesDetail.createMany({ data: records });
@@ -404,7 +404,7 @@ export async function POST(request: NextRequest) {
             userName:
               session.displayName || session.storeName || "ユーザー",
             dataType: "hacomono_pl001",
-            storeName: primaryStore,
+            storeName: store,
             year: saveYear,
             month: saveMonth,
             fileName: file.name,
@@ -418,8 +418,6 @@ export async function POST(request: NextRequest) {
         type: "pl001",
         year: saveYear,
         month: saveMonth,
-        store: primaryStore,
-        detectedStores,
       });
     }
 
@@ -536,8 +534,7 @@ export async function POST(request: NextRequest) {
     console.error("Hacomono upload error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: "Internal server error",
       },
       { status: 500 },
     );

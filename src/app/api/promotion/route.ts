@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const { searchParams } = request.nextUrl;
     const yearParam = searchParams.get("year");
     const monthParam = searchParams.get("month");
@@ -43,6 +47,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const body = await request.json();
     const { year, month, storeName, ...fields } = body;
 
@@ -89,7 +96,6 @@ export async function POST(request: NextRequest) {
       adOther: fields.adOther ?? 0,
       adTotal,
       unitPrice: fields.unitPrice ?? 0,
-      unitPriceBudget: fields.unitPriceBudget ?? 0,
       optAthlete4: fields.optAthlete4 ?? 0,
       optAthlete8: fields.optAthlete8 ?? 0,
       optDrinkHyalchi: fields.optDrinkHyalchi ?? 0,

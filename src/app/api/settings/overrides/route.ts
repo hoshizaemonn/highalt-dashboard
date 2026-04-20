@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getSession, requireAdmin } from "@/lib/auth";
 import { THOUSAND_DIGIT_MAP } from "@/lib/constants";
 
 export async function GET() {
@@ -47,10 +47,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
 
     const body = await request.json();
 
@@ -91,19 +89,21 @@ export async function POST(request: NextRequest) {
 
     // Batch upsert from array (upload unresolved registration)
     if (Array.isArray(body.overrides)) {
-      let created = 0;
-      for (const item of body.overrides) {
-        const empId = typeof item.employeeId === "string" ? parseInt(item.employeeId, 10) : item.employeeId;
-        const ratioVal = item.ratio ?? 100;
-        const empName = item.employeeName || "";
-        if (isNaN(empId) || !item.storeName) continue;
-        // Replace all overrides for this employee
-        await prisma.storeOverride.deleteMany({ where: { employeeId: empId } });
-        await prisma.storeOverride.create({
-          data: { employeeId: empId, storeName: item.storeName, ratio: ratioVal, employeeName: empName },
-        });
-        created++;
-      }
+      const created = await prisma.$transaction(async (tx) => {
+        let count = 0;
+        for (const item of body.overrides) {
+          const empId = typeof item.employeeId === "string" ? parseInt(item.employeeId, 10) : item.employeeId;
+          const ratioVal = item.ratio ?? 100;
+          const empName = item.employeeName || "";
+          if (isNaN(empId) || !item.storeName) continue;
+          await tx.storeOverride.deleteMany({ where: { employeeId: empId } });
+          await tx.storeOverride.create({
+            data: { employeeId: empId, storeName: item.storeName, ratio: ratioVal, employeeName: empName },
+          });
+          count++;
+        }
+        return count;
+      });
       return NextResponse.json({ created }, { status: 201 });
     }
 
@@ -114,14 +114,14 @@ export async function POST(request: NextRequest) {
       if (isNaN(empId) || !body.store1 || !body.store2) {
         return NextResponse.json({ error: "Invalid dual params" }, { status: 400 });
       }
-      // Delete all existing for this employee
-      await prisma.storeOverride.deleteMany({ where: { employeeId: empId } });
-      // Create 2 records
-      await prisma.storeOverride.create({
-        data: { employeeId: empId, storeName: body.store1, ratio: body.ratio1 ?? 50, employeeName: empName },
-      });
-      await prisma.storeOverride.create({
-        data: { employeeId: empId, storeName: body.store2, ratio: body.ratio2 ?? 50, employeeName: empName },
+      await prisma.$transaction(async (tx) => {
+        await tx.storeOverride.deleteMany({ where: { employeeId: empId } });
+        await tx.storeOverride.create({
+          data: { employeeId: empId, storeName: body.store1, ratio: body.ratio1 ?? 50, employeeName: empName },
+        });
+        await tx.storeOverride.create({
+          data: { employeeId: empId, storeName: body.store2, ratio: body.ratio2 ?? 50, employeeName: empName },
+        });
       });
       return NextResponse.json({ ok: true }, { status: 201 });
     }
@@ -174,10 +174,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");

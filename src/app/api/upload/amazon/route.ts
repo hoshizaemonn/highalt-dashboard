@@ -166,6 +166,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { validateUploadedFile } = await import("@/lib/upload-validation");
+    const fileError = validateUploadedFile(file);
+    if (fileError) {
+      return NextResponse.json({ error: fileError }, { status: 400 });
+    }
+
     const buffer = await file.arrayBuffer();
     // Amazon Business CSV is utf-8-sig
     const text = decodeFileBuffer(buffer);
@@ -324,8 +330,7 @@ export async function POST(request: NextRequest) {
     console.error("Amazon upload error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: "Internal server error",
       },
       { status: 500 },
     );
