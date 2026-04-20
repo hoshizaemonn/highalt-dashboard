@@ -23,7 +23,6 @@ export function SalesTab({ onSuccess }: { onSuccess?: () => void }) {
     { id: "ml001", label: "会員 (ML001)" },
     { id: "pl001", label: "売上明細 (PL001)" },
     { id: "ma002", label: "月次サマリ (MA002)" },
-    { id: "square", label: "Square" },
   ];
 
   return (
