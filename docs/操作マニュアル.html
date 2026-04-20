@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ハイアルチ PLダッシュボード 操作マニュアル</title>
+<style>
+  :root {
+    --brand: #567FC0;
+    --brand-dark: #3E5F9A;
+    --brand-light: #E8EFF8;
+    --brand-lighter: #F4F7FC;
+    --text: #1a1a2e;
+    --text-light: #555;
+    --text-lighter: #888;
+    --border: #e0e6ed;
+    --bg: #f7f9fc;
+    --white: #fff;
+    --green: #27ae60;
+    --red: #e74c3c;
+    --orange: #f39c12;
+    --radius: 12px;
+    --shadow: 0 2px 12px rgba(86,127,192,0.08);
+    --shadow-lg: 0 8px 32px rgba(86,127,192,0.12);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.8;
+    font-size: 15px;
+  }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+    color: #fff;
+    padding: 48px 24px 40px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: -40px; left: 0; right: 0;
+    height: 80px;
+    background: var(--bg);
+    border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  }
+  .header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+  .header .subtitle { opacity: 0.85; font-size: 0.95rem; }
+  .header .meta { margin-top: 16px; font-size: 0.85rem; opacity: 0.7; }
+
+  /* Container */
+  .container { max-width: 900px; margin: 0 auto; padding: 0 20px 60px; position: relative; z-index: 1; }
+
+  /* TOC */
+  .toc {
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 32px;
+    margin: -20px auto 40px;
+    position: relative; z-index: 2;
+  }
+  .toc h2 { font-size: 1.15rem; color: var(--brand); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .toc ol { list-style: none; counter-reset: toc; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+  .toc li { counter-increment: toc; }
+  .toc a {
+    text-decoration: none;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    font-size: 0.95rem;
+  }
+  .toc a:hover { background: var(--brand-light); color: var(--brand); }
+  .toc .toc-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    background: var(--brand);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  /* Section */
+  .section {
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 36px 32px;
+    margin-bottom: 32px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--brand-light);
+  }
+  .section-icon {
+    width: 48px; height: 48px;
+    background: var(--brand);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .section-icon svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .section h2 { font-size: 1.4rem; color: var(--text); }
+  .section h3 { font-size: 1.1rem; color: var(--brand); margin: 28px 0 14px; padding-left: 14px; border-left: 3px solid var(--brand); }
+  .section h4 { font-size: 1rem; color: var(--text); margin: 20px 0 10px; font-weight: 600; }
+
+  /* Steps */
+  .steps { list-style: none; padding: 0; margin: 16px 0; }
+  .steps li {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 12px;
+    padding: 12px 16px;
+    background: var(--brand-lighter);
+    border-radius: 10px;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px; height: 30px;
+    background: var(--brand);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 0.85rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .steps li span { flex: 1; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+  thead th {
+    background: var(--brand);
+    color: #fff;
+    padding: 12px 14px;
+    text-align: left;
+    font-weight: 600;
+  }
+  thead th:first-child { border-radius: 8px 0 0 0; }
+  thead th:last-child { border-radius: 0 8px 0 0; }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  tbody tr:hover { background: var(--brand-lighter); }
+  tbody tr:last-child td:first-child { border-radius: 0 0 0 8px; }
+  tbody tr:last-child td:last-child { border-radius: 0 0 8px 0; }
+
+  /* Permission matrix */
+  .perm-table td:nth-child(n+2) { text-align: center; }
+  .check { color: var(--green); font-weight: 700; font-size: 1.1rem; }
+  .cross { color: var(--red); font-weight: 700; font-size: 1.1rem; }
+  .partial { color: var(--orange); font-weight: 600; font-size: 0.85rem; }
+
+  /* Info boxes */
+  .info-box {
+    display: flex;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 10px;
+    margin: 16px 0;
+    font-size: 0.9rem;
+    align-items: flex-start;
+  }
+  .info-box svg { width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; }
+  .info-box.warning { background: #fef9e7; border-left: 4px solid var(--orange); }
+  .info-box.warning svg { stroke: var(--orange); }
+  .info-box.info { background: var(--brand-lighter); border-left: 4px solid var(--brand); }
+  .info-box.info svg { stroke: var(--brand); }
+  .info-box.security { background: #fdecea; border-left: 4px solid var(--red); }
+  .info-box.security svg { stroke: var(--red); }
+
+  /* Diagrams */
+  .diagram {
+    background: var(--brand-lighter);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin: 20px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+  .diagram svg { max-width: 100%; height: auto; }
+
+  /* FAQ */
+  .faq-item { margin-bottom: 20px; }
+  .faq-q {
+    font-weight: 600;
+    color: var(--brand-dark);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .faq-q .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px; height: 24px;
+    background: var(--brand);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .faq-a { padding-left: 32px; color: var(--text-light); }
+  .faq-a ol { padding-left: 20px; margin: 8px 0; }
+
+  /* Sub-step labels */
+  .substep-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--brand);
+    color: #fff;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin: 18px 0 10px;
+  }
+
+  /* KPI cards visual */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .kpi-card-demo {
+    background: var(--white);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+  .kpi-card-demo .kpi-label { font-size: 0.8rem; color: var(--text-lighter); margin-bottom: 4px; }
+  .kpi-card-demo .kpi-value { font-size: 1.2rem; font-weight: 700; color: var(--brand); }
+
+  p { margin: 8px 0; }
+  strong { color: var(--text); }
+  ul { padding-left: 20px; margin: 8px 0; }
+  li { margin-bottom: 4px; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 32px 20px;
+    color: var(--text-lighter);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--border);
+    margin-top: 20px;
+  }
+  .footer a { color: var(--brand); text-decoration: none; }
+
+  /* Back to top */
+  .back-top {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--brand);
+    text-decoration: none;
+    font-size: 0.85rem;
+    margin-top: 16px;
+  }
+  .back-top:hover { text-decoration: underline; }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .header { padding: 36px 16px 32px; }
+    .header h1 { font-size: 1.5rem; }
+    .section { padding: 24px 18px; }
+    .toc ol { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    table { font-size: 0.8rem; }
+    thead th, tbody td { padding: 8px 10px; }
+  }
+
+  /* Print */
+  @media print {
+    body { background: #fff; font-size: 12px; }
+    .header { background: var(--brand) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 24px; }
+    .header::after { display: none; }
+    .section { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+    .toc { box-shadow: none; border: 1px solid #ddd; }
+    .back-top { display: none; }
+    .diagram { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header" id="top">
+  <div style="margin-bottom:8px;">
+    <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style="display:inline-block;">
+      <rect width="56" height="56" rx="14" fill="rgba(255,255,255,0.15)"/>
+      <path d="M18 38V22l10-8 10 8v16" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M24 38V30h8v8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14 40h28" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="42" cy="16" r="8" fill="rgba(255,255,255,0.2)"/>
+      <path d="M39 16h6M42 13v6" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <h1>ハイアルチ PLダッシュボード</h1>
+  <div class="subtitle">操作マニュアル</div>
+  <div class="meta">URL: https://highalt-dashboard.vercel.app &nbsp;|&nbsp; 最終更新: 2026年4月20日</div>
+</header>
+
+<div class="container">
+
+<!-- TOC -->
+<nav class="toc" id="toc">
+  <h2>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    目次
+  </h2>
+  <ol>
+    <li><a href="#sec1"><span class="toc-num">1</span>ログイン方法</a></li>
+    <li><a href="#sec2"><span class="toc-num">2</span>ダッシュボード画面の見方</a></li>
+    <li><a href="#sec3"><span class="toc-num">3</span>アップロード画面</a></li>
+    <li><a href="#sec4"><span class="toc-num">4</span>設定画面</a></li>
+    <li><a href="#sec5"><span class="toc-num">5</span>販促報告画面</a></li>
+    <li><a href="#sec6"><span class="toc-num">6</span>FAQ（よくある質問）</a></li>
+  </ol>
+</nav>
+
+<!-- Section 1: Login -->
+<section class="section" id="sec1">
+  <div class="section-header">
+    <div class="section-icon">
+      <svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+    </div>
+    <h2>1. ログイン方法</h2>
+  </div>
+
+  <h3>アクセス手順</h3>
+  <ol class="steps">
+    <li><span class="step-num">1</span><span>ブラウザで <strong>https://highalt-dashboard.vercel.app</strong> にアクセスします</span></li>
+    <li><span class="step-num">2</span><span>ログイン画面が表示されます</span></li>
+    <li><span class="step-num">3</span><span>管理者から発行された <strong>ユーザー名</strong> と <strong>パスワード</strong> を入力します</span></li>
+    <li><span class="step-num">4</span><span>「ログイン」ボタンをクリックします</span></li>
+  </ol>
+
+  <!-- Login Flow Diagram -->
+  <div class="diagram">
+    <svg width="700" height="200" viewBox="0 0 700 200">
+      <!-- Step boxes -->
+      <rect x="10" y="60" width="120" height="60" rx="10" fill="var(--brand)" />
+      <text x="70" y="86" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">URLにアクセス</text>
+      <text x="70" y="104" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="10">ブラウザ</text>
+
+      <path d="M130 90 L165 90" stroke="var(--brand)" stroke-width="2" marker-end="url(#arrow1)"/>
+
+      <rect x="170" y="60" width="120" height="60" rx="10" fill="var(--brand)" />
+      <text x="230" y="86" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">ID/PW入力</text>
+      <text x="230" y="104" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="10">ログイン画面</text>
+
+      <path d="M290 90 L325 90" stroke="var(--brand)" stroke-width="2" marker-end="url(#arrow1)"/>
+
+      <rect x="330" y="60" width="120" height="60" rx="10" fill="#E8EFF8" stroke="var(--brand)" stroke-width="2"/>
+      <text x="390" y="86" text-anchor="middle" fill="var(--brand)" font-size="12" font-weight="600">認証チェック</text>
+      <text x="390" y="104" text-anchor="middle" fill="var(--text-lighter)" font-size="10">サーバー</text>
+
+      <!-- Success path -->
+      <path d="M450 75 L485 75" stroke="var(--green)" stroke-width="2" marker-end="url(#arrowG)"/>
+      <text x="468" y="68" text-anchor="middle" fill="var(--green)" font-size="10">成功</text>
+
+      <rect x="490" y="50" width="130" height="60" rx="10" fill="var(--green)" />
+      <text x="555" y="76" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">ダッシュボード</text>
+      <text x="555" y="94" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="10">24時間有効</text>
+
+      <!-- Failure path -->
+      <path d="M420 120 L420 145" stroke="var(--red)" stroke-width="2" marker-end="url(#arrowR)"/>
+      <text x="445" y="138" fill="var(--red)" font-size="10">失敗</text>
+
+      <rect x="345" y="148" width="140" height="44" rx="8" fill="#fdecea" stroke="var(--red)" stroke-width="1.5"/>
+      <text x="415" y="168" text-anchor="middle" fill="var(--red)" font-size="11" font-weight="600">5回失敗 = 15分ロック</text>
+      <text x="415" y="183" text-anchor="middle" fill="var(--red)" font-size="9">セキュリティ保護</text>
+
+      <defs>
+        <marker id="arrow1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6" fill="var(--brand)"/></marker>
+        <marker id="arrowG" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6" fill="var(--green)"/></marker>
+        <marker id="arrowR" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6" fill="var(--red)"/></marker>
+      </defs>
+    </svg>
+  </div>
+
+  <h3>ユーザーの種類</h3>
+  <table>
+    <thead><tr><th>ロール</th><th>説明</th><th>権限</th></tr></thead>
+    <tbody>
+      <tr><td><strong>管理者（admin）</strong></td><td>全店舗の閲覧・管理が可能</td><td>全機能にアクセス可能</td></tr>
+      <tr><td><strong>店長（store_manager）</strong></td><td>担当店舗の管理が可能</td><td>自店舗のデータアップロード・閲覧、他店舗は閲覧のみ</td></tr>
+    </tbody>
+  </table>
+
+  <h3>セキュリティに関する注意</h3>
+  <div class="info-box security">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <div>
+      <strong>ログイン試行回数の制限:</strong> 5回連続でログインに失敗すると、15分間アカウントがロックされます。<br>
+      <strong>セッションの有効期限:</strong> ログイン後24時間が経過すると自動的にログアウトされます。<br>
+      パスワードは定期的に変更してください。
+    </div>
+  </div>
+
+  <a href="#top" class="back-top">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
+    ページトップへ
+  </a>
+</section>
+
+<!-- Section 2: Dashboard -->
+<section class="section" id="sec2">
+  <div class="section-header">
+    <div class="section-icon">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </div>
+    <h2>2. ダッシュボード画面の見方</h2>
+  </div>
+
+  <p>ダッシュボードは店舗のPL（損益計算書）データを可視化する画面です。</p>
+
+  <!-- Dashboard Layout Diagram -->
+  <div class="diagram">
+    <svg width="680" height="380" viewBox="0 0 680 380">
+      <!-- Outer frame -->
+      <rect x="4" y="4" width="672" height="372" rx="12" fill="#fff" stroke="#ddd" stroke-width="1.5"/>
+
+      <!-- Top bar -->
+      <rect x="4" y="4" width="672" height="44" rx="12" fill="var(--brand)"/>
+      <rect x="4" y="36" width="672" height="12" fill="var(--brand)"/>
+      <text x="28" y="30" fill="#fff" font-size="13" font-weight="700">ハイアルチ PLダッシュボード</text>
+      <text x="620" y="30" fill="rgba(255,255,255,0.7)" font-size="11">admin</text>
+
+      <!-- Sidebar -->
+      <rect x="4" y="48" width="140" height="328" fill="#f0f4fa"/>
+      <rect x="4" y="364" width="140" height="12" rx="0 0 12 0" fill="#f0f4fa"/>
+
+      <!-- Sidebar items -->
+      <rect x="16" y="64" width="116" height="32" rx="6" fill="var(--brand)"/>
+      <text x="74" y="84" text-anchor="middle" fill="#fff" font-size="11">ダッシュボード</text>
+
+      <text x="74" y="118" text-anchor="middle" fill="var(--text-light)" font-size="11">アップロード</text>
+      <text x="74" y="148" text-anchor="middle" fill="var(--text-light)" font-size="11">設定</text>
+      <text x="74" y="178" text-anchor="middle" fill="var(--text-light)" font-size="11">販促報告</text>
+
+      <!-- Period / Store selectors -->
+      <rect x="160" y="58" width="500" height="36" rx="8" fill="var(--brand-lighter)" stroke="var(--border)" stroke-width="1"/>
+      <text x="180" y="80" fill="var(--text-light)" font-size="10">年: 2026</text>
+      <text x="260" y="80" fill="var(--text-light)" font-size="10">月: 4月</text>
+      <text x="360" y="80" fill="var(--text-light)" font-size="10">店舗: 東日本橋</text>
+
+      <!-- Labels -->
+      <text x="544" y="110" fill="var(--brand)" font-size="10" font-weight="600" text-anchor="middle">期間・店舗選択</text>
+      <path d="M544 95 L480 87" stroke="var(--brand)" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow1)"/>
+
+      <!-- KPI Cards -->
+      <rect x="160" y="104" width="96" height="60" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="208" y="122" text-anchor="middle" fill="var(--text-lighter)" font-size="9">売上</text>
+      <text x="208" y="146" text-anchor="middle" fill="var(--brand)" font-size="15" font-weight="700">850万</text>
+
+      <rect x="264" y="104" width="96" height="60" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="312" y="122" text-anchor="middle" fill="var(--text-lighter)" font-size="9">人件費</text>
+      <text x="312" y="146" text-anchor="middle" fill="var(--brand)" font-size="15" font-weight="700">320万</text>
+
+      <rect x="368" y="104" width="96" height="60" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="416" y="122" text-anchor="middle" fill="var(--text-lighter)" font-size="9">経費</text>
+      <text x="416" y="146" text-anchor="middle" fill="var(--brand)" font-size="15" font-weight="700">180万</text>
+
+      <rect x="472" y="104" width="96" height="60" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="520" y="122" text-anchor="middle" fill="var(--text-lighter)" font-size="9">営業利益</text>
+      <text x="520" y="146" text-anchor="middle" fill="var(--green)" font-size="15" font-weight="700">350万</text>
+
+      <rect x="576" y="104" width="80" height="60" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="616" y="122" text-anchor="middle" fill="var(--text-lighter)" font-size="9">会員数</text>
+      <text x="616" y="146" text-anchor="middle" fill="var(--brand)" font-size="15" font-weight="700">245</text>
+
+      <!-- KPI label -->
+      <text x="400" y="186" fill="var(--brand)" font-size="10" font-weight="600" text-anchor="middle">KPIカードエリア</text>
+
+      <!-- Chart area -->
+      <rect x="160" y="196" width="248" height="160" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="284" y="218" text-anchor="middle" fill="var(--text-light)" font-size="10" font-weight="600">月次推移グラフ</text>
+      <!-- Mini bar chart -->
+      <rect x="190" y="280" width="20" height="60" rx="3" fill="var(--brand)" opacity="0.3"/>
+      <rect x="220" y="260" width="20" height="80" rx="3" fill="var(--brand)" opacity="0.5"/>
+      <rect x="250" y="240" width="20" height="100" rx="3" fill="var(--brand)" opacity="0.7"/>
+      <rect x="280" y="250" width="20" height="90" rx="3" fill="var(--brand)" opacity="0.85"/>
+      <rect x="310" y="230" width="20" height="110" rx="3" fill="var(--brand)"/>
+      <rect x="340" y="260" width="20" height="80" rx="3" fill="var(--brand)" opacity="0.6"/>
+
+      <!-- Pie chart area -->
+      <rect x="416" y="196" width="240" height="160" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="536" y="218" text-anchor="middle" fill="var(--text-light)" font-size="10" font-weight="600">経費内訳</text>
+      <!-- Mini pie -->
+      <circle cx="536" cy="296" r="40" fill="none" stroke="var(--brand)" stroke-width="24" stroke-dasharray="60 191" transform="rotate(-90 536 296)"/>
+      <circle cx="536" cy="296" r="40" fill="none" stroke="var(--brand-dark)" stroke-width="24" stroke-dasharray="45 206" stroke-dashoffset="-60" transform="rotate(-90 536 296)"/>
+      <circle cx="536" cy="296" r="40" fill="none" stroke="#93b5e0" stroke-width="24" stroke-dasharray="80 171" stroke-dashoffset="-105" transform="rotate(-90 536 296)"/>
+      <circle cx="536" cy="296" r="40" fill="none" stroke="#c5d8ed" stroke-width="24" stroke-dasharray="66 185" stroke-dashoffset="-185" transform="rotate(-90 536 296)"/>
+
+      <!-- Sidebar label -->
+      <text x="74" y="340" text-anchor="middle" fill="var(--brand)" font-size="9" font-weight="600">サイドバー</text>
+      <text x="74" y="354" text-anchor="middle" fill="var(--brand)" font-size="9" font-weight="600">ナビゲーション</text>
+    </svg>
+  </div>
+
+  <h3>2.1 期間選択</h3>
+  <p>画面上部の期間選択エリアで、表示するデータの範囲を指定します。</p>
+  <ul>
+    <li><strong>年:</strong> 対象年度を選択します（例: 2026年）</li>
+    <li><strong>月:</strong> 対象月を選択します（例: 4月）</li>
+    <li>年間表示モードに切り替えることで、年度全体の推移を確認できます</li>
+  </ul>
+
+  <h3>2.2 店舗選択</h3>
+  <ul>
+    <li>ドロップダウンから対象店舗を選択します</li>
+    <li>管理者は全7店舗（東日本橋、春日、船橋、巣鴨、祖師ヶ谷大蔵、下北沢、中目黒）から選択可能</li>
+    <li>店長は自店舗がデフォルトで選択されます</li>
+    <li>「本部（除外）」はPL計算の対象外です</li>
+  </ul>
+
+  <h3>2.3 KPIカード</h3>
+  <p>画面上部に主要な経営指標がカード形式で表示されます。</p>
+  <div class="kpi-grid">
+    <div class="kpi-card-demo"><div class="kpi-label">売上</div><div class="kpi-value">850万</div></div>
+    <div class="kpi-card-demo"><div class="kpi-label">人件費</div><div class="kpi-value">320万</div></div>
+    <div class="kpi-card-demo"><div class="kpi-label">経費</div><div class="kpi-value">180万</div></div>
+    <div class="kpi-card-demo"><div class="kpi-label">営業利益</div><div class="kpi-value" style="color:var(--green);">350万</div></div>
+    <div class="kpi-card-demo"><div class="kpi-label">会員数</div><div class="kpi-value">245</div></div>
+  </div>
+
+  <h3>2.4 グラフ</h3>
+  <p>KPIカードの下に、データの推移や内訳を示すグラフが表示されます。</p>
+  <ul>
+    <li><strong>月次推移グラフ:</strong> 売上・人件費・経費の月ごとの推移</li>
+    <li><strong>経費内訳:</strong> 勘定科目別の経費割合</li>
+    <li><strong>店舗比較:</strong> 全店舗の横並び比較（管理者のみ）</li>
+  </ul>
+
+  <h3>2.5 店舗比較画面</h3>
+  <p>管理者は店舗比較画面で、全店舗のKPIを一覧で比較できます。</p>
+  <ul>
+    <li>売上、人件費、経費、営業利益を店舗横並びで表示</li>
+    <li>前月比や前年同月比の変動も確認可能</li>
+  </ul>
+
+  <a href="#top" class="back-top">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
+    ページトップへ
+  </a>
+</section>
+
+<!-- Section 3: Upload -->
+<section class="section" id="sec3">
+  <div class="section-header">
+    <div class="section-icon">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    </div>
+    <h2>3. アップロード画面</h2>
+  </div>
+
+  <p>各種CSVファイルをアップロードしてデータを取り込みます。</p>
+
+  <h3>3.1 共通の注意事項</h3>
+  <div class="info-box info">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    <div>
+      <strong>対応形式:</strong> CSV（.csv）、Excel（.xlsx, .xls）<br>
+      <strong>ファイルサイズ上限:</strong> 10MB<br>
+      <strong>上書き:</strong> 既存データがある月にアップロードすると上書きされます（確認ダイアログあり）<br>
+      アップロード履歴は自動的に記録されます。
+    </div>
+  </div>
+
+  <h3>3.2 人件費CSV</h3>
+  <div class="info-box warning">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <div><strong>アップロード権限:</strong> 管理者のみ</div>
+  </div>
+
+  <ol class="steps">
+    <li><span class="step-num">1</span><span>「アップロード」画面を開きます</span></li>
+    <li><span class="step-num">2</span><span>データ種別で「人件費」を選択します</span></li>
+    <li><span class="step-num">3</span><span>対象の年・月を指定します</span></li>
+    <li><span class="step-num">4</span><span>クラウド給与から出力した <strong>支給控除一覧表</strong>（CSV/Excel）をアップロードします</span></li>
+    <li><span class="step-num">5</span><span>プレビュー画面で内容を確認し、「保存」をクリックします</span></li>
+  </ol>
+
+  <div class="info-box info">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+    <div>
+      <strong>自動処理:</strong><br>
+      従業員番号の千の位で店舗を自動判定（1xxx=東日本橋、2xxx=春日、...）<br>
+      未登録の従業員がいる場合、店舗選択のアラートが表示されます。
+    </div>
+  </div>
+
+  <h3>3.3 経費CSV</h3>
+  <p>経費データは2ステップでアップロードします。</p>
+
+  <!-- Upload Flow Diagram -->
+  <div class="diagram">
+    <svg width="660" height="260" viewBox="0 0 660 260">
+      <!-- Step 1 -->
+      <rect x="10" y="10" width="300" height="110" rx="12" fill="#fff" stroke="var(--brand)" stroke-width="2"/>
+      <rect x="10" y="10" width="300" height="36" rx="12" fill="var(--brand)"/>
+      <rect x="10" y="34" width="300" height="12" fill="var(--brand)"/>
+      <text x="160" y="33" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">ステップ 1: Amazon注文履歴（任意）</text>
+
+      <text x="30" y="70" fill="var(--text-light)" font-size="11">1. Amazon注文履歴CSVをアップロード</text>
+      <text x="30" y="88" fill="var(--text-light)" font-size="11">2. 配送先住所から店舗を自動判定</text>
+      <text x="30" y="106" fill="var(--text-light)" font-size="11">3. 商品ごとの勘定科目を自動分類</text>
+
+      <!-- Arrow -->
+      <path d="M160 120 L160 140" stroke="var(--brand)" stroke-width="2" marker-end="url(#arrow1)"/>
+      <text x="178" y="136" fill="var(--brand)" font-size="10">任意</text>
+
+      <!-- Step 2 -->
+      <rect x="10" y="145" width="300" height="110" rx="12" fill="#fff" stroke="var(--brand)" stroke-width="2"/>
+      <rect x="10" y="145" width="300" height="36" rx="12" fill="var(--brand-dark)"/>
+      <rect x="10" y="169" width="300" height="12" fill="var(--brand-dark)"/>
+      <text x="160" y="168" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">ステップ 2: PayPay銀行CSV（必須）</text>
+
+      <text x="30" y="206" fill="var(--text-light)" font-size="11">1. 取引明細CSVをアップロード</text>
+      <text x="30" y="224" fill="var(--text-light)" font-size="11">2. 勘定科目を自動分類 + マッチング</text>
+      <text x="30" y="242" fill="var(--text-light)" font-size="11">3. 未分類を手動設定 → ルール自動保存</text>
+
+      <!-- Right side: Result -->
+      <path d="M310 200 L370 200" stroke="var(--brand)" stroke-width="2" marker-end="url(#arrow1)"/>
+
+      <rect x="380" y="60" width="260" height="180" rx="12" fill="var(--brand-lighter)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="510" y="90" text-anchor="middle" fill="var(--brand)" font-size="13" font-weight="700">自動処理エンジン</text>
+
+      <!-- Processing items -->
+      <rect x="400" y="106" width="220" height="28" rx="6" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="510" y="124" text-anchor="middle" fill="var(--text-light)" font-size="10">登録済みルールで勘定科目を自動分類</text>
+
+      <rect x="400" y="142" width="220" height="28" rx="6" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="510" y="160" text-anchor="middle" fill="var(--text-light)" font-size="10">AMAZON行と注文履歴のマッチング</text>
+
+      <rect x="400" y="178" width="220" height="28" rx="6" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="510" y="196" text-anchor="middle" fill="var(--text-light)" font-size="10">収入取引の自動判定</text>
+
+      <rect x="400" y="214" width="220" height="18" rx="4" fill="var(--green)" opacity="0.15"/>
+      <text x="510" y="228" text-anchor="middle" fill="var(--green)" font-size="10" font-weight="600">手動分類 → 自動ルール保存</text>
+    </svg>
+  </div>
+
+  <h4>ステップ1: Amazon注文履歴（オプション）</h4>
+  <ol class="steps">
+    <li><span class="step-num">1</span><span>Amazon注文履歴CSVを選択・アップロードします</span></li>
+    <li><span class="step-num">2</span><span>配送先住所から店舗が自動判定されます</span></li>
+    <li><span class="step-num">3</span><span>商品ごとの勘定科目が自動分類されます</span></li>
+  </ol>
+
+  <h4>ステップ2: PayPay銀行CSV</h4>
+  <ol class="steps">
+    <li><span class="step-num">1</span><span>PayPay銀行から出力した取引明細CSVをアップロードします</span></li>
+    <li><span class="step-num">2</span><span>システムが自動的に勘定科目の自動分類、AMAZON行のマッチング、収入取引の判定を処理します</span></li>
+    <li><span class="step-num">3</span><span>プレビュー画面で未分類の取引に手動で勘定科目を設定します</span></li>
+    <li><span class="step-num">4</span><span>手動で設定した勘定科目は <strong>自動的にルールとして保存</strong> され、次回以降は自動分類されます</span></li>
+    <li><span class="step-num">5</span><span>「保存」をクリックしてデータを確定します</span></li>
+  </ol>
+
+  <h3>3.4 売上CSV</h3>
+  <ol class="steps">
+    <li><span class="step-num">1</span><span>「売上」を選択します</span></li>
+    <li><span class="step-num">2</span><span>対象の年・月・店舗を指定します</span></li>
+    <li><span class="step-num">3</span><span>売上データCSVをアップロードします</span></li>
+    <li><span class="step-num">4</span><span>プレビューを確認後、保存します</span></li>
+  </ol>
+
+  <h3>3.5 予算CSV</h3>
+  <ol class="steps">
+    <li><span class="step-num">1</span><span>「予算」を選択します</span></li>
+    <li><span class="step-num">2</span><span>対象の年・月・店舗を指定します</span></li>
+    <li><span class="step-num">3</span><span>予算データCSVをアップロードします</span></li>
+    <li><span class="step-num">4</span><span>プレビューを確認後、保存します</span></li>
+  </ol>
+
+  <a href="#top" class="back-top">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
+    ページトップへ
+  </a>
+</section>
+
+<!-- Section 4: Settings -->
+<section class="section" id="sec4">
+  <div class="section-header">
+    <div class="section-icon">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    </div>
+    <h2>4. 設定画面</h2>
+  </div>
+
+  <div class="info-box warning">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <div><strong>管理者のみアクセス可能です。</strong></div>
+  </div>
+
+  <!-- Settings Tabs Diagram -->
+  <div class="diagram">
+    <svg width="600" height="200" viewBox="0 0 600 200">
+      <!-- Tab bar -->
+      <rect x="20" y="20" width="560" height="44" rx="10" fill="#f0f4fa" stroke="var(--border)" stroke-width="1"/>
+
+      <!-- Tabs -->
+      <rect x="24" y="24" width="130" height="36" rx="8" fill="var(--brand)"/>
+      <text x="89" y="46" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">従業員マッピング</text>
+
+      <rect x="158" y="24" width="130" height="36" rx="8" fill="#fff"/>
+      <text x="223" y="46" text-anchor="middle" fill="var(--text-light)" font-size="11">経費分類ルール</text>
+
+      <rect x="292" y="24" width="145" height="36" rx="8" fill="#fff"/>
+      <text x="364" y="46" text-anchor="middle" fill="var(--text-light)" font-size="11">Amazon商品マスタ</text>
+
+      <rect x="441" y="24" width="130" height="36" rx="8" fill="#fff"/>
+      <text x="506" y="46" text-anchor="middle" fill="var(--text-light)" font-size="11">ユーザー管理</text>
+
+      <!-- Content area -->
+      <rect x="20" y="68" width="560" height="120" rx="0 0 10 10" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+
+      <!-- Table header -->
+      <rect x="36" y="82" width="528" height="26" rx="4" fill="var(--brand-lighter)"/>
+      <text x="80" y="100" fill="var(--text-light)" font-size="10">従業員番号</text>
+      <text x="200" y="100" fill="var(--text-light)" font-size="10">氏名</text>
+      <text x="340" y="100" fill="var(--text-light)" font-size="10">所属店舗</text>
+      <text x="480" y="100" fill="var(--text-light)" font-size="10">操作</text>
+
+      <!-- Table rows -->
+      <text x="80" y="126" fill="var(--text)" font-size="10">1001</text>
+      <text x="200" y="126" fill="var(--text)" font-size="10">山田 太郎</text>
+      <text x="340" y="126" fill="var(--text)" font-size="10">東日本橋</text>
+      <rect x="470" y="114" width="40" height="20" rx="4" fill="var(--brand-light)"/>
+      <text x="490" y="128" text-anchor="middle" fill="var(--brand)" font-size="9">編集</text>
+
+      <line x1="36" y1="135" x2="564" y2="135" stroke="var(--border)" stroke-width="0.5"/>
+
+      <text x="80" y="152" fill="var(--text)" font-size="10">2001</text>
+      <text x="200" y="152" fill="var(--text)" font-size="10">佐藤 花子</text>
+      <text x="340" y="152" fill="var(--text)" font-size="10">春日</text>
+      <rect x="470" y="140" width="40" height="20" rx="4" fill="var(--brand-light)"/>
+      <text x="490" y="154" text-anchor="middle" fill="var(--brand)" font-size="9">編集</text>
+
+      <line x1="36" y1="161" x2="564" y2="161" stroke="var(--border)" stroke-width="0.5"/>
+
+      <text x="80" y="178" fill="var(--text)" font-size="10">3001</text>
+      <text x="200" y="178" fill="var(--text)" font-size="10">鈴木 一郎</text>
+      <text x="340" y="178" fill="var(--text)" font-size="10">船橋</text>
+      <rect x="470" y="166" width="40" height="20" rx="4" fill="var(--brand-light)"/>
+      <text x="490" y="180" text-anchor="middle" fill="var(--brand)" font-size="9">編集</text>
+    </svg>
+  </div>
+
+  <h3>4.1 従業員マッピング</h3>
+  <p>従業員番号と所属店舗の対応関係を管理します。</p>
+  <ul>
+    <li><strong>一覧表示:</strong> 登録済みの従業員マッピングが表示されます</li>
+    <li><strong>自動登録:</strong> 人件費CSVアップロード時に未登録の従業員が検出された場合、自動的に登録されます</li>
+    <li><strong>手動編集:</strong> 店舗の割り当てを手動で変更できます</li>
+  </ul>
+
+  <h3>4.2 経費分類ルール</h3>
+  <p>PayPay銀行CSVの取引摘要に含まれるキーワードと勘定科目の対応ルールを管理します。</p>
+  <ul>
+    <li><strong>一覧表示:</strong> 登録済みのルールが表示されます</li>
+    <li><strong>新規追加:</strong> キーワードと勘定科目を指定してルールを追加できます</li>
+    <li><strong>自動学習:</strong> 経費アップロード時に手動分類した結果が自動的にルールとして保存されます</li>
+    <li><strong>削除:</strong> 不要なルールを削除できます</li>
+  </ul>
+
+  <h3>4.3 Amazon商品マスタ</h3>
+  <p>Amazon注文履歴の商品と勘定科目の対応を管理します。</p>
+  <ul>
+    <li><strong>一覧表示:</strong> 登録済みのASIN・商品名・勘定科目が表示されます</li>
+    <li><strong>検索:</strong> ASINまたは商品名で検索できます</li>
+    <li><strong>新規追加:</strong> ASIN、商品名、勘定科目を指定して登録します</li>
+    <li><strong>CSV一括取込:</strong> 商品マスタCSVを一括でインポートできます</li>
+    <li><strong>削除:</strong> 不要な商品マスタを削除できます</li>
+  </ul>
+
+  <h3>4.4 ユーザー管理</h3>
+  <p><strong>管理者のみアクセス可能です。</strong></p>
+  <ul>
+    <li><strong>ユーザー一覧:</strong> 登録済みのユーザーが表示されます</li>
+    <li><strong>新規追加:</strong> ユーザー名、パスワード、ロール（管理者/店長）、担当店舗を指定して作成します</li>
+    <li><strong>編集:</strong> 既存ユーザーのロールや担当店舗を変更できます</li>
+    <li><strong>削除:</strong> ユーザーを削除できます</li>
+  </ul>
+
+  <!-- Role Permission Matrix -->
+  <h3>権限マトリクス</h3>
+  <table class="perm-table">
+    <thead>
+      <tr>
+        <th>項目</th>
+        <th>管理者</th>
+        <th>店長（自店舗）</th>
+        <th>店長（他店舗）</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>売上・会員・経費</td>
+        <td><span class="check">&#10003;</span> <span class="partial">全操作</span></td>
+        <td><span class="check">&#10003;</span> <span class="partial">UL+閲覧</span></td>
+        <td><span class="partial">閲覧のみ</span></td>
+      </tr>
+      <tr>
+        <td>人件費 <strong>合計</strong></td>
+        <td><span class="check">&#10003;</span></td>
+        <td><span class="check">&#10003;</span></td>
+        <td><span class="check">&#10003;</span></td>
+      </tr>
+      <tr>
+        <td>人件費 <strong>内訳</strong>（正社員給与等）</td>
+        <td><span class="check">&#10003;</span></td>
+        <td><span class="check">&#10003;</span></td>
+        <td><span class="cross">&#10007;</span> <span class="partial">非表示</span></td>
+      </tr>
+      <tr>
+        <td>従業員別明細</td>
+        <td><span class="check">&#10003;</span></td>
+        <td><span class="check">&#10003;</span></td>
+        <td><span class="cross">&#10007;</span> <span class="partial">非表示</span></td>
+      </tr>
+      <tr>
+        <td>人件費CSVアップロード</td>
+        <td><span class="check">&#10003;</span></td>
+        <td><span class="cross">&#10007;</span></td>
+        <td><span class="cross">&#10007;</span></td>
+      </tr>
+      <tr>
+        <td>ユーザー管理</td>
+        <td><span class="check">&#10003;</span></td>
+        <td><span class="cross">&#10007;</span></td>
+        <td><span class="cross">&#10007;</span></td>
+      </tr>
+      <tr>
+        <td>設定画面</td>
+        <td><span class="check">&#10003;</span></td>
+        <td><span class="cross">&#10007;</span></td>
+        <td><span class="cross">&#10007;</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <a href="#top" class="back-top">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
+    ページトップへ
+  </a>
+</section>
+
+<!-- Section 5: Promotion Reports -->
+<section class="section" id="sec5">
+  <div class="section-header">
+    <div class="section-icon">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    </div>
+    <h2>5. 販促報告画面</h2>
+  </div>
+
+  <p>店舗ごとの販促（プロモーション）活動を記録・管理する画面です。</p>
+
+  <h3>5.1 販促報告の登録</h3>
+  <ol class="steps">
+    <li><span class="step-num">1</span><span>販促報告画面を開きます</span></li>
+    <li><span class="step-num">2</span><span>対象の年・月・店舗を選択します</span></li>
+    <li><span class="step-num">3</span><span>販促活動の内容を入力します</span></li>
+    <li><span class="step-num">4</span><span>「保存」をクリックして登録します</span></li>
+  </ol>
+
+  <h3>5.2 販促報告の閲覧</h3>
+  <ul>
+    <li>年次の販促報告一覧で、各店舗の活動を時系列で確認できます</li>
+    <li>管理者は全店舗の報告を閲覧可能です</li>
+    <li>店長は自店舗の報告を閲覧・編集できます</li>
+  </ul>
+
+  <a href="#top" class="back-top">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
+    ページトップへ
+  </a>
+</section>
+
+<!-- Section 6: FAQ -->
+<section class="section" id="sec6">
+  <div class="section-header">
+    <div class="section-icon">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </div>
+    <h2>6. FAQ（よくある質問）</h2>
+  </div>
+
+  <h3>ログインできない場合</h3>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>パスワードを忘れた場合はどうすればよいですか？</div>
+    <div class="faq-a">管理者に連絡してパスワードのリセットを依頼してください。管理者がユーザー管理画面からパスワードを再設定できます。</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>「ログイン試行回数が上限に達しました」と表示されます</div>
+    <div class="faq-a">セキュリティのため、5回連続でログインに失敗するとアカウントが15分間ロックされます。15分後に再度お試しください。</div>
+  </div>
+
+  <h3>データアップロードについて</h3>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>CSVファイルのエンコーディングはどれを使えばよいですか？</div>
+    <div class="faq-a">PayPay銀行CSVはShift_JIS（cp932）形式で出力されますが、システムが自動判定しますのでそのままアップロードしてください。UTF-8のCSVも対応しています。</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>同じ月のデータを再度アップロードできますか？</div>
+    <div class="faq-a">はい、可能です。既存データがある場合は上書き確認のダイアログが表示されます。「はい」を選択すると既存データが新しいデータに置き換わります。</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>アップロードしたデータを削除できますか？</div>
+    <div class="faq-a">同じ月に空のデータを上書きアップロードすることで実質的に削除できます。完全な削除が必要な場合は管理者にご相談ください。</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>ファイルサイズが10MBを超えてアップロードできません</div>
+    <div class="faq-a">CSVファイルの場合、不要な列やヘッダー行を削除してファイルサイズを削減してください。それでも解決しない場合は管理者にご相談ください。</div>
+  </div>
+
+  <h3>ダッシュボードについて</h3>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>ダッシュボードにデータが表示されません</div>
+    <div class="faq-a">
+      以下を確認してください:
+      <ol>
+        <li>正しい年・月・店舗が選択されているか</li>
+        <li>対象期間のデータがアップロード済みか</li>
+        <li>ブラウザのキャッシュをクリアして再読み込みしてみてください</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>人件費の内訳が表示されません</div>
+    <div class="faq-a">店長アカウントでは、他店舗の人件費内訳は閲覧できません。自店舗の内訳のみ表示されます。全店舗の内訳を確認するには管理者アカウントでログインしてください。</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>経費の勘定科目が「未分類」のままです</div>
+    <div class="faq-a">経費アップロード時のプレビュー画面で手動分類するか、設定画面の「経費分類ルール」で該当キーワードのルールを追加してください。一度手動分類すると、次回以降は自動分類されます。</div>
+  </div>
+
+  <h3>その他</h3>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>複数のブラウザやデバイスから同時にログインできますか？</div>
+    <div class="faq-a">はい、可能です。ただし、それぞれのセッションは独立しており、一方でログアウトしても他方には影響しません。</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>対応しているブラウザは何ですか？</div>
+    <div class="faq-a">Google Chrome、Mozilla Firefox、Microsoft Edge、Safariの最新版に対応しています。Internet Explorerには対応していません。</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>操作中にエラーが発生した場合はどうすればよいですか？</div>
+    <div class="faq-a">ブラウザを再読み込みして再度お試しください。問題が解決しない場合は、エラーメッセージのスクリーンショットとともに管理者にご連絡ください。</div>
+  </div>
+
+  <a href="#top" class="back-top">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
+    ページトップへ
+  </a>
+</section>
+
+</div>
+
+<!-- Footer -->
+<footer class="footer">
+  <p><strong>ハイアルチ PLダッシュボード</strong> 操作マニュアル</p>
+  <p>お問い合わせ先: システム管理者までご連絡ください</p>
+  <p style="margin-top:8px;"><a href="https://highalt-dashboard.vercel.app">https://highalt-dashboard.vercel.app</a></p>
+</footer>
+
+</body>
+</html>

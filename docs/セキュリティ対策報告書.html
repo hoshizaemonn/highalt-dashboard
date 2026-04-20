@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>セキュリティ対策報告書 - ハイアルチ PLダッシュボード</title>
+<style>
+  :root {
+    --brand: #567FC0;
+    --brand-dark: #3D5A8A;
+    --brand-light: #E8EFF8;
+    --brand-lighter: #F4F7FC;
+    --green: #2E9E5A;
+    --green-bg: #E6F7ED;
+    --red: #D94040;
+    --red-bg: #FDECEC;
+    --orange: #E88A1A;
+    --orange-bg: #FFF4E5;
+    --gray: #6B7280;
+    --gray-bg: #F3F4F6;
+    --text: #1F2937;
+    --text-light: #6B7280;
+    --border: #E5E7EB;
+    --bg: #FAFBFD;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Meiryo", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.75;
+    font-size: 15px;
+  }
+
+  /* Cover Page */
+  .cover {
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+    color: #fff;
+    padding: 80px 40px 60px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 300px; height: 300px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    bottom: -80px; left: -40px;
+    width: 400px; height: 400px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.04);
+  }
+  .cover .doc-type {
+    display: inline-block;
+    border: 1px solid rgba(255,255,255,0.5);
+    padding: 4px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    letter-spacing: 3px;
+    margin-bottom: 24px;
+    text-transform: uppercase;
+  }
+  .cover h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+  .cover .subtitle {
+    font-size: 1.1rem;
+    opacity: 0.9;
+    margin-bottom: 40px;
+  }
+  .cover-meta {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    flex-wrap: wrap;
+    font-size: 14px;
+    opacity: 0.9;
+    position: relative;
+    z-index: 1;
+  }
+  .cover-meta dt { font-size: 11px; opacity: 0.7; text-transform: uppercase; letter-spacing: 1px; }
+  .cover-meta dd { margin-top: 4px; font-weight: 600; }
+
+  /* Container */
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px;
+  }
+
+  /* Sections */
+  section {
+    margin-bottom: 48px;
+  }
+  .section-number {
+    display: inline-block;
+    background: var(--brand);
+    color: #fff;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 32px;
+    font-size: 14px;
+    font-weight: 700;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+  h2 {
+    font-size: 1.4rem;
+    color: var(--brand-dark);
+    border-bottom: 2px solid var(--brand);
+    padding-bottom: 8px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  h3 {
+    font-size: 1.1rem;
+    color: var(--brand);
+    margin: 24px 0 12px;
+    padding-left: 12px;
+    border-left: 3px solid var(--brand);
+  }
+  p {
+    margin-bottom: 12px;
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge-green {
+    background: var(--green-bg);
+    color: var(--green);
+  }
+  .badge-green::before {
+    content: '';
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+  th {
+    background: var(--brand);
+    color: #fff;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  th:first-child { border-radius: 6px 0 0 0; }
+  th:last-child { border-radius: 0 6px 0 0; }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: var(--brand-lighter); }
+  tr:hover td { background: var(--brand-light); }
+
+  /* Environment table */
+  .env-table td:first-child {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 13px;
+    color: var(--brand-dark);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .copy-icon {
+    display: inline-block;
+    width: 16px; height: 16px;
+    vertical-align: middle;
+    margin-left: 6px;
+    opacity: 0.4;
+    cursor: pointer;
+  }
+
+  /* Priority Cards */
+  .priority-section {
+    margin-bottom: 32px;
+  }
+  .priority-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  .priority-high { background: var(--red-bg); color: var(--red); }
+  .priority-medium { background: var(--orange-bg); color: var(--orange); }
+  .priority-low { background: var(--gray-bg); color: var(--gray); }
+
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    border-top: 3px solid var(--border);
+  }
+  .card.card-red { border-top-color: var(--red); }
+  .card.card-orange { border-top-color: var(--orange); }
+  .card.card-gray { border-top-color: var(--gray); }
+  .card h4 {
+    font-size: 15px;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  .card p {
+    font-size: 13px;
+    color: var(--text-light);
+    margin-bottom: 8px;
+  }
+  .card .effect {
+    font-size: 12px;
+    background: var(--brand-lighter);
+    color: var(--brand-dark);
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-top: 8px;
+  }
+  .card .effect::before {
+    content: "期待効果: ";
+    font-weight: 700;
+  }
+
+  /* SVG Diagrams */
+  .diagram-wrapper {
+    background: #fff;
+    border-radius: 10px;
+    padding: 24px;
+    margin: 20px 0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    text-align: center;
+    overflow-x: auto;
+  }
+  .diagram-wrapper svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .diagram-caption {
+    font-size: 12px;
+    color: var(--text-light);
+    text-align: center;
+    margin-top: 8px;
+  }
+
+  /* Infra list */
+  .infra-list {
+    list-style: none;
+    padding: 0;
+  }
+  .infra-list li {
+    padding: 10px 16px;
+    background: #fff;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    border-left: 3px solid var(--brand);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    font-size: 14px;
+  }
+  .infra-list li strong { color: var(--brand-dark); }
+
+  /* Flowchart text */
+  .flow-step {
+    font-size: 13px;
+    color: var(--text-light);
+    margin-top: 4px;
+  }
+
+  /* Summary box */
+  .summary-box {
+    background: linear-gradient(135deg, var(--brand-light) 0%, #fff 100%);
+    border: 1px solid var(--brand);
+    border-radius: 10px;
+    padding: 24px;
+    margin-top: 20px;
+    font-size: 15px;
+    line-height: 1.9;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 32px 0;
+    color: var(--text-light);
+    font-size: 13px;
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+  }
+
+  /* Print */
+  @media print {
+    body { background: #fff; font-size: 12px; }
+    .cover { padding: 40px 20px 30px; }
+    .cover h1 { font-size: 1.6rem; }
+    .container { padding: 20px; }
+    section { page-break-inside: avoid; }
+    .diagram-wrapper { box-shadow: none; border: 1px solid #ddd; }
+    .card { box-shadow: none; border: 1px solid #ddd; }
+    th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    tr:nth-child(even) td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .cover { padding: 48px 20px 36px; }
+    .cover h1 { font-size: 1.5rem; }
+    .cover-meta { gap: 20px; }
+    .container { padding: 20px 16px; }
+    .card-grid { grid-template-columns: 1fr; }
+    table { font-size: 13px; }
+    th, td { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== COVER PAGE ==================== -->
+<header class="cover">
+  <div class="doc-type">Security Audit Report</div>
+  <h1>セキュリティ対策報告書</h1>
+  <p class="subtitle">ハイアルチ PLダッシュボード</p>
+  <dl class="cover-meta">
+    <div>
+      <dt>実施日</dt>
+      <dd>2026年4月20日</dd>
+    </div>
+    <div>
+      <dt>対象システム</dt>
+      <dd>PLダッシュボード</dd>
+    </div>
+    <div>
+      <dt>本番URL</dt>
+      <dd>highalt-dashboard.vercel.app</dd>
+    </div>
+    <div>
+      <dt>作成者</dt>
+      <dd>株式会社斗 システム開発部</dd>
+    </div>
+  </dl>
+</header>
+
+<div class="container">
+
+<!-- ==================== 1. 概要 ==================== -->
+<section>
+  <h2><span class="section-number">1</span> 概要</h2>
+  <p>本報告書は、ハイアルチ PLダッシュボードに実装されているセキュリティ対策の一覧と、その技術的な実装内容をまとめたものです。</p>
+</section>
+
+<!-- ==================== 2. 環境構成 ==================== -->
+<section>
+  <h2><span class="section-number">2</span> 環境構成</h2>
+
+  <table>
+    <thead>
+      <tr><th>項目</th><th>内容</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>ホスティング</td><td>Vercel（サーバーレス）</td></tr>
+      <tr><td>データベース</td><td>Supabase PostgreSQL</td></tr>
+      <tr><td>フレームワーク</td><td>Next.js 15 + React + TypeScript</td></tr>
+      <tr><td>ORM</td><td>Prisma（PostgreSQL アダプタ）</td></tr>
+      <tr><td>通信</td><td>HTTPS（TLS 1.2以上）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- System Architecture Diagram -->
+  <h3>システム構成図</h3>
+  <div class="diagram-wrapper">
+    <svg viewBox="0 0 800 220" xmlns="http://www.w3.org/2000/svg" width="800" height="220">
+      <!-- Browser -->
+      <rect x="20" y="70" width="160" height="80" rx="12" fill="#E8EFF8" stroke="#567FC0" stroke-width="2"/>
+      <text x="100" y="103" text-anchor="middle" font-size="13" font-weight="700" fill="#3D5A8A">ブラウザ</text>
+      <text x="100" y="122" text-anchor="middle" font-size="11" fill="#6B7280">React SPA</text>
+      <!-- Arrow 1 -->
+      <line x1="180" y1="110" x2="280" y2="110" stroke="#567FC0" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="230" y="100" text-anchor="middle" font-size="10" fill="#6B7280">HTTPS</text>
+      <!-- Vercel -->
+      <rect x="280" y="40" width="200" height="140" rx="12" fill="#fff" stroke="#567FC0" stroke-width="2"/>
+      <rect x="280" y="40" width="200" height="32" rx="12" fill="#567FC0"/>
+      <text x="380" y="62" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">Vercel Edge</text>
+      <text x="380" y="95" text-anchor="middle" font-size="11" fill="#3D5A8A">Next.js 15</text>
+      <text x="380" y="113" text-anchor="middle" font-size="11" fill="#3D5A8A">Middleware</text>
+      <text x="380" y="131" text-anchor="middle" font-size="11" fill="#3D5A8A">API Routes</text>
+      <text x="380" y="149" text-anchor="middle" font-size="11" fill="#3D5A8A">Prisma ORM</text>
+      <!-- Arrow 2 -->
+      <line x1="480" y1="110" x2="580" y2="110" stroke="#567FC0" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="530" y="100" text-anchor="middle" font-size="10" fill="#6B7280">SSL</text>
+      <!-- Supabase -->
+      <rect x="580" y="70" width="190" height="80" rx="12" fill="#E6F7ED" stroke="#2E9E5A" stroke-width="2"/>
+      <text x="675" y="103" text-anchor="middle" font-size="13" font-weight="700" fill="#1F6B3A">Supabase</text>
+      <text x="675" y="122" text-anchor="middle" font-size="11" fill="#6B7280">PostgreSQL</text>
+      <!-- Shield icons on Vercel -->
+      <text x="295" y="168" font-size="12" fill="#2E9E5A">&#x1F6E1;</text>
+      <text x="310" y="168" font-size="9" fill="#6B7280">DDoS防御</text>
+      <text x="385" y="168" font-size="9" fill="#6B7280">自動HTTPS</text>
+      <!-- Arrow marker -->
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+          <path d="M0,0 L10,4 L0,8 Z" fill="#567FC0"/>
+        </marker>
+      </defs>
+    </svg>
+    <p class="diagram-caption">図1: システム構成 - ブラウザからSupabase PostgreSQLまでのデータフロー</p>
+  </div>
+
+  <h3>インフラレベルのセキュリティ</h3>
+  <ul class="infra-list">
+    <li><strong>Vercel:</strong> DDoS防御、エッジキャッシュ、自動HTTPS証明書管理を提供</li>
+    <li><strong>Supabase:</strong> データの暗号化（at-rest / in-transit）、定期バックアップ、行レベルセキュリティ（RLS）対応</li>
+  </ul>
+</section>
+
+<!-- ==================== 3. セキュリティ対策一覧 ==================== -->
+<section>
+  <h2><span class="section-number">3</span> セキュリティ対策一覧</h2>
+
+  <!-- Security Layers Diagram -->
+  <div class="diagram-wrapper">
+    <svg viewBox="0 0 800 280" xmlns="http://www.w3.org/2000/svg" width="800" height="280">
+      <!-- Layer 1 - Headers (outermost) -->
+      <rect x="20" y="10" width="760" height="260" rx="16" fill="none" stroke="#567FC0" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="50" y="35" font-size="12" font-weight="700" fill="#567FC0">Layer 1: セキュリティヘッダー</text>
+      <text x="50" y="50" font-size="10" fill="#6B7280">HSTS / X-Frame-Options / CSP / Referrer-Policy</text>
+
+      <!-- Layer 2 - Middleware -->
+      <rect x="60" y="62" width="680" height="196" rx="14" fill="none" stroke="#3D5A8A" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="88" y="84" font-size="12" font-weight="700" fill="#3D5A8A">Layer 2: ミドルウェア</text>
+      <text x="88" y="99" font-size="10" fill="#6B7280">CSRF検証 / セッション検証 / ロールチェック</text>
+
+      <!-- Layer 3 - API -->
+      <rect x="100" y="110" width="600" height="136" rx="12" fill="none" stroke="#2E9E5A" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="126" y="132" font-size="12" font-weight="700" fill="#2E9E5A">Layer 3: APIルート</text>
+      <text x="126" y="147" font-size="10" fill="#6B7280">入力検証 / 権限チェック / レートリミット</text>
+
+      <!-- Layer 4 - DB (innermost) -->
+      <rect x="180" y="158" width="440" height="76" rx="10" fill="#E6F7ED" stroke="#2E9E5A" stroke-width="2"/>
+      <text x="400" y="190" text-anchor="middle" font-size="13" font-weight="700" fill="#1F6B3A">Layer 4: データベース</text>
+      <text x="400" y="210" text-anchor="middle" font-size="11" fill="#6B7280">Prisma ORM / パラメータ化クエリ / SSL接続 / 暗号化</text>
+
+      <!-- Shield icons -->
+      <text x="720" y="35" font-size="22">&#x1F6E1;</text>
+      <text x="690" y="84" font-size="20">&#x1F512;</text>
+      <text x="660" y="132" font-size="18">&#x2705;</text>
+      <text x="580" y="192" font-size="16">&#x1F5C4;</text>
+    </svg>
+    <p class="diagram-caption">図2: 多層防御アーキテクチャ - 4層のセキュリティレイヤー</p>
+  </div>
+
+  <h3>3.1 認証・認可</h3>
+  <table>
+    <thead>
+      <tr><th>対策</th><th>実装状況</th><th>詳細</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>パスワードハッシュ化</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>bcryptjs（コストファクター10）によるハッシュ化。平文パスワードはDBに保存しない</td>
+      </tr>
+      <tr>
+        <td>セッション署名</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>HMAC-SHA256によるセッションCookieの署名・検証</td>
+      </tr>
+      <tr>
+        <td>署名検証のタイミング安全性</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td><code>timingSafeEqual</code>（Node.js API）および定数時間比較（Edge Runtime）を使用し、タイミング攻撃を防止</td>
+      </tr>
+      <tr>
+        <td>ロールベースアクセス制御</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td><code>admin</code>（管理者）と<code>store_manager</code>（店長）の2ロール。APIルートごとに権限チェック</td>
+      </tr>
+      <tr>
+        <td>人件費内訳の閲覧制限</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>店長は自店舗の内訳のみ閲覧可能。他店舗の内訳は非表示</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.2 セッション管理</h3>
+  <table>
+    <thead>
+      <tr><th>対策</th><th>実装状況</th><th>詳細</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>HttpOnly Cookie</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>JavaScriptからのCookieアクセスを防止</td>
+      </tr>
+      <tr>
+        <td>Secure属性</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>本番環境ではHTTPS接続時のみCookieを送信</td>
+      </tr>
+      <tr>
+        <td>SameSite=Strict</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>クロスサイトリクエストでのCookie送信を完全ブロック</td>
+      </tr>
+      <tr>
+        <td>セッション有効期限</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>24時間で自動失効。期限切れセッションはCookie削除とともに拒否</td>
+      </tr>
+      <tr>
+        <td>不正セッション検出</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>署名不一致・期限切れ時にCookieを即座に削除しログイン画面へリダイレクト</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Session Cookie Lifecycle Diagram -->
+  <div class="diagram-wrapper">
+    <svg viewBox="0 0 800 160" xmlns="http://www.w3.org/2000/svg" width="800" height="160">
+      <!-- Step 1: Create -->
+      <rect x="20" y="40" width="140" height="70" rx="10" fill="#E8EFF8" stroke="#567FC0" stroke-width="2"/>
+      <text x="90" y="70" text-anchor="middle" font-size="12" font-weight="700" fill="#3D5A8A">作成</text>
+      <text x="90" y="88" text-anchor="middle" font-size="10" fill="#6B7280">ログイン成功時</text>
+      <text x="90" y="101" text-anchor="middle" font-size="10" fill="#6B7280">セッション生成</text>
+      <!-- Arrow -->
+      <line x1="160" y1="75" x2="220" y2="75" stroke="#567FC0" stroke-width="2" marker-end="url(#arrow)"/>
+      <!-- Step 2: Sign -->
+      <rect x="220" y="40" width="140" height="70" rx="10" fill="#E8EFF8" stroke="#567FC0" stroke-width="2"/>
+      <text x="290" y="70" text-anchor="middle" font-size="12" font-weight="700" fill="#3D5A8A">署名</text>
+      <text x="290" y="88" text-anchor="middle" font-size="10" fill="#6B7280">HMAC-SHA256</text>
+      <text x="290" y="101" text-anchor="middle" font-size="10" fill="#6B7280">Cookie設定</text>
+      <!-- Arrow -->
+      <line x1="360" y1="75" x2="420" y2="75" stroke="#567FC0" stroke-width="2" marker-end="url(#arrow)"/>
+      <!-- Step 3: Verify -->
+      <rect x="420" y="40" width="140" height="70" rx="10" fill="#E6F7ED" stroke="#2E9E5A" stroke-width="2"/>
+      <text x="490" y="70" text-anchor="middle" font-size="12" font-weight="700" fill="#1F6B3A">検証</text>
+      <text x="490" y="88" text-anchor="middle" font-size="10" fill="#6B7280">リクエスト毎に</text>
+      <text x="490" y="101" text-anchor="middle" font-size="10" fill="#6B7280">署名チェック</text>
+      <!-- Arrow -->
+      <line x1="560" y1="75" x2="620" y2="75" stroke="#567FC0" stroke-width="2" marker-end="url(#arrow)"/>
+      <!-- Step 4: Expire -->
+      <rect x="620" y="40" width="150" height="70" rx="10" fill="#FDECEC" stroke="#D94040" stroke-width="2"/>
+      <text x="695" y="70" text-anchor="middle" font-size="12" font-weight="700" fill="#D94040">失効</text>
+      <text x="695" y="88" text-anchor="middle" font-size="10" fill="#6B7280">24時間経過</text>
+      <text x="695" y="101" text-anchor="middle" font-size="10" fill="#6B7280">Cookie削除</text>
+      <!-- Labels below -->
+      <text x="90" y="135" text-anchor="middle" font-size="10" fill="#567FC0" font-weight="600">HttpOnly</text>
+      <text x="290" y="135" text-anchor="middle" font-size="10" fill="#567FC0" font-weight="600">Secure</text>
+      <text x="490" y="135" text-anchor="middle" font-size="10" fill="#567FC0" font-weight="600">SameSite=Strict</text>
+      <text x="695" y="135" text-anchor="middle" font-size="10" fill="#567FC0" font-weight="600">maxAge=86400</text>
+    </svg>
+    <p class="diagram-caption">図3: セッションCookieライフサイクル - 生成から失効までの流れ</p>
+  </div>
+
+  <h3>3.3 CSRF対策</h3>
+  <table>
+    <thead>
+      <tr><th>対策</th><th>実装状況</th><th>詳細</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Originヘッダー検証</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>POST/PUT/DELETE/PATCHリクエストで<code>Origin</code>ヘッダーと<code>Host</code>ヘッダーの一致を検証</td>
+      </tr>
+      <tr>
+        <td>SameSite Cookie</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td><code>SameSite=Strict</code>によりクロスサイトからのCookie送信を防止</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.4 ブルートフォース対策</h3>
+  <table>
+    <thead>
+      <tr><th>対策</th><th>実装状況</th><th>詳細</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>レートリミット</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>IPアドレス単位で5回のログイン失敗後、15分間のロックアウト</td>
+      </tr>
+      <tr>
+        <td>ロックアウト通知</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>ロックアウト時に残り時間をユーザーに表示</td>
+      </tr>
+      <tr>
+        <td>成功時リセット</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>ログイン成功時に失敗カウントをクリア</td>
+      </tr>
+      <tr>
+        <td>古いレコードの自動クリーンアップ</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>10分ごとに期限切れのレートリミットレコードを削除</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.5 入力検証</h3>
+  <table>
+    <thead>
+      <tr><th>対策</th><th>実装状況</th><th>詳細</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ファイルアップロード検証</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>ファイルサイズ上限10MB、許可拡張子（.csv, .xlsx, .xls）、MIMEタイプチェック</td>
+      </tr>
+      <tr>
+        <td>パラメータ検証</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>各APIルートで必須パラメータの存在・型チェックを実施</td>
+      </tr>
+      <tr>
+        <td>SQLインジェクション防止</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>Prisma ORMによるパラメータ化クエリで全DBアクセスを実施。生SQLは使用していない</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.6 セキュリティヘッダー</h3>
+  <p><code>next.config.ts</code>にて以下のセキュリティヘッダーを全レスポンスに付与しています。</p>
+  <table>
+    <thead>
+      <tr><th>ヘッダー</th><th>値</th><th>目的</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>X-Content-Type-Options</code></td>
+        <td><code>nosniff</code></td>
+        <td>MIMEスニッフィング防止</td>
+      </tr>
+      <tr>
+        <td><code>X-Frame-Options</code></td>
+        <td><code>DENY</code></td>
+        <td>クリックジャッキング防止（iframe埋め込み禁止）</td>
+      </tr>
+      <tr>
+        <td><code>X-XSS-Protection</code></td>
+        <td><code>1; mode=block</code></td>
+        <td>ブラウザのXSSフィルター有効化</td>
+      </tr>
+      <tr>
+        <td><code>Referrer-Policy</code></td>
+        <td><code>strict-origin-when-cross-origin</code></td>
+        <td>リファラー情報の漏洩防止</td>
+      </tr>
+      <tr>
+        <td><code>Strict-Transport-Security</code></td>
+        <td><code>max-age=31536000; includeSubDomains</code></td>
+        <td>HTTPS強制（HSTS、1年間有効）</td>
+      </tr>
+      <tr>
+        <td><code>Permissions-Policy</code></td>
+        <td><code>camera=(), microphone=(), geolocation=()</code></td>
+        <td>不要なブラウザAPIの無効化</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.7 データ保護</h3>
+  <table>
+    <thead>
+      <tr><th>対策</th><th>実装状況</th><th>詳細</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>通信暗号化</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>Vercelが提供するTLS 1.2以上による全通信の暗号化</td>
+      </tr>
+      <tr>
+        <td>DB接続暗号化</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>Supabase PostgreSQLへのSSL接続を強制</td>
+      </tr>
+      <tr>
+        <td>パスワード保護</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>bcryptハッシュ化。平文保存なし</td>
+      </tr>
+      <tr>
+        <td>機密情報の環境変数管理</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>APIキー・パスワード・接続文字列はすべて環境変数で管理。ソースコードにハードコードしない</td>
+      </tr>
+      <tr>
+        <td>エラーログの適切な出力</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td>全APIルートで<code>console.error</code>を使用し、エラーオブジェクトを適切にログ出力。クライアントには内部情報を返さない</td>
+      </tr>
+      <tr>
+        <td>Git管理除外</td>
+        <td><span class="badge badge-green">実装済み</span></td>
+        <td><code>.env</code>ファイル、データベースファイル、認証情報を<code>.gitignore</code>で除外</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ==================== 4. 環境変数一覧 ==================== -->
+<section>
+  <h2><span class="section-number">4</span> 環境変数一覧</h2>
+  <p>以下の環境変数がシステムの稼働に必要です。すべてVercelの環境変数設定で管理されています。</p>
+
+  <table class="env-table">
+    <thead>
+      <tr><th>変数名</th><th>用途</th><th>備考</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>SESSION_SECRET<svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="#567FC0" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></td>
+        <td>セッションCookieのHMAC署名鍵</td>
+        <td>最低32文字のランダム文字列。漏洩時は即座にローテーションが必要</td>
+      </tr>
+      <tr>
+        <td>ADMIN_INITIAL_PASSWORD<svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="#567FC0" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></td>
+        <td>初回デプロイ時の管理者初期パスワード</td>
+        <td>初回ログイン後に変更を推奨</td>
+      </tr>
+      <tr>
+        <td>DATABASE_URL<svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="#567FC0" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></td>
+        <td>Supabase PostgreSQL接続文字列</td>
+        <td><code>postgresql://user:pass@host:port/db</code> 形式。接続プールの上限は10に設定</td>
+      </tr>
+      <tr>
+        <td>NODE_TLS_REJECT_UNAUTHORIZED<svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="#567FC0" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></td>
+        <td>TLS証明書検証の制御</td>
+        <td>Supabaseの自己署名SSL証明書に対応するため、開発環境では<code>0</code>に設定。本番ではPool設定の<code>ssl: { rejectUnauthorized: false }</code>で対応</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ==================== 5. ミドルウェアによるアクセス制御 ==================== -->
+<section>
+  <h2><span class="section-number">5</span> ミドルウェアによるアクセス制御</h2>
+  <p>Next.jsのミドルウェア（<code>proxy.ts</code>）で全リクエストを事前検査しています。</p>
+
+  <h3>アクセスフロー</h3>
+  <div class="diagram-wrapper">
+    <svg viewBox="0 0 600 520" xmlns="http://www.w3.org/2000/svg" width="600" height="520">
+      <!-- Start -->
+      <rect x="200" y="10" width="200" height="40" rx="20" fill="#567FC0"/>
+      <text x="300" y="35" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">リクエスト受信</text>
+
+      <!-- Arrow -->
+      <line x1="300" y1="50" x2="300" y2="75" stroke="#567FC0" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- CSRF Check -->
+      <polygon points="300,75 420,115 300,155 180,115" fill="#E8EFF8" stroke="#567FC0" stroke-width="2"/>
+      <text x="300" y="112" text-anchor="middle" font-size="11" font-weight="600" fill="#3D5A8A">CSRF検証</text>
+      <text x="300" y="126" text-anchor="middle" font-size="9" fill="#6B7280">POST/PUT/DELETE/PATCH</text>
+      <!-- NG -->
+      <line x1="420" y1="115" x2="500" y2="115" stroke="#D94040" stroke-width="2" marker-end="url(#arrow-red)"/>
+      <rect x="500" y="98" width="90" height="34" rx="6" fill="#FDECEC" stroke="#D94040" stroke-width="1.5"/>
+      <text x="545" y="120" text-anchor="middle" font-size="11" font-weight="600" fill="#D94040">403</text>
+
+      <!-- Arrow down -->
+      <line x1="300" y1="155" x2="300" y2="180" stroke="#567FC0" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="290" y="170" text-anchor="end" font-size="9" fill="#2E9E5A">OK</text>
+
+      <!-- Public path? -->
+      <polygon points="300,180 420,220 300,260 180,220" fill="#E8EFF8" stroke="#567FC0" stroke-width="2"/>
+      <text x="300" y="217" text-anchor="middle" font-size="11" font-weight="600" fill="#3D5A8A">パブリックパス？</text>
+      <text x="300" y="231" text-anchor="middle" font-size="9" fill="#6B7280">/login, /api/auth/*</text>
+      <!-- Yes -->
+      <line x1="420" y1="220" x2="500" y2="220" stroke="#2E9E5A" stroke-width="2" marker-end="url(#arrow-green)"/>
+      <rect x="500" y="203" width="90" height="34" rx="6" fill="#E6F7ED" stroke="#2E9E5A" stroke-width="1.5"/>
+      <text x="545" y="225" text-anchor="middle" font-size="11" font-weight="600" fill="#2E9E5A">通過</text>
+
+      <!-- Arrow down -->
+      <line x1="300" y1="260" x2="300" y2="285" stroke="#567FC0" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="290" y="275" text-anchor="end" font-size="9" fill="#6B7280">いいえ</text>
+
+      <!-- Session cookie? -->
+      <polygon points="300,285 420,325 300,365 180,325" fill="#E8EFF8" stroke="#567FC0" stroke-width="2"/>
+      <text x="300" y="322" text-anchor="middle" font-size="11" font-weight="600" fill="#3D5A8A">セッションCookie</text>
+      <text x="300" y="336" text-anchor="middle" font-size="9" fill="#6B7280">存在チェック</text>
+      <!-- No -->
+      <line x1="420" y1="325" x2="500" y2="325" stroke="#D94040" stroke-width="2" marker-end="url(#arrow-red)"/>
+      <rect x="500" y="308" width="90" height="34" rx="6" fill="#FDECEC" stroke="#D94040" stroke-width="1.5"/>
+      <text x="545" y="330" text-anchor="middle" font-size="11" font-weight="600" fill="#D94040">401</text>
+
+      <!-- Arrow down -->
+      <line x1="300" y1="365" x2="300" y2="390" stroke="#567FC0" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="290" y="380" text-anchor="end" font-size="9" fill="#2E9E5A">あり</text>
+
+      <!-- Signature + Expiry check -->
+      <polygon points="300,390 420,430 300,470 180,430" fill="#E8EFF8" stroke="#567FC0" stroke-width="2"/>
+      <text x="300" y="425" text-anchor="middle" font-size="11" font-weight="600" fill="#3D5A8A">署名検証</text>
+      <text x="300" y="440" text-anchor="middle" font-size="9" fill="#6B7280">+ 有効期限チェック</text>
+      <!-- NG -->
+      <line x1="420" y1="430" x2="500" y2="430" stroke="#D94040" stroke-width="2" marker-end="url(#arrow-red)"/>
+      <rect x="500" y="413" width="90" height="34" rx="6" fill="#FDECEC" stroke="#D94040" stroke-width="1.5"/>
+      <text x="545" y="430" text-anchor="middle" font-size="9" font-weight="600" fill="#D94040">Cookie削除</text>
+      <text x="545" y="442" text-anchor="middle" font-size="9" font-weight="600" fill="#D94040">+ リダイレクト</text>
+
+      <!-- Arrow down to pass -->
+      <line x1="300" y1="470" x2="300" y2="498" stroke="#2E9E5A" stroke-width="2" marker-end="url(#arrow-green)"/>
+      <text x="290" y="487" text-anchor="end" font-size="9" fill="#2E9E5A">OK</text>
+
+      <!-- Pass -->
+      <rect x="220" y="498" width="160" height="40" rx="20" fill="#2E9E5A"/>
+      <text x="300" y="523" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">リクエスト通過</text>
+
+      <!-- Arrow markers -->
+      <defs>
+        <marker id="arrow-red" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+          <path d="M0,0 L10,4 L0,8 Z" fill="#D94040"/>
+        </marker>
+        <marker id="arrow-green" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+          <path d="M0,0 L10,4 L0,8 Z" fill="#2E9E5A"/>
+        </marker>
+      </defs>
+    </svg>
+    <p class="diagram-caption">図4: ミドルウェアアクセス制御フロー - 全リクエストの事前検査プロセス</p>
+  </div>
+</section>
+
+<!-- ==================== 6. 今後の推奨事項 ==================== -->
+<section>
+  <h2><span class="section-number">6</span> 今後の推奨事項</h2>
+
+  <!-- High Priority -->
+  <div class="priority-section">
+    <div class="priority-label priority-high">&#9888; 優先度: 高</div>
+    <div class="card-grid">
+      <div class="card card-red">
+        <h4>Content Security Policy（CSP）の導入</h4>
+        <p><code>next.config.ts</code>にCSPヘッダーを追加し、スクリプト・スタイルの読み込み元を制限</p>
+        <div class="effect">XSS攻撃のリスクをさらに低減</div>
+      </div>
+      <div class="card card-red">
+        <h4>セッションシークレットの定期ローテーション</h4>
+        <p>3〜6ヶ月ごとに<code>SESSION_SECRET</code>を更新する運用ルールの策定</p>
+        <div class="effect">万が一の漏洩時の影響範囲を限定</div>
+      </div>
+      <div class="card card-red">
+        <h4>監査ログの永続化</h4>
+        <p>アップロードログに加え、ログイン/ログアウト/設定変更のログをDBに保存</p>
+        <div class="effect">不正アクセスの事後調査を可能に</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Medium Priority -->
+  <div class="priority-section">
+    <div class="priority-label priority-medium">&#9679; 優先度: 中</div>
+    <div class="card-grid">
+      <div class="card card-orange">
+        <h4>二要素認証（2FA）の導入</h4>
+        <p>TOTP（Google Authenticator等）による二段階認証</p>
+        <div class="effect">パスワード漏洩時のリスク軽減</div>
+      </div>
+      <div class="card card-orange">
+        <h4>パスワードポリシーの強化</h4>
+        <p>最低文字数・英数字混合・記号必須などのルール</p>
+        <div class="effect">弱いパスワードの排除</div>
+      </div>
+      <div class="card card-orange">
+        <h4>セッションの永続化（Redis等）</h4>
+        <p>現在のインメモリレートリミットをRedis等に移行</p>
+        <div class="effect">サーバーレス環境でのレートリミットの信頼性向上</div>
+      </div>
+      <div class="card card-orange">
+        <h4>IPアドレスベースのアクセス制限</h4>
+        <p>社内ネットワークまたはVPNからのみアクセス許可</p>
+        <div class="effect">不正アクセスのリスク低減</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Low Priority -->
+  <div class="priority-section">
+    <div class="priority-label priority-low">&#9675; 優先度: 低</div>
+    <div class="card-grid">
+      <div class="card card-gray">
+        <h4>脆弱性スキャンの定期実施</h4>
+        <p>npm audit、Snyk等によるパッケージ脆弱性チェックの自動化</p>
+        <div class="effect">サプライチェーン攻撃の予防</div>
+      </div>
+      <div class="card card-gray">
+        <h4>ペネトレーションテスト</h4>
+        <p>外部専門業者によるセキュリティ診断</p>
+        <div class="effect">未知の脆弱性の発見</div>
+      </div>
+      <div class="card card-gray">
+        <h4>バックアップ・リカバリ手順の文書化</h4>
+        <p>Supabaseのバックアップからの復旧手順を明文化</p>
+        <div class="effect">障害時の復旧時間短縮</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 7. まとめ ==================== -->
+<section>
+  <h2><span class="section-number">7</span> まとめ</h2>
+  <div class="summary-box">
+    <p>本システムでは、<strong>認証・認可</strong>・<strong>セッション管理</strong>・<strong>CSRF対策</strong>・<strong>ブルートフォース対策</strong>・<strong>入力検証</strong>・<strong>セキュリティヘッダー</strong>・<strong>データ保護</strong>の各領域にわたり、Webアプリケーションに求められる標準的なセキュリティ対策を実装済みです。</p>
+    <p>今後は、CSPの導入やセッション管理の外部化、監査ログの充実を段階的に進めることで、さらなるセキュリティレベルの向上を図ることを推奨します。</p>
+  </div>
+</section>
+
+</div>
+
+<footer class="footer">
+  <p><strong>以上</strong></p>
+  <p style="margin-top:8px;">株式会社斗 システム開発部 &mdash; 2026年4月20日</p>
+</footer>
+
+</body>
+</html>
