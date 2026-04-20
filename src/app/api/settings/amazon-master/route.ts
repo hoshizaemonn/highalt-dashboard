@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
     const entries = await prisma.amazonProductMaster.findMany({
       where,
       orderBy: { id: "desc" },
+      take: 1000,
     });
 
     return NextResponse.json({ entries });

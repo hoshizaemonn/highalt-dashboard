@@ -2,8 +2,12 @@ import { PrismaClient } from "../generated/prisma/client";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-// Allow Supabase self-signed certs in development only.
-// In production, rely on Pool-level ssl config instead of disabling globally.
+// NODE_TLS_REJECT_UNAUTHORIZED=0 is required because Supabase's PostgreSQL
+// connection uses a self-signed SSL certificate. Without this, Node.js rejects
+// the TLS handshake with "UNABLE_TO_VERIFY_LEAF_SIGNATURE". In production the
+// Pool-level `ssl: { rejectUnauthorized: false }` handles it, but during local
+// development / Vercel serverless cold-starts the global flag is also needed to
+// cover any connection attempt that bypasses the Pool (e.g. Prisma internals).
 if (process.env.NODE_ENV !== "production") {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }
@@ -20,7 +24,7 @@ function createPrismaClient() {
   const pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    max: 5,
+    max: 10,
     idleTimeoutMillis: 10000,
   });
   const adapter = new PrismaPg(pool);
