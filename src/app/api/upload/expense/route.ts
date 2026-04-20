@@ -80,8 +80,7 @@ export async function GET(request: NextRequest) {
     console.error("Expense check error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: "Internal server error",
       },
       { status: 500 },
     );
@@ -215,6 +214,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { validateUploadedFile } = await import("@/lib/upload-validation");
+    const fileError = validateUploadedFile(file);
+    if (fileError) {
+      return NextResponse.json({ error: fileError }, { status: 400 });
+    }
+
     const buffer = await file.arrayBuffer();
     // PayPay bank CSV is typically cp932/shift_jis
     const text = decodeFileBuffer(buffer, "shift_jis");
@@ -297,8 +302,7 @@ export async function POST(request: NextRequest) {
     console.error("Expense upload error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: "Internal server error",
       },
       { status: 500 },
     );

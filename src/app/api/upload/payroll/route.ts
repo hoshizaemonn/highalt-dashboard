@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getSession, requireAdmin } from "@/lib/auth";
 import { THOUSAND_DIGIT_MAP } from "@/lib/constants";
 import {
   decodeFileBuffer,
@@ -84,8 +84,7 @@ export async function GET(request: NextRequest) {
     console.error("Payroll check error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: "Internal server error",
       },
       { status: 500 },
     );
@@ -94,10 +93,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
@@ -109,6 +106,12 @@ export async function POST(request: NextRequest) {
         { error: "file, year, month are required" },
         { status: 400 },
       );
+    }
+
+    const { validateUploadedFile } = await import("@/lib/upload-validation");
+    const fileError = validateUploadedFile(file);
+    if (fileError) {
+      return NextResponse.json({ error: fileError }, { status: 400 });
     }
 
     const buffer = await file.arrayBuffer();
@@ -354,8 +357,8 @@ export async function POST(request: NextRequest) {
       // Create upload log
       await tx.uploadLog.create({
         data: {
-          userId: session.userId,
-          userName: session.displayName || session.storeName || "ユーザー",
+          userId: auth.session.userId,
+          userName: auth.session.displayName || auth.session.storeName || "ユーザー",
           dataType: "payroll",
           year,
           month,
@@ -387,8 +390,7 @@ export async function POST(request: NextRequest) {
     console.error("Payroll upload error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: "Internal server error",
       },
       { status: 500 },
     );

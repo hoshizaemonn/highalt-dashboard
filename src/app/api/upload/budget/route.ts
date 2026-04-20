@@ -34,8 +34,7 @@ export async function GET(request: NextRequest) {
     console.error("Budget check error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: "Internal server error",
       },
       { status: 500 },
     );
@@ -62,6 +61,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { validateUploadedFile } = await import("@/lib/upload-validation");
+    const fileError = validateUploadedFile(file);
+    if (fileError) {
+      return NextResponse.json({ error: fileError }, { status: 400 });
+    }
+
     const buffer = await file.arrayBuffer();
     const text = decodeFileBuffer(buffer, "shift_jis");
     const allRows = parseCSV(text);
@@ -73,24 +78,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Budget CSV supports two formats:
-    // A) 予算実績対比表: each month has 4 columns (予算/実績/予算差/予算比)
-    // B) 予算書: each month has 1 column (予算のみ)
+    // Budget CSV (予算実績対比表) format:
+    // Each month has 4 columns: 予算/実績/予算差/予算比 starting from col index 1
     // Values are in thousands (千円単位) → multiply by 1000
     // Fiscal year: Oct(fy-1) to Sep(fy)
-
-    // Auto-detect format: check if header/month row contains "実績"/"予算差"/"予算比"
-    // 対比表 has 4 columns per month (予算/実績/予算差/予算比)
-    // 予算書 has 1 column per month (予算のみ)
-    // Prioritize header content over column count (some CSVs have extra columns)
-    const headerRows = allRows.slice(0, 3);
-    const hasJisseki = headerRows.some((row: string[]) =>
-      row?.some((h: string) =>
-        h && (h.includes("実績") || h.includes("予算差") || h.includes("予算比")),
-      ),
-    );
-    const is対比表 = hasJisseki;
-    const colsPerMonth = is対比表 ? 4 : 1;
 
     // Build fiscal year month mapping: [(2025,10),(2025,11),(2025,12),(2026,1),...,(2026,9)]
     const fyMonths: { year: number; month: number }[] = [];
@@ -114,20 +105,16 @@ export async function POST(request: NextRequest) {
       const categoryName = row[0].trim();
       if (!budgetItemSet.has(categoryName)) continue;
 
+      // Each month has 4 columns: 予算/実績/予算差/予算比 starting from col index 1
       for (let i = 0; i < fyMonths.length; i++) {
-        const colIdx = 1 + i * colsPerMonth; // 対比表: 4列おき, 予算書: 1列おき
+        const colIdx = 1 + i * 4; // 予算 column (first of each group of 4)
         if (colIdx >= row.length) break;
 
         const valStr = row[colIdx].trim().replace(/,/g, "").replace(/"/g, "").replace(/ /g, "");
         if (!valStr || valStr === "0" || valStr === "-") continue;
 
-        // Skip percentage values (e.g. "66%", "100%")
-        if (valStr.includes("%")) continue;
-        // Skip negative parenthesized values like "(64)"
-        const cleanVal = valStr.replace(/[()（）]/g, "");
-
         try {
-          const amount = parseInt(cleanVal, 10) * 1000; // 千円単位 → 円
+          const amount = parseInt(valStr, 10) * 1000; // 千円単位 → 円
           if (isNaN(amount)) continue;
 
           records.push({
@@ -135,7 +122,7 @@ export async function POST(request: NextRequest) {
             year: fyMonths[i].year,
             month: fyMonths[i].month,
             category: categoryName,
-            amount: valStr.startsWith("(") || valStr.startsWith("（") ? -amount : amount,
+            amount,
           });
         } catch {
           // Skip invalid values
@@ -143,20 +130,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Delete existing budget data for this store and year range, then insert
-    // Use sequential operations instead of transaction to avoid pool limits
+    // Delete + insert inside a transaction to prevent partial state
     const years = [...new Set(records.map((r) => r.year))];
-    for (const y of years) {
-      await prisma.budgetData.deleteMany({
-        where: { storeName: store, year: y },
-      });
-    }
 
-    // Insert one by one to handle upsert for duplicates
-    let savedCount = 0;
-    for (const rec of records) {
-      try {
-        await prisma.budgetData.upsert({
+    const savedCount = await prisma.$transaction(async (tx) => {
+      for (const y of years) {
+        await tx.budgetData.deleteMany({
+          where: { storeName: store, year: y },
+        });
+      }
+
+      let count = 0;
+      for (const rec of records) {
+        await tx.budgetData.upsert({
           where: {
             storeName_year_month_category: {
               storeName: rec.storeName,
@@ -168,23 +154,23 @@ export async function POST(request: NextRequest) {
           update: { amount: rec.amount },
           create: rec,
         });
-        savedCount++;
-      } catch (e) {
-        console.error("Budget upsert error:", rec, e);
+        count++;
       }
-    }
 
-    await prisma.uploadLog.create({
-      data: {
-        userId: session.userId,
-        userName: session.displayName || session.storeName || "ユーザー",
-        dataType: "budget",
-        storeName: store,
-        year: fiscalYear,
-        fileName: file.name,
-        recordCount: savedCount,
-        note: `${fiscalYear}年度 第${period || 9}期`,
-      },
+      await tx.uploadLog.create({
+        data: {
+          userId: session.userId,
+          userName: session.displayName || session.storeName || "ユーザー",
+          dataType: "budget",
+          storeName: store,
+          year: fiscalYear,
+          fileName: file.name,
+          recordCount: count,
+          note: `${fiscalYear}年度 第${period || 9}期`,
+        },
+      });
+
+      return count;
     });
 
     return NextResponse.json({
@@ -195,8 +181,7 @@ export async function POST(request: NextRequest) {
     console.error("Budget upload error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: "Internal server error",
       },
       { status: 500 },
     );

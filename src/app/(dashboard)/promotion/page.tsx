@@ -34,7 +34,6 @@ interface FormData {
   adRecruit: number;
   adOther: number;
   unitPrice: number;
-  unitPriceBudget: number;
   optAthlete4: number;
   optAthlete8: number;
   optDrinkHyalchi: number;
@@ -63,7 +62,6 @@ const EMPTY_FORM: FormData = {
   adRecruit: 0,
   adOther: 0,
   unitPrice: 0,
-  unitPriceBudget: 0,
   optAthlete4: 0,
   optAthlete8: 0,
   optDrinkHyalchi: 0,
@@ -154,7 +152,6 @@ export default function PromotionPage() {
           adRecruit: r.adRecruit ?? 0,
           adOther: r.adOther ?? 0,
           unitPrice: r.unitPrice ?? 0,
-          unitPriceBudget: r.unitPriceBudget ?? 0,
           optAthlete4: r.optAthlete4 ?? 0,
           optAthlete8: r.optAthlete8 ?? 0,
           optDrinkHyalchi: r.optDrinkHyalchi ?? 0,
@@ -421,24 +418,12 @@ export default function PromotionPage() {
             </h2>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <InputField
-                label="客単価（実績）"
+                label="客単価"
                 value={form.unitPrice}
                 onChange={(v) => setField("unitPrice", v)}
                 suffix="円"
               />
-              <InputField
-                label="客単価（予算）"
-                value={form.unitPriceBudget}
-                onChange={(v) => setField("unitPriceBudget", v)}
-                suffix="円"
-              />
             </div>
-            {form.unitPriceBudget > 0 && form.unitPrice > 0 && (
-              <p className={`text-xs mt-2 ${form.unitPrice >= form.unitPriceBudget ? "text-green-600" : "text-red-500"}`}>
-                予実差: {yenFmt.format(form.unitPrice - form.unitPriceBudget)}
-                （{((form.unitPrice / form.unitPriceBudget) * 100).toFixed(1)}%）
-              </p>
-            )}
           </section>
 
           {/* 5. オプション */}

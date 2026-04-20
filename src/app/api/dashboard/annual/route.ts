@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE } from "@/lib/constants";
+import { requireSession } from "@/lib/auth";
 
 interface MonthlyEntry {
   month: number;
@@ -33,6 +34,9 @@ interface MonthlyEntry {
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const { searchParams } = request.nextUrl;
     const yearParam = searchParams.get("year");
     const store = searchParams.get("store") || undefined;
@@ -196,16 +200,10 @@ export async function GET(request: NextRequest) {
       for (const b of budgetForMonth) {
         budgetMap[b.category] = (budgetMap[b.category] || 0) + b.amount;
       }
-      // Calculate budget aggregates from component items (matching BUDGET_ITEMS)
-      const REV_ITEMS = ["パーソナル・物販・その他収入", "月会費収入", "サービス収入", "自販機手数料収入"];
-      const LABOR_ITEMS = ["正社員・契約社員給与", "賞与", "通勤手当", "法定福利費"];
-
-      const budgetRevenue = REV_ITEMS.reduce((s, k) => s + (budgetMap[k] ?? 0), 0);
-      const budgetLabor = LABOR_ITEMS.reduce((s, k) => s + (budgetMap[k] ?? 0), 0);
-      const budgetExpense = Object.entries(budgetMap)
-        .filter(([k]) => !REV_ITEMS.includes(k) && !LABOR_ITEMS.includes(k))
-        .reduce((s, [, v]) => s + v, 0);
-      const budgetProfit = budgetRevenue - budgetLabor - budgetExpense;
+      const budgetRevenue = budgetMap["売上合計"] ?? 0;
+      const budgetLabor = budgetMap["人件費"] ?? 0;
+      const budgetExpense = budgetMap["経費合計"] ?? 0;
+      const budgetProfit = budgetMap["営業利益"] ?? 0;
 
       return {
         month: m,
@@ -222,9 +220,9 @@ export async function GET(request: NextRequest) {
         employee_count: empIds.size,
         fulltime_count: ftCount,
         parttime_count: ptCount,
-        ma_total_members: ms.reduce((s, r) => s + (r.totalMembers || r.planSubscribers), 0),
+        ma_total_members: ms.reduce((s, r) => s + r.totalMembers, 0),
         ma_plan_subscribers: ms.reduce((s, r) => s + r.planSubscribers, 0),
-        ma_new_signups: ms.reduce((s, r) => s + (r.newPlanSignups || r.newPlanApplications), 0),
+        ma_new_signups: ms.reduce((s, r) => s + r.newPlanSignups, 0),
         ma_cancellations: ms.reduce((s, r) => s + r.cancellations, 0),
         ma_suspensions: ms.reduce((s, r) => s + r.suspensions, 0),
         ma_cancel_rate: ms.length > 0 ? ms[0].cancellationRate : "",
@@ -245,7 +243,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Dashboard annual API error:", error);
     return NextResponse.json(
-      { error: "Internal server error", detail: error instanceof Error ? error.message : String(error) },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }

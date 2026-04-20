@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth";
 
 export async function PUT(request: NextRequest) {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const body = await request.json();
     const { year, month, storeName, fields } = body as {
       year: number;
@@ -68,7 +72,7 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     console.error("Member summary update error:", error);
     return NextResponse.json(
-      { error: "Internal server error", detail: error instanceof Error ? error.message : String(error) },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }

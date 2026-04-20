@@ -1,0 +1,279 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
+import { STORES } from "@/lib/constants";
+import {
+  StatusMessage,
+  UploadLogEntry,
+  FileDropzone,
+  StatusBanner,
+  StoreSelect,
+  OverwriteWarning,
+  ActionButton,
+} from "./SharedComponents";
+
+// ─── Budget Tab ─────────────────────────────────────────────
+
+export function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [store, setStore] = useState<string>(STORES[0]);
+  const [fiscalYear, setFiscalYear] = useState(2026);
+  const [period, setPeriod] = useState(9);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
+
+  const doUpload = async () => {
+    setLoading(true);
+    setStatus({ type: "info", text: "解析・保存中..." });
+    setOverwriteWarning(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file!);
+      formData.append("store", store);
+      formData.append("fiscalYear", String(fiscalYear));
+      formData.append("period", String(period));
+
+      const res = await fetch("/api/upload/budget", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setStatus({ type: "error", text: data.error || "エラーが発生しました" });
+        return;
+      }
+
+      setStatus({
+        type: "success",
+        text: `${store} ${fiscalYear}年度 第${period}期の予算データを保存しました（${data.records}件 / ${data.categories?.length || 0}カテゴリ）`,
+      });
+      onSuccess?.();
+    } catch (e) {
+      setStatus({
+        type: "error",
+        text: e instanceof Error ? e.message : "エラーが発生しました",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setLoading(true);
+    setStatus(null);
+
+    try {
+      const checkRes = await fetch(`/api/upload/budget?store=${encodeURIComponent(store)}&fiscalYear=${fiscalYear}`);
+      const checkData = await checkRes.json();
+
+      if (checkData.exists) {
+        setOverwriteWarning({ count: checkData.count });
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Check failed, proceed with upload anyway
+    }
+
+    await doUpload();
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500">
+        予算実績対比表 CSVをアップロード（各月の予算列を取り込みます）
+      </p>
+
+      <div className="grid grid-cols-3 gap-4">
+        <StoreSelect value={store} onChange={setStore} />
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            対象年度（決算年）
+          </label>
+          <select
+            value={fiscalYear}
+            onChange={(e) => setFiscalYear(parseInt(e.target.value))}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+          >
+            {Array.from({ length: new Date().getFullYear() - 2020 + 6 }, (_, i) => 2020 + i).map((y) => (
+              <option key={y} value={y}>
+                {y}年度
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            第○期
+          </label>
+          <select
+            value={period}
+            onChange={(e) => setPeriod(parseInt(e.target.value))}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+          >
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+              <option key={m} value={m}>
+                第{m}期
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <p className="text-xs text-gray-400">
+        {fiscalYear}年/第{period}期 = {fiscalYear - 1}年10月〜{fiscalYear}年9月
+      </p>
+
+      <FileDropzone
+        accept=".csv"
+        file={file}
+        onFileSelect={setFile}
+        onClear={() => {
+          setFile(null);
+          setStatus(null);
+          setOverwriteWarning(null);
+        }}
+      />
+
+      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
+        解析して保存する
+      </ActionButton>
+
+      {overwriteWarning && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F ${store} ${fiscalYear}年度 第${period}期の予算データが既に${overwriteWarning.count}件あります。上書きしますか？`}
+          onConfirm={doUpload}
+          onCancel={() => setOverwriteWarning(null)}
+          loading={loading}
+        />
+      )}
+
+      <StatusBanner status={status} />
+    </div>
+  );
+}
+
+// ─── Upload History ─────────────────────────────────────────
+
+export function UploadHistory() {
+  const [logs, setLogs] = useState<UploadLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  const INITIAL_SHOW = 10;
+
+  useEffect(() => {
+    async function fetchLogs() {
+      try {
+        const res = await fetch("/api/upload-logs");
+        const data = await res.json();
+        setLogs(data.logs || []);
+      } catch {
+        // Silently fail
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchLogs();
+  }, []);
+
+  const dataTypeLabels: Record<string, string> = {
+    payroll: "人件費",
+    expense: "経費",
+    amazon: "Amazon",
+    budget: "予算",
+    hacomono_ml001: "会員 (ML001)",
+    hacomono_pl001: "売上明細 (PL001)",
+    hacomono_ma002: "月次サマリ (MA002)",
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 size={20} className="animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (logs.length === 0) {
+    return (
+      <p className="text-sm text-gray-400 text-center py-4">
+        アップロード履歴はありません
+      </p>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="text-left py-2 px-3 font-medium">日時</th>
+            <th className="text-left py-2 px-3 font-medium">実行者</th>
+            <th className="text-left py-2 px-3 font-medium">種別</th>
+            <th className="text-left py-2 px-3 font-medium">店舗</th>
+            <th className="text-left py-2 px-3 font-medium">対象</th>
+            <th className="text-left py-2 px-3 font-medium">ファイル</th>
+            <th className="text-right py-2 px-3 font-medium">件数</th>
+            <th className="text-left py-2 px-3 font-medium">備考</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(showAll ? logs : logs.slice(0, INITIAL_SHOW)).map((log) => (
+            <tr key={log.id} className="border-t border-gray-100 hover:bg-gray-50">
+              <td className="py-1.5 px-3 whitespace-nowrap">
+                {new Date(log.createdAt).toLocaleString("ja-JP", {
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </td>
+              <td className="py-1.5 px-3 whitespace-nowrap">{log.userName || "-"}</td>
+              <td className="py-1.5 px-3">
+                <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-medium">
+                  {dataTypeLabels[log.dataType] || log.dataType}
+                </span>
+              </td>
+              <td className="py-1.5 px-3">{log.storeName || "-"}</td>
+              <td className="py-1.5 px-3 whitespace-nowrap">
+                {log.year && log.month ? `${log.year}/${log.month}` : "-"}
+              </td>
+              <td className="py-1.5 px-3 max-w-[150px] truncate" title={log.fileName || ""}>
+                {log.fileName || "-"}
+              </td>
+              <td className="py-1.5 px-3 text-right">{log.recordCount}</td>
+              <td className="py-1.5 px-3 max-w-[200px] truncate text-gray-500" title={log.note || ""}>
+                {log.note || "-"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!showAll && logs.length > INITIAL_SHOW && (
+        <div className="text-center py-3 border-t border-gray-100">
+          <button
+            onClick={() => setShowAll(true)}
+            className="text-sm text-[#567FC0] hover:underline"
+          >
+            さらに表示（全{logs.length}件）
+          </button>
+        </div>
+      )}
+      {showAll && logs.length > INITIAL_SHOW && (
+        <div className="text-center py-3 border-t border-gray-100">
+          <button
+            onClick={() => setShowAll(false)}
+            className="text-sm text-gray-500 hover:underline"
+          >
+            折りたたむ
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

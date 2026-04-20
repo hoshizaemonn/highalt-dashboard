@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const { searchParams } = request.nextUrl;
     const fiscalYearParam = searchParams.get("fiscalYear");
     const store = searchParams.get("store") || undefined;

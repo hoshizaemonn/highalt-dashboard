@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth";
 
 export async function GET() {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const logs = await prisma.uploadLog.findMany({
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -20,6 +24,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const body = await request.json();
 
     const { userId, userName, dataType, storeName, year, month, fileName, recordCount, note } =

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const { searchParams } = request.nextUrl;
     const year = parseInt(searchParams.get("year") ?? "", 10);
     const month = parseInt(searchParams.get("month") ?? "", 10);
@@ -147,6 +151,9 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const body = await request.json();
 
     // Support batch: { updates: [...] } or single: { id, ... }

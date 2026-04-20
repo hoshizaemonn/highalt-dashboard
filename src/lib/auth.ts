@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 
 const SESSION_COOKIE = "highalt_session";
@@ -7,40 +7,47 @@ const SESSION_MAX_AGE = 60 * 60 * 24; // 24 hours in seconds
 
 function getSessionSecret(): string {
   const secret = process.env.SESSION_SECRET;
-  if (!secret) {
-    // Fallback for development — in production SESSION_SECRET must be set
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("SESSION_SECRET environment variable is required in production");
-    }
-    return "dev-secret-do-not-use-in-production";
+  if (!secret || secret.length < 32) {
+    throw new Error(
+      "SESSION_SECRET environment variable must be set (min 32 chars)"
+    );
   }
   return secret;
 }
 
-/** Sign a payload string with HMAC-SHA256 */
-function sign(payload: string): string {
-  const secret = getSessionSecret();
-  const sig = createHmac("sha256", secret).update(payload).digest("base64url");
-  return `${payload}.${sig}`;
+/**
+ * Sign a payload string with HMAC-SHA256.
+ * Returns "payload.signature" format.
+ */
+function signPayload(payload: string): string {
+  const signature = createHmac("sha256", getSessionSecret())
+    .update(payload)
+    .digest("base64url");
+  return `${payload}.${signature}`;
 }
 
-/** Verify and extract payload from a signed string. Returns null if invalid. */
-export function verifySignature(signed: string): string | null {
-  const lastDot = signed.lastIndexOf(".");
+/**
+ * Verify and extract the payload from a signed cookie value.
+ * Returns null if signature is invalid.
+ */
+function verifySignedPayload(value: string): string | null {
+  const lastDot = value.lastIndexOf(".");
   if (lastDot === -1) return null;
 
-  const payload = signed.substring(0, lastDot);
-  const signature = signed.substring(lastDot + 1);
+  const payload = value.substring(0, lastDot);
+  const providedSig = value.substring(lastDot + 1);
 
-  const secret = getSessionSecret();
-  const expected = createHmac("sha256", secret).update(payload).digest("base64url");
+  const expectedSig = createHmac("sha256", getSessionSecret())
+    .update(payload)
+    .digest("base64url");
 
   // Timing-safe comparison to prevent timing attacks
   try {
-    const sigBuf = Buffer.from(signature, "base64url");
-    const expBuf = Buffer.from(expected, "base64url");
-    if (sigBuf.length !== expBuf.length) return null;
-    if (!timingSafeEqual(sigBuf, expBuf)) return null;
+    const a = Buffer.from(providedSig, "base64url");
+    const b = Buffer.from(expectedSig, "base64url");
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      return null;
+    }
   } catch {
     return null;
   }
@@ -64,13 +71,7 @@ export async function verifyPassword(
   password: string,
   storedHash: string
 ): Promise<boolean> {
-  // Support both bcrypt ($2a$/$2b$ prefix) and legacy SHA-256 hashes
-  if (storedHash.startsWith("$2a$") || storedHash.startsWith("$2b$")) {
-    return bcrypt.compare(password, storedHash);
-  }
-  // Legacy SHA-256 hash (from Streamlit app)
-  const sha256 = createHash("sha256").update(password).digest("hex");
-  return sha256 === storedHash;
+  return bcrypt.compare(password, storedHash);
 }
 
 export async function createSession(
@@ -88,12 +89,12 @@ export async function createSession(
     expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
   };
 
-  const signed = sign(JSON.stringify(session));
+  const signedValue = signPayload(JSON.stringify(session));
 
-  cookieStore.set(SESSION_COOKIE, signed, {
+  cookieStore.set(SESSION_COOKIE, signedValue, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "strict",
     path: "/",
     maxAge: SESSION_MAX_AGE,
   });
@@ -108,8 +109,10 @@ export async function getSession(): Promise<SessionUser | null> {
   }
 
   try {
-    const payload = verifySignature(sessionCookie.value);
-    if (!payload) return null;
+    const payload = verifySignedPayload(sessionCookie.value);
+    if (!payload) {
+      return null; // Invalid signature — tampered cookie
+    }
 
     const session: SessionUser = JSON.parse(payload);
 
@@ -126,4 +129,47 @@ export async function getSession(): Promise<SessionUser | null> {
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(SESSION_COOKIE);
+}
+
+/**
+ * Require an authenticated session for an API route.
+ * Returns the session or a 401 NextResponse.
+ */
+export async function requireSession(): Promise<
+  | { session: SessionUser; error?: never }
+  | { session?: never; error: Response }
+> {
+  const { NextResponse } = await import("next/server");
+  const session = await getSession();
+  if (!session) {
+    return {
+      error: NextResponse.json(
+        { error: "認証が必要です" },
+        { status: 401 }
+      ),
+    };
+  }
+  return { session };
+}
+
+/**
+ * Require admin role for an API route.
+ * Returns the session or a 401/403 NextResponse.
+ */
+export async function requireAdmin(): Promise<
+  | { session: SessionUser; error?: never }
+  | { session?: never; error: Response }
+> {
+  const result = await requireSession();
+  if (result.error) return result;
+  if (result.session.role !== "admin") {
+    const { NextResponse } = await import("next/server");
+    return {
+      error: NextResponse.json(
+        { error: "管理者権限が必要です" },
+        { status: 403 }
+      ),
+    };
+  }
+  return result;
 }

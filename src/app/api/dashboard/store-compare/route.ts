@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STORES } from "@/lib/constants";
+import { requireSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireSession();
+    if (auth.error) return auth.error;
+
     const { searchParams } = request.nextUrl;
     const yearParam = searchParams.get("year");
     const monthsParam = searchParams.get("months");
@@ -115,7 +119,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Store compare API error:", error);
     return NextResponse.json(
-      { error: "Internal server error", detail: error instanceof Error ? error.message : String(error) },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }
