@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { BUDGET_ITEMS } from "@/lib/constants";
 import { decodeFileBuffer, parseCSV, safeInt } from "@/lib/csv-utils";
+import { checkOrigin } from "@/lib/csrf";
+import { validateUploadFile } from "@/lib/upload-validation";
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,6 +45,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!checkOrigin(request)) {
+    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+  }
   try {
     const session = await getSession();
     if (!session) {
@@ -51,6 +56,12 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
+    if (file) {
+      const validationError = validateUploadFile(file);
+      if (validationError) {
+        return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+    }
     const store = formData.get("store") as string;
     const fiscalYear = parseInt(formData.get("fiscalYear") as string, 10);
     const period = parseInt(formData.get("period") as string, 10);
@@ -144,19 +155,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Delete existing budget data for this store and year range, then insert
-    // Use sequential operations instead of transaction to avoid pool limits
     const years = [...new Set(records.map((r) => r.year))];
-    for (const y of years) {
-      await prisma.budgetData.deleteMany({
-        where: { storeName: store, year: y },
-      });
-    }
 
-    // Insert one by one to handle upsert for duplicates
-    let savedCount = 0;
-    for (const rec of records) {
-      try {
-        await prisma.budgetData.upsert({
+    await prisma.$transaction(async (tx) => {
+      for (const y of years) {
+        await tx.budgetData.deleteMany({
+          where: { storeName: store, year: y },
+        });
+      }
+
+      for (const rec of records) {
+        await tx.budgetData.upsert({
           where: {
             storeName_year_month_category: {
               storeName: rec.storeName,
@@ -168,11 +177,10 @@ export async function POST(request: NextRequest) {
           update: { amount: rec.amount },
           create: rec,
         });
-        savedCount++;
-      } catch (e) {
-        console.error("Budget upsert error:", rec, e);
       }
-    }
+    });
+
+    const savedCount = records.length;
 
     await prisma.uploadLog.create({
       data: {

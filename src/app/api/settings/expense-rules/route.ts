@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { checkOrigin } from "@/lib/csrf";
 
 export async function GET() {
   try {
@@ -24,6 +25,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!checkOrigin(request)) {
+    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+  }
   try {
     const session = await getSession();
     if (!session) {

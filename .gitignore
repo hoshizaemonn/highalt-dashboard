@@ -1,6 +1,27 @@
-node_modules/
-.next/
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
 .env.local
 .env
+.env.production
+.env*.local
+
+# Build
+node_modules/
+.next/
+out/
+
+# Generated
 src/generated/
+
+# Vercel
 .vercel
+
+# Misc
+*.log

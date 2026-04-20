@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { decodeFileBuffer, parseCSV, safeFloat } from "@/lib/csv-utils";
+import { checkOrigin } from "@/lib/csrf";
+import { validateUploadFile } from "@/lib/upload-validation";
 
 /**
  * Extract a meaningful keyword from a PayPay bank description.
@@ -89,6 +91,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!checkOrigin(request)) {
+    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+  }
   try {
     const session = await getSession();
     if (!session) {
@@ -204,6 +209,12 @@ export async function POST(request: NextRequest) {
     // ─── Parse action (FormData) ─────────────────────────────
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
+    if (file) {
+      const validationError = validateUploadFile(file);
+      if (validationError) {
+        return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+    }
     const store = formData.get("store") as string;
     const year = parseInt(formData.get("year") as string, 10);
     const month = parseInt(formData.get("month") as string, 10);

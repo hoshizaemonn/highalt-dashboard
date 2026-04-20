@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LOGO_BASE64 } from "@/lib/logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -45,7 +44,7 @@ export default function LoginPage() {
           {/* Header */}
           <div className="text-center mb-8">
             <img
-              src={LOGO_BASE64}
+              src="/logo.png"
               alt="ハイアルチ 駅前高地™トレーニング"
               className="mx-auto w-40 rounded-lg mb-4"
             />

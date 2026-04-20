@@ -37,7 +37,7 @@ model UploadLog {
   note        String?
   createdAt   DateTime @default(now()) @map("created_at")
 
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("upload_logs")
 }
@@ -128,6 +128,7 @@ model ExpenseData {
   isRevenue   Int     @default(0) @map("is_revenue")
   breakdown   String  @default("")
 
+  @@index([year, month, storeName])
   @@map("expense_data")
 }
 
@@ -143,6 +144,7 @@ model RevenueData {
   memberCount Int     @default(0) @map("member_count")
   note        String?
 
+  @@index([year, month, storeName])
   @@map("revenue_data")
 }
 
@@ -166,6 +168,7 @@ model MemberData {
   firstTrialDate String? @map("first_trial_date")
   initialPlan    String? @map("initial_plan")
 
+  @@unique([year, month, storeName, memberId])
   @@map("member_data")
 }
 
@@ -187,6 +190,7 @@ model MonthlySummary {
   cancellations       Int    @default(0) @map("cancellations")
   cancellationRate    String @default("") @map("cancellation_rate")
 
+  @@unique([year, month, storeName])
   @@map("monthly_summary")
 }
 
@@ -206,6 +210,7 @@ model SalesDetail {
   tax           Int     @default(0)
   discount      Int     @default(0)
 
+  @@index([year, month, storeName])
   @@map("sales_detail")
 }
 

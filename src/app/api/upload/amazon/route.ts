@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { decodeFileBuffer, parseCSV, buildHeaderMap, safeInt } from "@/lib/csv-utils";
+import { checkOrigin } from "@/lib/csrf";
+import { validateUploadFile } from "@/lib/upload-validation";
 
 const AMAZON_ACCOUNT_USER_MAP: Record<string, string> = {
   "東日本橋スタジオ": "東日本橋",
@@ -57,6 +59,9 @@ function detectStoreFromAddress(address: string): string | null {
 }
 
 export async function POST(request: NextRequest) {
+  if (!checkOrigin(request)) {
+    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+  }
   try {
     const session = await getSession();
     if (!session) {
@@ -158,6 +163,12 @@ export async function POST(request: NextRequest) {
     // ─── Parse action (FormData) ─────────────────────────────
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
+    if (file) {
+      const validationError = validateUploadFile(file);
+      if (validationError) {
+        return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+    }
 
     if (!file) {
       return NextResponse.json(

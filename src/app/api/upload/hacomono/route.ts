@@ -10,6 +10,8 @@ import {
   parseDateLoose,
   isInMonth,
 } from "@/lib/csv-utils";
+import { checkOrigin } from "@/lib/csrf";
+import { validateUploadFile } from "@/lib/upload-validation";
 
 const HACOMONO_STORE_MAP: Record<string, string> = {
   "ハイアルチ東日本橋スタジオ": "東日本橋",
@@ -105,6 +107,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!checkOrigin(request)) {
+    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+  }
   try {
     const session = await getSession();
     if (!session) {
@@ -113,6 +118,12 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
+    if (file) {
+      const validationError = validateUploadFile(file);
+      if (validationError) {
+        return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+    }
     const type = formData.get("type") as string; // ml001, pl001, ma002
     const store = formData.get("store") as string;
     const year = parseInt(formData.get("year") as string, 10);

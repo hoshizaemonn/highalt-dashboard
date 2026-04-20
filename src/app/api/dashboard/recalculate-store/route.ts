@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { THOUSAND_DIGIT_MAP } from "@/lib/constants";
+import { checkOrigin } from "@/lib/csrf";
 
 /**
  * Recalculate store assignments for existing payroll data
  * based on the latest store_overrides + thousand-digit rule.
  */
 export async function POST(request: NextRequest) {
+  if (!checkOrigin(request)) {
+    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+  }
   try {
     const session = await getSession();
     if (!session || session.role !== "admin") {
@@ -105,48 +109,49 @@ export async function POST(request: NextRequest) {
         generalContributionCo: rows.reduce((s, r) => s + r.generalContributionCo, 0),
       };
 
-      // Delete old rows for this employee/month
-      await prisma.payrollData.deleteMany({
-        where: { year: rowYear, month: rowMonth, employeeId: empId },
+      // Delete old rows and create new ones in a transaction
+      await prisma.$transaction(async (tx) => {
+        await tx.payrollData.deleteMany({
+          where: { year: rowYear, month: rowMonth, employeeId: empId },
+        });
+
+        for (const assign of assignments) {
+          const r = assign.ratio / 100;
+          await tx.payrollData.create({
+            data: {
+              year: rowYear,
+              month: rowMonth,
+              employeeId: empId,
+              employeeName: sumRow.employeeName,
+              contractType: sumRow.contractType,
+              storeName: assign.storeName,
+              ratio: assign.ratio,
+              workDaysWeekday: sumRow.workDaysWeekday * r,
+              workDaysHoliday: sumRow.workDaysHoliday * r,
+              workDaysLegalHoliday: sumRow.workDaysLegalHoliday * r,
+              scheduledHours: sumRow.scheduledHours * r,
+              overtimeHours: sumRow.overtimeHours * r,
+              baseSalary: sumRow.baseSalary * r,
+              positionAllowance: sumRow.positionAllowance * r,
+              overtimePay: sumRow.overtimePay * r,
+              commuteTaxable: sumRow.commuteTaxable * r,
+              commuteNontax: sumRow.commuteNontax * r,
+              taxableTotal: sumRow.taxableTotal * r,
+              grossTotal: sumRow.grossTotal * r,
+              healthInsuranceCo: sumRow.healthInsuranceCo * r,
+              careInsuranceCo: sumRow.careInsuranceCo * r,
+              pensionCo: sumRow.pensionCo * r,
+              childContributionCo: sumRow.childContributionCo * r,
+              pensionFundCo: sumRow.pensionFundCo * r,
+              employmentInsuranceCo: sumRow.employmentInsuranceCo * r,
+              workersCompCo: sumRow.workersCompCo * r,
+              generalContributionCo: sumRow.generalContributionCo * r,
+            },
+          });
+        }
       });
       deleted += rows.length;
-
-      // Create new rows with correct assignments
-      for (const assign of assignments) {
-        const r = assign.ratio / 100;
-        await prisma.payrollData.create({
-          data: {
-            year: rowYear,
-            month: rowMonth,
-            employeeId: empId,
-            employeeName: sumRow.employeeName,
-            contractType: sumRow.contractType,
-            storeName: assign.storeName,
-            ratio: assign.ratio,
-            workDaysWeekday: sumRow.workDaysWeekday * r,
-            workDaysHoliday: sumRow.workDaysHoliday * r,
-            workDaysLegalHoliday: sumRow.workDaysLegalHoliday * r,
-            scheduledHours: sumRow.scheduledHours * r,
-            overtimeHours: sumRow.overtimeHours * r,
-            baseSalary: sumRow.baseSalary * r,
-            positionAllowance: sumRow.positionAllowance * r,
-            overtimePay: sumRow.overtimePay * r,
-            commuteTaxable: sumRow.commuteTaxable * r,
-            commuteNontax: sumRow.commuteNontax * r,
-            taxableTotal: sumRow.taxableTotal * r,
-            grossTotal: sumRow.grossTotal * r,
-            healthInsuranceCo: sumRow.healthInsuranceCo * r,
-            careInsuranceCo: sumRow.careInsuranceCo * r,
-            pensionCo: sumRow.pensionCo * r,
-            childContributionCo: sumRow.childContributionCo * r,
-            pensionFundCo: sumRow.pensionFundCo * r,
-            employmentInsuranceCo: sumRow.employmentInsuranceCo * r,
-            workersCompCo: sumRow.workersCompCo * r,
-            generalContributionCo: sumRow.generalContributionCo * r,
-          },
-        });
-        updated++;
-      }
+      updated += assignments.length;
     }
 
     return NextResponse.json({

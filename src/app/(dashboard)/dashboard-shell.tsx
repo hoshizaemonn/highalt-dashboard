@@ -11,7 +11,6 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { LOGO_BASE64 } from "@/lib/logo";
 
 interface DashboardShellProps {
   userId: number;
@@ -79,7 +78,7 @@ export function DashboardShell({
           {/* Logo */}
           <div className="px-4 py-4 flex items-center justify-between">
             <img
-              src={LOGO_BASE64}
+              src="/logo.png"
               alt="ハイアルチ 駅前高地™トレーニング"
               className="w-32 rounded-lg"
             />
