@@ -8,9 +8,8 @@ import { PrismaPg } from "@prisma/adapter-pg";
 // Pool-level `ssl: { rejectUnauthorized: false }` handles it, but during local
 // development / Vercel serverless cold-starts the global flag is also needed to
 // cover any connection attempt that bypasses the Pool (e.g. Prisma internals).
-if (process.env.NODE_ENV !== "production") {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
+// Required for Supabase self-signed SSL certificates
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
