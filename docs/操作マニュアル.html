@@ -443,80 +443,115 @@
 
   <!-- Dashboard Layout Diagram -->
   <div class="diagram">
-    <svg width="680" height="380" viewBox="0 0 680 380">
+    <svg width="680" height="440" viewBox="0 0 680 440">
       <!-- Outer frame -->
-      <rect x="4" y="4" width="672" height="372" rx="12" fill="#fff" stroke="#ddd" stroke-width="1.5"/>
-
-      <!-- Top bar -->
-      <rect x="4" y="4" width="672" height="44" rx="12" fill="var(--brand)"/>
-      <rect x="4" y="36" width="672" height="12" fill="var(--brand)"/>
-      <text x="28" y="30" fill="#fff" font-size="13" font-weight="700">ハイアルチ PLダッシュボード</text>
-      <text x="620" y="30" fill="rgba(255,255,255,0.7)" font-size="11">admin</text>
+      <rect x="4" y="4" width="672" height="432" rx="12" fill="#fff" stroke="#ddd" stroke-width="1.5"/>
 
       <!-- Sidebar -->
-      <rect x="4" y="48" width="140" height="328" fill="#f0f4fa"/>
-      <rect x="4" y="364" width="140" height="12" rx="0 0 12 0" fill="#f0f4fa"/>
+      <rect x="4" y="4" width="140" height="432" rx="12 0 0 12" fill="#fff" stroke="#eee" stroke-width="1"/>
+
+      <!-- Logo area -->
+      <rect x="20" y="16" width="108" height="48" rx="8" fill="var(--brand)"/>
+      <text x="74" y="36" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">ハイアルチ</text>
+      <text x="74" y="50" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="7">駅前高地™トレーニング</text>
+
+      <!-- User info -->
+      <text x="20" y="82" fill="var(--text)" font-size="10" font-weight="600">管理者</text>
+      <text x="20" y="94" fill="var(--text-lighter)" font-size="8">管理者</text>
 
       <!-- Sidebar items -->
-      <rect x="16" y="64" width="116" height="32" rx="6" fill="var(--brand)"/>
-      <text x="74" y="84" text-anchor="middle" fill="#fff" font-size="11">ダッシュボード</text>
+      <rect x="12" y="110" width="116" height="30" rx="6" fill="var(--brand)"/>
+      <text x="70" y="129" text-anchor="middle" fill="#fff" font-size="10">ダッシュボード</text>
 
-      <text x="74" y="118" text-anchor="middle" fill="var(--text-light)" font-size="11">アップロード</text>
-      <text x="74" y="148" text-anchor="middle" fill="var(--text-light)" font-size="11">設定</text>
+      <text x="70" y="160" text-anchor="middle" fill="var(--text-light)" font-size="10">アップロード</text>
+      <text x="70" y="184" text-anchor="middle" fill="var(--text-light)" font-size="10">設定</text>
+
+      <!-- Logout -->
+      <text x="70" y="400" text-anchor="middle" fill="var(--text-lighter)" font-size="9">ログアウト</text>
+      <text x="70" y="424" text-anchor="middle" fill="var(--text-lighter)" font-size="7">High-Alti 業績ダッシュボード v2.0</text>
+
+      <!-- Main content area -->
+      <!-- Title -->
+      <text x="164" y="30" fill="var(--text)" font-size="14" font-weight="700">ダッシュボード</text>
 
       <!-- Period / Store selectors -->
-      <rect x="160" y="58" width="500" height="36" rx="8" fill="var(--brand-lighter)" stroke="var(--border)" stroke-width="1"/>
-      <text x="180" y="80" fill="var(--text-light)" font-size="10">年: 2026</text>
-      <text x="260" y="80" fill="var(--text-light)" font-size="10">月: 4月</text>
-      <text x="360" y="80" fill="var(--text-light)" font-size="10">店舗: 東日本橋</text>
+      <rect x="160" y="42" width="100" height="26" rx="4" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="172" y="53" fill="var(--text-lighter)" font-size="7">年</text>
+      <text x="172" y="63" fill="var(--text)" font-size="9">2026年</text>
 
-      <!-- Labels -->
-      <text x="544" y="110" fill="var(--brand)" font-size="10" font-weight="600" text-anchor="middle">期間・店舗選択</text>
-      <path d="M544 95 L480 87" stroke="var(--brand)" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow1)"/>
+      <rect x="268" y="42" width="140" height="26" rx="4" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="280" y="53" fill="var(--text-lighter)" font-size="7">期間</text>
+      <text x="280" y="63" fill="var(--text)" font-size="9">通期（10〜9月）</text>
 
-      <!-- KPI Cards -->
-      <rect x="160" y="104" width="96" height="60" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
-      <text x="208" y="122" text-anchor="middle" fill="var(--text-lighter)" font-size="9">売上</text>
-      <text x="208" y="146" text-anchor="middle" fill="var(--brand)" font-size="15" font-weight="700">850万</text>
+      <rect x="416" y="42" width="120" height="26" rx="4" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="428" y="53" fill="var(--text-lighter)" font-size="7">店舗</text>
+      <text x="428" y="63" fill="var(--text)" font-size="9">東日本橋</text>
 
-      <rect x="264" y="104" width="96" height="60" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
-      <text x="312" y="122" text-anchor="middle" fill="var(--text-lighter)" font-size="9">人件費</text>
-      <text x="312" y="146" text-anchor="middle" fill="var(--brand)" font-size="15" font-weight="700">320万</text>
+      <!-- KPI Cards (4 cards) -->
+      <rect x="160" y="78" width="120" height="52" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="172" y="94" fill="var(--text-lighter)" font-size="8">売上合計</text>
+      <text x="172" y="116" fill="#2196F3" font-size="14" font-weight="700">¥27,580,046</text>
 
-      <rect x="368" y="104" width="96" height="60" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
-      <text x="416" y="122" text-anchor="middle" fill="var(--text-lighter)" font-size="9">経費</text>
-      <text x="416" y="146" text-anchor="middle" fill="var(--brand)" font-size="15" font-weight="700">180万</text>
+      <rect x="288" y="78" width="120" height="52" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="300" y="94" fill="var(--text-lighter)" font-size="8">人件費合計</text>
+      <text x="300" y="116" fill="#F44336" font-size="14" font-weight="700">¥2,642,745</text>
 
-      <rect x="472" y="104" width="96" height="60" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
-      <text x="520" y="122" text-anchor="middle" fill="var(--text-lighter)" font-size="9">営業利益</text>
-      <text x="520" y="146" text-anchor="middle" fill="var(--green)" font-size="15" font-weight="700">350万</text>
+      <rect x="416" y="78" width="120" height="52" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="428" y="94" fill="var(--text-lighter)" font-size="8">経費合計</text>
+      <text x="428" y="116" fill="#FF9800" font-size="14" font-weight="700">¥1,724,389</text>
 
-      <rect x="576" y="104" width="80" height="60" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
-      <text x="616" y="122" text-anchor="middle" fill="var(--text-lighter)" font-size="9">会員数</text>
-      <text x="616" y="146" text-anchor="middle" fill="var(--brand)" font-size="15" font-weight="700">245</text>
+      <rect x="544" y="78" width="120" height="52" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="556" y="94" fill="var(--text-lighter)" font-size="8">営業利益</text>
+      <text x="556" y="116" fill="#4CAF50" font-size="14" font-weight="700">¥23,212,912</text>
 
-      <!-- KPI label -->
-      <text x="400" y="186" fill="var(--brand)" font-size="10" font-weight="600" text-anchor="middle">KPIカードエリア</text>
+      <!-- Chart area 2x2 grid -->
+      <!-- Top left: 売上推移 -->
+      <rect x="160" y="142" width="248" height="136" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="176" y="160" fill="var(--text)" font-size="9" font-weight="600">売上推移</text>
+      <rect x="182" y="220" width="20" height="42" rx="2" fill="#2196F3" opacity="0.7"/>
+      <rect x="208" y="210" width="20" height="52" rx="2" fill="#2196F3" opacity="0.8"/>
+      <rect x="234" y="200" width="20" height="62" rx="2" fill="#2196F3" opacity="0.9"/>
+      <rect x="260" y="195" width="20" height="67" rx="2" fill="#2196F3"/>
+      <rect x="286" y="205" width="20" height="57" rx="2" fill="#2196F3" opacity="0.85"/>
+      <rect x="312" y="215" width="20" height="47" rx="2" fill="#2196F3" opacity="0.7"/>
+      <rect x="338" y="240" width="20" height="22" rx="2" fill="#2196F3" opacity="0.3"/>
+      <rect x="364" y="245" width="20" height="17" rx="2" fill="#2196F3" opacity="0.2"/>
+      <text x="192" y="270" fill="var(--text-lighter)" font-size="7">10月</text>
+      <text x="270" y="270" fill="var(--text-lighter)" font-size="7">1月</text>
+      <text x="348" y="270" fill="var(--text-lighter)" font-size="7">4月</text>
 
-      <!-- Chart area -->
-      <rect x="160" y="196" width="248" height="160" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
-      <text x="284" y="218" text-anchor="middle" fill="var(--text-light)" font-size="10" font-weight="600">月次推移グラフ</text>
-      <!-- Mini bar chart -->
-      <rect x="190" y="280" width="20" height="60" rx="3" fill="var(--brand)" opacity="0.3"/>
-      <rect x="220" y="260" width="20" height="80" rx="3" fill="var(--brand)" opacity="0.5"/>
-      <rect x="250" y="240" width="20" height="100" rx="3" fill="var(--brand)" opacity="0.7"/>
-      <rect x="280" y="250" width="20" height="90" rx="3" fill="var(--brand)" opacity="0.85"/>
-      <rect x="310" y="230" width="20" height="110" rx="3" fill="var(--brand)"/>
-      <rect x="340" y="260" width="20" height="80" rx="3" fill="var(--brand)" opacity="0.6"/>
+      <!-- Top right: プラン契約者数推移 -->
+      <rect x="416" y="142" width="248" height="136" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="432" y="160" fill="var(--text)" font-size="9" font-weight="600">プラン契約者数推移</text>
+      <polyline points="440,190 470,192 500,190 530,195 560,200 590,250 620,252 640,255" fill="none" stroke="#2196F3" stroke-width="2"/>
+      <circle cx="440" cy="190" r="3" fill="#2196F3"/>
+      <circle cx="500" cy="190" r="3" fill="#2196F3"/>
+      <circle cx="560" cy="200" r="3" fill="#2196F3"/>
+      <circle cx="620" cy="252" r="3" fill="#2196F3"/>
 
-      <!-- Pie chart area -->
-      <rect x="416" y="196" width="240" height="160" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
-      <text x="536" y="218" text-anchor="middle" fill="var(--text-light)" font-size="10" font-weight="600">経費内訳</text>
-      <!-- Mini pie -->
-      <circle cx="536" cy="296" r="40" fill="none" stroke="var(--brand)" stroke-width="24" stroke-dasharray="60 191" transform="rotate(-90 536 296)"/>
-      <circle cx="536" cy="296" r="40" fill="none" stroke="var(--brand-dark)" stroke-width="24" stroke-dasharray="45 206" stroke-dashoffset="-60" transform="rotate(-90 536 296)"/>
-      <circle cx="536" cy="296" r="40" fill="none" stroke="#93b5e0" stroke-width="24" stroke-dasharray="80 171" stroke-dashoffset="-105" transform="rotate(-90 536 296)"/>
-      <circle cx="536" cy="296" r="40" fill="none" stroke="#c5d8ed" stroke-width="24" stroke-dasharray="66 185" stroke-dashoffset="-185" transform="rotate(-90 536 296)"/>
+      <!-- Bottom left: 売上 vs 人件費 -->
+      <rect x="160" y="286" width="248" height="136" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="176" y="304" fill="var(--text)" font-size="9" font-weight="600">売上 vs 人件費</text>
+      <polyline points="182,340 210,338 238,335 266,330 294,332 322,345 350,370 378,375" fill="none" stroke="#2196F3" stroke-width="2"/>
+      <polyline points="182,395 210,395 238,395 266,394 294,394 322,390 350,385 378,387" fill="none" stroke="#F44336" stroke-width="2"/>
+      <rect x="220" y="408" width="8" height="8" rx="2" fill="#F44336"/>
+      <text x="232" y="415" fill="var(--text-lighter)" font-size="7">人件費</text>
+      <rect x="280" y="408" width="8" height="8" rx="2" fill="#2196F3"/>
+      <text x="292" y="415" fill="var(--text-lighter)" font-size="7">売上</text>
+
+      <!-- Bottom right: 経費内訳推移 -->
+      <rect x="416" y="286" width="248" height="136" rx="8" fill="#fff" stroke="var(--border)" stroke-width="1"/>
+      <text x="432" y="304" fill="var(--text)" font-size="9" font-weight="600">経費内訳推移</text>
+      <rect x="460" y="380" width="16" height="28" rx="2" fill="#F44336"/>
+      <rect x="460" y="350" width="16" height="30" rx="2" fill="#FF9800"/>
+      <rect x="500" y="370" width="16" height="38" rx="2" fill="#F44336"/>
+      <rect x="500" y="345" width="16" height="25" rx="2" fill="#FF9800"/>
+      <rect x="540" y="375" width="16" height="33" rx="2" fill="#F44336"/>
+      <rect x="580" y="385" width="16" height="23" rx="2" fill="#F44336"/>
+      <rect x="480" y="408" width="8" height="8" rx="2" fill="#F44336"/>
+      <text x="492" y="415" fill="var(--text-lighter)" font-size="7">人件費</text>
+      <rect x="530" y="408" width="8" height="8" rx="2" fill="#FF9800"/>
+      <text x="542" y="415" fill="var(--text-lighter)" font-size="7">経費</text>
 
       <!-- Sidebar label -->
       <text x="74" y="340" text-anchor="middle" fill="var(--brand)" font-size="9" font-weight="600">サイドバー</text>
