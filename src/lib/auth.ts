@@ -7,10 +7,11 @@ const SESSION_MAX_AGE = 60 * 60 * 24; // 24 hours in seconds
 
 function getSessionSecret(): string {
   const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error(
-      "SESSION_SECRET environment variable must be set (min 32 chars)"
-    );
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("SESSION_SECRET environment variable is required in production");
+    }
+    return "dev-secret-do-not-use-in-production";
   }
   return secret;
 }
