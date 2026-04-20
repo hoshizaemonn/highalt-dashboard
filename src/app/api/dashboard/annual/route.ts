@@ -200,10 +200,16 @@ export async function GET(request: NextRequest) {
       for (const b of budgetForMonth) {
         budgetMap[b.category] = (budgetMap[b.category] || 0) + b.amount;
       }
-      const budgetRevenue = budgetMap["売上合計"] ?? 0;
-      const budgetLabor = budgetMap["人件費"] ?? 0;
-      const budgetExpense = budgetMap["経費合計"] ?? 0;
-      const budgetProfit = budgetMap["営業利益"] ?? 0;
+      // Calculate budget aggregates from component items (matching BUDGET_ITEMS)
+      const REV_ITEMS = ["パーソナル・物販・その他収入", "月会費収入", "サービス収入", "自販機手数料収入"];
+      const LABOR_ITEMS = ["正社員・契約社員給与", "賞与", "通勤手当", "法定福利費"];
+
+      const budgetRevenue = REV_ITEMS.reduce((s, k) => s + (budgetMap[k] ?? 0), 0);
+      const budgetLabor = LABOR_ITEMS.reduce((s, k) => s + (budgetMap[k] ?? 0), 0);
+      const budgetExpense = Object.entries(budgetMap)
+        .filter(([k]) => !REV_ITEMS.includes(k) && !LABOR_ITEMS.includes(k))
+        .reduce((s, [, v]) => s + v, 0);
+      const budgetProfit = budgetRevenue - budgetLabor - budgetExpense;
 
       return {
         month: m,
