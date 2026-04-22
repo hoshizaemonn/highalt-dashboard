@@ -224,29 +224,48 @@ export default function PeriodView({
         )}
       </div>
 
-      {/* MA002 charts */}
+      {/* MA002 charts — 桁の違いを見やすくするため新規入会/退会/休会は個別グラフに分割 */}
       <SectionTitle>会員推移 (MA002)</SectionTitle>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         <div className="bg-white rounded-lg border shadow-sm p-4">
-          <p className="text-sm font-medium text-gray-600 mb-3">
-            新規入会 / 退会 / 休会推移
-          </p>
-          <ResponsiveContainer width="100%" height={250}>
+          <p className="text-sm font-medium text-gray-600 mb-3">新規入会 推移</p>
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
-              <YAxis fontSize={11} />
+              <YAxis fontSize={11} allowDecimals={false} />
               <Tooltip content={<MemberTooltip />} />
-              <Legend />
               <Bar dataKey="新規入会" fill={COLORS.green} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">退会 推移</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis fontSize={11} allowDecimals={false} />
+              <Tooltip content={<MemberTooltip />} />
               <Bar dataKey="退会" fill={COLORS.red} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">休会 推移</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis fontSize={11} allowDecimals={false} />
+              <Tooltip content={<MemberTooltip />} />
               <Bar dataKey="休会" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">退会率推移</p>
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={220}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
