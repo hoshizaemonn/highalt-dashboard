@@ -310,6 +310,8 @@ export function buildBudgetRows(
 
   const REV_ITEMS = ["パーソナル・物販・その他収入", "月会費収入", "サービス収入", "自販機手数料収入"];
   const LABOR_ITEMS = ["正社員・契約社員給与", "賞与", "通勤手当", "法定福利費"];
+  // Non-monetary KPI budgets stored in budget_data that must not roll up into the expense bucket
+  const KPI_ITEMS = ["客単価"];
 
   // Build actuals mapping for budget items
   const actuals: Record<string, number> = {
@@ -351,7 +353,7 @@ export function buildBudgetRows(
   // Expense rows — all budget items not in REV or LABOR
   let expBudgetSum = 0;
   for (const [cat, b] of Object.entries(budget)) {
-    if (REV_ITEMS.includes(cat) || LABOR_ITEMS.includes(cat)) continue;
+    if (REV_ITEMS.includes(cat) || LABOR_ITEMS.includes(cat) || KPI_ITEMS.includes(cat)) continue;
     expBudgetSum += b;
     const a = actuals[cat] ?? expenseByCategory[cat] ?? 0;
     if (b === 0 && a === 0) continue;

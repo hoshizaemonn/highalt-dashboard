@@ -32,6 +32,11 @@ export const THOUSAND_DIGIT_MAP: Record<number, string> = {
   8: "中目黒",
 };
 
+// Unit price budget is stored in BudgetData with this category name.
+// It is excluded from the expense budget bucket in buildBudgetRows and
+// preserved across CSV re-uploads.
+export const BUDGET_CATEGORY_UNIT_PRICE = "客単価";
+
 export const BUDGET_ITEMS = [
   "パーソナル・物販・その他収入",
   "月会費収入",

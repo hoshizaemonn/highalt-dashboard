@@ -342,7 +342,12 @@ export default function MonthlyView({
 
       {/* Promotion Report */}
       {!isAllStores && (
-        <PromotionSection year={year} month={month} store={store} />
+        <PromotionSection
+          year={year}
+          month={month}
+          store={store}
+          unitPriceBudget={data.budget["客単価"] ?? 0}
+        />
       )}
 
       {/* Budget vs Actual */}
