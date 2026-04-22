@@ -15,6 +15,7 @@ import {
   Legend,
   CartesianGrid,
 } from "recharts";
+import { BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 
 // ─── Re-export recharts for use in components ──────────────
 export {
@@ -311,7 +312,7 @@ export function buildBudgetRows(
   const REV_ITEMS = ["パーソナル・物販・その他収入", "月会費収入", "サービス収入", "自販機手数料収入"];
   const LABOR_ITEMS = ["正社員・契約社員給与", "賞与", "通勤手当", "法定福利費"];
   // Non-monetary KPI budgets stored in budget_data that must not roll up into the expense bucket
-  const KPI_ITEMS = ["客単価"];
+  const KPI_ITEMS = [BUDGET_CATEGORY_UNIT_PRICE];
 
   // Build actuals mapping for budget items
   const actuals: Record<string, number> = {
