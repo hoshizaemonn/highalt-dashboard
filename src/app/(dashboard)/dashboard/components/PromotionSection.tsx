@@ -58,6 +58,8 @@ export interface PromotionSectionProps {
   month: number;
   store: string;
   unitPriceBudget?: number;
+  /** 実績客単価（PL001 月会費合計 / プラン契約者数）。指定時は販促報告の unitPrice より優先 */
+  unitPriceActual?: number | null;
 }
 
 export function PromotionSection({
@@ -65,6 +67,7 @@ export function PromotionSection({
   month,
   store,
   unitPriceBudget = 0,
+  unitPriceActual = null,
 }: PromotionSectionProps) {
   const [data, setData] = useState<PromotionData | null>(null);
 
@@ -90,10 +93,19 @@ export function PromotionSection({
     return () => { cancelled = true; };
   }, [year, month, store]);
 
+  // Actual unit price: prefer auto-calculated value; fall back to manually entered value in the promotion report
+  const resolvedUnitPriceActual =
+    unitPriceActual != null && unitPriceActual > 0
+      ? unitPriceActual
+      : data?.unitPrice && data.unitPrice > 0
+        ? data.unitPrice
+        : null;
+
   if (!data) {
-    // No promotion report but budget unit price exists → show the budget card alone
-    if (unitPriceBudget <= 0) return null;
-    return <UnitPriceSection budget={unitPriceBudget} actual={null} />;
+    if (unitPriceBudget <= 0 && !resolvedUnitPriceActual) return null;
+    return (
+      <UnitPriceSection budget={unitPriceBudget} actual={resolvedUnitPriceActual} />
+    );
   }
 
   const adBreakdown = [
@@ -115,7 +127,7 @@ export function PromotionSection({
 
   return (
     <>
-      <UnitPriceSection budget={unitPriceBudget} actual={data.unitPrice} />
+      <UnitPriceSection budget={unitPriceBudget} actual={resolvedUnitPriceActual} />
 
       <SectionTitle>販促報告</SectionTitle>
 

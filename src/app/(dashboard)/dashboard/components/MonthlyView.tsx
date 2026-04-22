@@ -341,14 +341,22 @@ export default function MonthlyView({
       )}
 
       {/* Promotion Report */}
-      {!isAllStores && (
-        <PromotionSection
-          year={year}
-          month={month}
-          store={store}
-          unitPriceBudget={data.budget["客単価"] ?? 0}
-        />
-      )}
+      {!isAllStores && (() => {
+        // 客単価（実績）= 月会費売上合計 ÷ プラン契約者数
+        const monthlyFee = data.revenue.by_category["月会費"] ?? 0;
+        const planSubscribers = data.member?.plan_subscribers ?? 0;
+        const unitPriceActual =
+          planSubscribers > 0 ? Math.round(monthlyFee / planSubscribers) : null;
+        return (
+          <PromotionSection
+            year={year}
+            month={month}
+            store={store}
+            unitPriceBudget={data.budget["客単価"] ?? 0}
+            unitPriceActual={unitPriceActual}
+          />
+        );
+      })()}
 
       {/* Budget vs Actual */}
       {!isAllStores && budgetRows.length > 0 && (
