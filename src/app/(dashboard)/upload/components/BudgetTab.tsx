@@ -154,6 +154,128 @@ export function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
       )}
 
       <StatusBanner status={status} />
+
+      <UnitPriceBudgetForm />
+    </div>
+  );
+}
+
+// ─── Unit Price Budget Form ─────────────────────────────────
+
+function UnitPriceBudgetForm() {
+  const [store, setStore] = useState<string>(STORES[0]);
+  const [fiscalYear, setFiscalYear] = useState(2026);
+  const [amount, setAmount] = useState<string>("");
+  const [initialAmount, setInitialAmount] = useState<number>(0);
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const [status, setStatus] = useState<StatusMessage | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFetching(true);
+    setStatus(null);
+    fetch(`/api/budget/unit-price?store=${encodeURIComponent(store)}&fiscalYear=${fiscalYear}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const amounts: number[] = (data.months || []).map((m: { amount: number }) => m.amount);
+        const nonZero = amounts.filter((a) => a > 0);
+        // If all months share the same value, show it; otherwise show "" (mixed)
+        const consistent = nonZero.length > 0 && nonZero.every((a) => a === nonZero[0]);
+        const shown = consistent ? nonZero[0] : 0;
+        setInitialAmount(shown);
+        setAmount(shown > 0 ? String(shown) : "");
+      })
+      .catch(() => {
+        if (!cancelled) setAmount("");
+      })
+      .finally(() => {
+        if (!cancelled) setFetching(false);
+      });
+    return () => { cancelled = true; };
+  }, [store, fiscalYear]);
+
+  const parsed = Number(amount);
+  const canSave = !loading && !fetching && amount !== "" && Number.isFinite(parsed) && parsed >= 0 && parsed !== initialAmount;
+
+  const handleSave = async () => {
+    setLoading(true);
+    setStatus({ type: "info", text: "保存中..." });
+    try {
+      const res = await fetch("/api/budget/unit-price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store, fiscalYear, amount: parsed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus({ type: "error", text: data.error || "エラーが発生しました" });
+        return;
+      }
+      setInitialAmount(parsed);
+      setStatus({
+        type: "success",
+        text: `${store} ${fiscalYear}年度の客単価予算を保存しました（全12ヶ月に適用）`,
+      });
+    } catch (e) {
+      setStatus({
+        type: "error",
+        text: e instanceof Error ? e.message : "エラーが発生しました",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-8 pt-6 border-t space-y-3">
+      <div>
+        <p className="text-sm font-medium text-gray-700">客単価予算（月別）</p>
+        <p className="text-xs text-gray-500 mt-1">
+          予算実績対比表CSVには含まれないKPIのため、単独で入力します。入力値は対象年度の全12ヶ月に同額で適用され、予算実績対比表の再アップロード時も保持されます。
+        </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <StoreSelect value={store} onChange={setStore} />
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">対象年度（決算年）</label>
+          <select
+            value={fiscalYear}
+            onChange={(e) => setFiscalYear(parseInt(e.target.value))}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+          >
+            {Array.from({ length: new Date().getFullYear() - 2020 + 6 }, (_, i) => 2020 + i).map((y) => (
+              <option key={y} value={y}>{y}年度</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">客単価予算（円）</label>
+          <div className="relative">
+            <input
+              type="number"
+              min={0}
+              step={100}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder={fetching ? "読み込み中..." : "例: 15000"}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+              disabled={fetching}
+            />
+            {fetching && (
+              <Loader2 size={14} className="animate-spin text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
+            )}
+          </div>
+        </div>
+      </div>
+
+      <ActionButton onClick={handleSave} loading={loading} disabled={!canSave}>
+        客単価予算を保存
+      </ActionButton>
+
+      <StatusBanner status={status} />
     </div>
   );
 }

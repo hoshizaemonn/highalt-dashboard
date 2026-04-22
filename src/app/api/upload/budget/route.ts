@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { BUDGET_ITEMS } from "@/lib/constants";
+import { BUDGET_ITEMS, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 import { decodeFileBuffer, parseCSV, safeInt } from "@/lib/csv-utils";
 
 export async function GET(request: NextRequest) {
@@ -134,9 +134,14 @@ export async function POST(request: NextRequest) {
     const years = [...new Set(records.map((r) => r.year))];
 
     const savedCount = await prisma.$transaction(async (tx) => {
+      // Preserve manually-entered unit price budget across CSV re-uploads
       for (const y of years) {
         await tx.budgetData.deleteMany({
-          where: { storeName: store, year: y },
+          where: {
+            storeName: store,
+            year: y,
+            category: { not: BUDGET_CATEGORY_UNIT_PRICE },
+          },
         });
       }
 
