@@ -57,12 +57,14 @@ export interface PromotionSectionProps {
   year: number;
   month: number;
   store: string;
+  unitPriceBudget?: number;
 }
 
 export function PromotionSection({
   year,
   month,
   store,
+  unitPriceBudget = 0,
 }: PromotionSectionProps) {
   const [data, setData] = useState<PromotionData | null>(null);
 
@@ -88,7 +90,19 @@ export function PromotionSection({
     return () => { cancelled = true; };
   }, [year, month, store]);
 
-  if (!data) return null;
+  if (!data) {
+    // No promotion report but budget unit price exists → show standalone comparison
+    if (unitPriceBudget <= 0) return null;
+    return (
+      <>
+        <SectionTitle>客単価</SectionTitle>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          <KPICard title="客単価（予算）" value={formatYen(unitPriceBudget)} color={COLORS.gray} />
+          <KPICard title="客単価（実績）" value="データなし" color={COLORS.blue} />
+        </div>
+      </>
+    );
+  }
 
   const adBreakdown = [
     { name: "Google", value: data.adGoogle },
@@ -107,8 +121,43 @@ export function PromotionSection({
     { name: "紹介以外", value: data.trialNonReferral },
   ];
 
+  const unitPriceActual = data.unitPrice;
+  const unitPriceDiff = unitPriceActual - unitPriceBudget;
+  const unitPriceRatio = unitPriceBudget !== 0 ? unitPriceActual / unitPriceBudget : 0;
+  const unitPriceIsGood = unitPriceActual >= unitPriceBudget;
+
   return (
     <>
+      {/* 客単価 — always visible as its own section */}
+      {unitPriceBudget > 0 ? (
+        <>
+          <SectionTitle>客単価</SectionTitle>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <KPICard title="客単価（予算）" value={formatYen(unitPriceBudget)} color={COLORS.gray} />
+            <KPICard
+              title="客単価（実績）"
+              value={formatYen(unitPriceActual)}
+              color={COLORS.blue}
+              sub={`達成率 ${(unitPriceRatio * 100).toFixed(1)}%`}
+            />
+            <KPICard
+              title="予実差"
+              value={formatYen(unitPriceDiff)}
+              color={unitPriceIsGood ? COLORS.green : COLORS.red}
+            />
+          </div>
+        </>
+      ) : (
+        unitPriceActual > 0 && (
+          <>
+            <SectionTitle>客単価</SectionTitle>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              <KPICard title="客単価" value={formatYen(unitPriceActual)} color={COLORS.blue} />
+            </div>
+          </>
+        )
+      )}
+
       <SectionTitle>販促報告</SectionTitle>
 
       {/* Trial & Rates */}
@@ -152,8 +201,7 @@ export function PromotionSection({
       </div>
 
       {/* Options + KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-        <KPICard title="客単価" value={formatYen(data.unitPrice)} color={COLORS.blue} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <KPICard title="パーソナル売上" value={formatYen(data.personalRevenue)} color={COLORS.green} />
         <KPICard title="物販売上" value={formatYen(data.merchandiseRevenue)} color={COLORS.teal} />
       </div>

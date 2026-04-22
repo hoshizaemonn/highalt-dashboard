@@ -243,6 +243,12 @@ export function EditableMemberSection({
     );
   }
 
+  const memberMovementRows = [
+    { title: "新規入会", fieldKey: "new_plan_signups" as const, color: COLORS.green },
+    { title: "退会", fieldKey: "cancellations" as const, color: COLORS.red },
+    { title: "休会", fieldKey: "suspensions" as const, color: COLORS.gray },
+  ];
+
   return (
     <>
       <div className="flex items-center gap-3 mt-8 mb-3">
@@ -285,16 +291,36 @@ export function EditableMemberSection({
           </div>
         )}
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+      {/* Summary metrics row */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <EditableKPI title="プラン契約者数" fieldKey="plan_subscribers" color={COLORS.blue} />
-        <EditableKPI title="新規入会" fieldKey="new_plan_signups" color={COLORS.green} />
         <EditableKPI title="退会率" fieldKey="cancellation_rate" color={COLORS.red} isRate />
         <EditableKPI title="プラン変更" fieldKey="plan_changes" color={COLORS.orange} />
       </div>
-      <div className="grid grid-cols-3 gap-4 mt-3">
-        <EditableKPI title="新規申込" fieldKey="new_plan_signups" color={COLORS.teal} />
-        <EditableKPI title="退会" fieldKey="cancellations" color={COLORS.red} />
-        <EditableKPI title="休会" fieldKey="suspensions" color={COLORS.gray} />
+
+      {/* 新規入会 / 退会 / 休会 — each displayed separately to clarify scale differences */}
+      <div className="bg-white rounded-lg border shadow-sm overflow-hidden mt-3">
+        <p className="text-xs font-medium text-gray-500 px-4 py-2 bg-gray-50 border-b">入退会状況</p>
+        {memberMovementRows.map(({ title, fieldKey, color }) => (
+          <div key={fieldKey} className="flex items-center justify-between px-4 py-3 border-b last:border-0">
+            <span className="text-sm text-gray-600">{title}</span>
+            {editing ? (
+              <input
+                type="number"
+                value={String(fields[fieldKey])}
+                onChange={(e) => setField(fieldKey, e.target.value)}
+                className="text-xl font-bold w-24 text-right border-b-2 border-blue-300 outline-none bg-transparent"
+                style={{ color }}
+              />
+            ) : (
+              <span className="text-xl font-bold" style={{ color }}>
+                {numFormat.format(Number(fields[fieldKey]))}
+                <span className="text-sm font-normal text-gray-500 ml-1">人</span>
+              </span>
+            )}
+          </div>
+        ))}
       </div>
     </>
   );
