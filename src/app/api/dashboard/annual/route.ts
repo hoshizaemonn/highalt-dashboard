@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { HQ_STORE } from "@/lib/constants";
+import { HQ_STORE, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 import { requireSession } from "@/lib/auth";
 
 interface MonthlyEntry {
@@ -30,6 +30,7 @@ interface MonthlyEntry {
   budget_labor: number;
   budget_expense: number;
   budget_profit: number;
+  budget_unit_price: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -206,10 +207,17 @@ export async function GET(request: NextRequest) {
 
       const budgetRevenue = REV_ITEMS.reduce((s, k) => s + (budgetMap[k] ?? 0), 0);
       const budgetLabor = LABOR_ITEMS.reduce((s, k) => s + (budgetMap[k] ?? 0), 0);
+      // Non-monetary KPI budgets must not roll up into the expense bucket
       const budgetExpense = Object.entries(budgetMap)
-        .filter(([k]) => !REV_ITEMS.includes(k) && !LABOR_ITEMS.includes(k))
+        .filter(
+          ([k]) =>
+            !REV_ITEMS.includes(k) &&
+            !LABOR_ITEMS.includes(k) &&
+            k !== BUDGET_CATEGORY_UNIT_PRICE,
+        )
         .reduce((s, [, v]) => s + v, 0);
       const budgetProfit = budgetRevenue - budgetLabor - budgetExpense;
+      const budgetUnitPrice = budgetMap[BUDGET_CATEGORY_UNIT_PRICE] ?? 0;
 
       return {
         month: m,
@@ -238,6 +246,7 @@ export async function GET(request: NextRequest) {
         budget_labor: budgetLabor,
         budget_expense: budgetExpense,
         budget_profit: budgetProfit,
+        budget_unit_price: budgetUnitPrice,
       };
     });
 
