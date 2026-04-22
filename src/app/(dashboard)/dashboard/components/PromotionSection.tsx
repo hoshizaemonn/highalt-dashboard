@@ -91,17 +91,9 @@ export function PromotionSection({
   }, [year, month, store]);
 
   if (!data) {
-    // No promotion report but budget unit price exists → show standalone comparison
+    // No promotion report but budget unit price exists → show the budget card alone
     if (unitPriceBudget <= 0) return null;
-    return (
-      <>
-        <SectionTitle>客単価</SectionTitle>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-          <KPICard title="客単価（予算）" value={formatYen(unitPriceBudget)} color={COLORS.gray} />
-          <KPICard title="客単価（実績）" value="データなし" color={COLORS.blue} />
-        </div>
-      </>
-    );
+    return <UnitPriceSection budget={unitPriceBudget} actual={null} />;
   }
 
   const adBreakdown = [
@@ -121,42 +113,9 @@ export function PromotionSection({
     { name: "紹介以外", value: data.trialNonReferral },
   ];
 
-  const unitPriceActual = data.unitPrice;
-  const unitPriceDiff = unitPriceActual - unitPriceBudget;
-  const unitPriceRatio = unitPriceBudget !== 0 ? unitPriceActual / unitPriceBudget : 0;
-  const unitPriceIsGood = unitPriceActual >= unitPriceBudget;
-
   return (
     <>
-      {/* 客単価 — always visible as its own section */}
-      {unitPriceBudget > 0 ? (
-        <>
-          <SectionTitle>客単価</SectionTitle>
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            <KPICard title="客単価（予算）" value={formatYen(unitPriceBudget)} color={COLORS.gray} />
-            <KPICard
-              title="客単価（実績）"
-              value={formatYen(unitPriceActual)}
-              color={COLORS.blue}
-              sub={`達成率 ${(unitPriceRatio * 100).toFixed(1)}%`}
-            />
-            <KPICard
-              title="予実差"
-              value={formatYen(unitPriceDiff)}
-              color={unitPriceIsGood ? COLORS.green : COLORS.red}
-            />
-          </div>
-        </>
-      ) : (
-        unitPriceActual > 0 && (
-          <>
-            <SectionTitle>客単価</SectionTitle>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-              <KPICard title="客単価" value={formatYen(unitPriceActual)} color={COLORS.blue} />
-            </div>
-          </>
-        )
-      )}
+      <UnitPriceSection budget={unitPriceBudget} actual={data.unitPrice} />
 
       <SectionTitle>販促報告</SectionTitle>
 
@@ -244,6 +203,75 @@ export function PromotionSection({
           <p className="text-sm text-gray-700 whitespace-pre-wrap">{data.comment}</p>
         </div>
       )}
+    </>
+  );
+}
+
+// ─── Unit price section (budget / actual / diff) ──────────
+
+function UnitPriceSection({
+  budget,
+  actual,
+}: {
+  budget: number;
+  actual: number | null;
+}) {
+  const hasBudget = budget > 0;
+  const hasActual = actual !== null && actual > 0;
+
+  if (!hasBudget && !hasActual) return null;
+
+  // Budget only — actual not yet entered
+  if (hasBudget && !hasActual) {
+    return (
+      <>
+        <SectionTitle>客単価</SectionTitle>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <KPICard
+            title="客単価（予算）"
+            value={formatYen(budget)}
+            color={COLORS.gray}
+            sub="実績未入力"
+          />
+        </div>
+      </>
+    );
+  }
+
+  // Actual only — no budget set yet
+  if (!hasBudget && hasActual) {
+    return (
+      <>
+        <SectionTitle>客単価</SectionTitle>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <KPICard title="客単価" value={formatYen(actual as number)} color={COLORS.blue} />
+        </div>
+      </>
+    );
+  }
+
+  // Both present — show budget / actual+ratio / diff
+  const a = actual as number;
+  const diff = a - budget;
+  const ratio = budget !== 0 ? a / budget : 0;
+  const isGood = a >= budget;
+  return (
+    <>
+      <SectionTitle>客単価</SectionTitle>
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <KPICard title="客単価（予算）" value={formatYen(budget)} color={COLORS.gray} />
+        <KPICard
+          title="客単価（実績）"
+          value={formatYen(a)}
+          color={COLORS.blue}
+          sub={`達成率 ${(ratio * 100).toFixed(1)}%`}
+        />
+        <KPICard
+          title="予実差"
+          value={formatYen(diff)}
+          color={isGood ? COLORS.green : COLORS.red}
+        />
+      </div>
     </>
   );
 }
