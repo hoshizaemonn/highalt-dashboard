@@ -13,6 +13,8 @@ import {
   ActionButton,
 } from "./SharedComponents";
 
+const formatYen = (n: number) => `¥${n.toLocaleString("ja-JP")}`;
+
 // ─── Budget Tab ─────────────────────────────────────────────
 
 export function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
@@ -170,11 +172,13 @@ function UnitPriceBudgetForm() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [overwriteWarning, setOverwriteWarning] = useState<{ from: number; to: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setFetching(true);
     setStatus(null);
+    setOverwriteWarning(null);
     fetch(`/api/budget/unit-price?store=${encodeURIComponent(store)}&fiscalYear=${fiscalYear}`)
       .then((res) => res.json())
       .then((data) => {
@@ -199,7 +203,8 @@ function UnitPriceBudgetForm() {
   const parsed = Number(amount);
   const canSave = !loading && !fetching && amount !== "" && Number.isFinite(parsed) && parsed >= 0 && parsed !== initialAmount;
 
-  const handleSave = async () => {
+  const doSave = async () => {
+    setOverwriteWarning(null);
     setLoading(true);
     setStatus({ type: "info", text: "保存中..." });
     try {
@@ -226,6 +231,15 @@ function UnitPriceBudgetForm() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSave = () => {
+    // 既存値がある場合は上書き確認ダイアログを表示する
+    if (initialAmount > 0 && initialAmount !== parsed) {
+      setOverwriteWarning({ from: initialAmount, to: parsed });
+      return;
+    }
+    void doSave();
   };
 
   return (
@@ -271,9 +285,18 @@ function UnitPriceBudgetForm() {
         </div>
       </div>
 
-      <ActionButton onClick={handleSave} loading={loading} disabled={!canSave}>
+      <ActionButton onClick={handleSave} loading={loading} disabled={!canSave || !!overwriteWarning}>
         客単価予算を保存
       </ActionButton>
+
+      {overwriteWarning && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F ${store} ${fiscalYear}年度の客単価予算は既に ${formatYen(overwriteWarning.from)} で登録されています。${formatYen(overwriteWarning.to)} で上書きしますか？（全12ヶ月に同額で適用されます）`}
+          onConfirm={doSave}
+          onCancel={() => setOverwriteWarning(null)}
+          loading={loading}
+        />
+      )}
 
       <StatusBanner status={status} />
     </div>

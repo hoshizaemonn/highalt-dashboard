@@ -58,22 +58,25 @@ export default function DashboardPage() {
   const isAllStores = store === "全体";
 
   // Build fiscal year months string for store-compare API
+  // NOTE: 年セレクタ y は「会計年度の末尾（決算年）」を表す。
+  // 例) y=2026 は「2026年9期 = 2025年10月〜2026年9月」を指す。
+  //     これは annual API の fiscalYear と同じ解釈（年度末年）。
   const buildMonthsParam = useCallback(
     (y: number, p: string) => {
       const pairs: string[] = [];
       if (p === "通期") {
         for (let m = 10; m <= 12; m++)
-          pairs.push(`${y}-${String(m).padStart(2, "0")}`);
+          pairs.push(`${y - 1}-${String(m).padStart(2, "0")}`);
         for (let m = 1; m <= 9; m++)
-          pairs.push(`${y + 1}-${String(m).padStart(2, "0")}`);
+          pairs.push(`${y}-${String(m).padStart(2, "0")}`);
       } else if (p === "上期") {
         for (let m = 10; m <= 12; m++)
-          pairs.push(`${y}-${String(m).padStart(2, "0")}`);
+          pairs.push(`${y - 1}-${String(m).padStart(2, "0")}`);
         for (let m = 1; m <= 3; m++)
-          pairs.push(`${y + 1}-${String(m).padStart(2, "0")}`);
+          pairs.push(`${y}-${String(m).padStart(2, "0")}`);
       } else if (p === "下期") {
         for (let m = 4; m <= 9; m++)
-          pairs.push(`${y + 1}-${String(m).padStart(2, "0")}`);
+          pairs.push(`${y}-${String(m).padStart(2, "0")}`);
       }
       return pairs.join(",");
     },
