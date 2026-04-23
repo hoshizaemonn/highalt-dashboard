@@ -1,5 +1,16 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+---
+
+## ⚠️ 本番データ保全について
+
+**本番 DB には既にクライアント（ハイアルチ）の 8期・9期の運用データが入っています。**
+
+コードの改修・スキーマ変更を行う前に、必ず [`DATA_SAFETY.md`](./DATA_SAFETY.md) を読んでください。
+特に `prisma db push --force-reset`, `prisma migrate reset` などの破壊的コマンドは**絶対に実行しないでください**。
+
+---
+
 ## Getting Started
 
 First, run the development server:
