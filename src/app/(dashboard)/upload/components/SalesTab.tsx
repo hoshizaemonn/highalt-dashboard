@@ -7,12 +7,63 @@ import {
   FileDropzone,
   StatusBanner,
   StoreSelect,
+  OverwriteWarning,
   ActionButton,
 } from "./SharedComponents";
 
 // ─── Types ──────────────────────────────────────────────────
 
 type SalesSubTab = "ml001" | "pl001" | "ma002" | "square";
+
+interface OverwriteCheck {
+  totalExisting: number;
+  details: string[];
+}
+
+// 各ファイルについて dryRun で既存件数を取得し、合計を返す。
+// 1件以上の既存データがあれば警告を出す。
+async function checkHacomonoOverwrite(
+  type: "ml001" | "pl001" | "ma002",
+  files: File[],
+  store: string,
+): Promise<OverwriteCheck> {
+  let total = 0;
+  const details: string[] = [];
+  for (const file of files) {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("type", type);
+      formData.append("store", store);
+      formData.append("year", "0");
+      formData.append("month", "0");
+      formData.append("dryRun", "true");
+      const res = await fetch("/api/upload/hacomono", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data?.exists && data.existingCount > 0) {
+        total += data.existingCount;
+        if (type === "ml001") {
+          details.push(`${file.name}: ${store} 会員データ ${data.existingCount}件`);
+        } else if (type === "pl001") {
+          details.push(
+            `${file.name}: ${store} ${data.year}年${data.month}月 売上明細 ${data.existingCount}件`,
+          );
+        } else {
+          details.push(
+            `${file.name}: ${store} ${data.periodCount ?? 1}ヶ月分 月次サマリ ${data.existingCount}件`,
+          );
+        }
+      }
+    } catch {
+      // Ignore check failures; user can still upload
+    }
+  }
+  return { totalExisting: total, details };
+}
 
 // ─── Sales Tab ──────────────────────────────────────────────
 
@@ -59,12 +110,13 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [results, setResults] = useState<string[]>([]);
+  const [overwrite, setOverwrite] = useState<OverwriteCheck | null>(null);
 
-  const handleUpload = async () => {
-    if (files.length === 0) return;
+  const doUpload = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "取込中..." });
     setResults([]);
+    setOverwrite(null);
 
     try {
       const msgs: string[] = [];
@@ -92,6 +144,23 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
     }
   };
 
+  const handleUpload = async () => {
+    if (files.length === 0) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      const check = await checkHacomonoOverwrite("ml001", files, store);
+      if (check.totalExisting > 0) {
+        setOverwrite(check);
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // pre-check failure はそのまま通常アップロードに進める
+    }
+    await doUpload();
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
@@ -101,12 +170,20 @@ function ML001Section({ onSuccess }: { onSuccess?: () => void }) {
         <StoreSelect value={store} onChange={setStore} />
       </div>
       <FileDropzone accept=".csv" multiple files={files}
-        onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); }}
+        onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); setOverwrite(null); }}
         onRemoveFile={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
       />
-      <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0}>
+      <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0 || !!overwrite}>
         {files.length <= 1 ? "取り込む" : `${files.length}件を取り込む`}
       </ActionButton>
+      {overwrite && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F ${store} の会員データが既に ${overwrite.totalExisting}件 登録されています。ML001 は店舗単位で全件置き換えになります。上書きしますか？`}
+          onConfirm={doUpload}
+          onCancel={() => setOverwrite(null)}
+          loading={loading}
+        />
+      )}
       {results.length > 0 && (
         <div className="space-y-1">
           {results.map((r, i) => (
@@ -128,11 +205,13 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [results, setResults] = useState<string[]>([]);
+  const [overwrite, setOverwrite] = useState<OverwriteCheck | null>(null);
 
   const doUpload = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "取込中..." });
     setResults([]);
+    setOverwrite(null);
 
     try {
       const msgs: string[] = [];
@@ -163,6 +242,23 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
     }
   };
 
+  const handleUpload = async () => {
+    if (files.length === 0) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      const check = await checkHacomonoOverwrite("pl001", files, store);
+      if (check.totalExisting > 0) {
+        setOverwrite(check);
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // pre-check failure はそのまま通常アップロードに進める
+    }
+    await doUpload();
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
@@ -172,12 +268,20 @@ function PL001Section({ onSuccess }: { onSuccess?: () => void }) {
         <StoreSelect value={store} onChange={setStore} />
       </div>
       <FileDropzone accept=".csv" multiple files={files}
-        onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); }}
+        onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); setOverwrite(null); }}
         onRemoveFile={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
       />
-      <ActionButton onClick={doUpload} loading={loading} disabled={files.length === 0}>
+      <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0 || !!overwrite}>
         {files.length <= 1 ? "取り込む" : `${files.length}件を取り込む`}
       </ActionButton>
+      {overwrite && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F 既存の売上明細 ${overwrite.totalExisting}件 が上書きされます。\n${overwrite.details.join("\n")}\n\n上書きしますか？`}
+          onConfirm={doUpload}
+          onCancel={() => setOverwrite(null)}
+          loading={loading}
+        />
+      )}
       {results.length > 0 && (
         <div className="space-y-1">
           {results.map((r, i) => (
@@ -198,12 +302,13 @@ function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [results, setResults] = useState<string[]>([]);
+  const [overwrite, setOverwrite] = useState<OverwriteCheck | null>(null);
 
-  const handleUpload = async () => {
-    if (files.length === 0) return;
+  const doUpload = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "取込中..." });
     setResults([]);
+    setOverwrite(null);
 
     try {
       const msgs: string[] = [];
@@ -233,6 +338,23 @@ function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
     }
   };
 
+  const handleUpload = async () => {
+    if (files.length === 0) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      const check = await checkHacomonoOverwrite("ma002", files, store);
+      if (check.totalExisting > 0) {
+        setOverwrite(check);
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // pre-check failure はそのまま通常アップロードに進める
+    }
+    await doUpload();
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
@@ -242,12 +364,20 @@ function MA002Section({ onSuccess }: { onSuccess?: () => void }) {
         <StoreSelect value={store} onChange={setStore} />
       </div>
       <FileDropzone accept=".csv" multiple files={files}
-        onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); }}
+        onFilesSelect={(f) => { setFiles((prev) => [...prev, ...f]); setResults([]); setOverwrite(null); }}
         onRemoveFile={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
       />
-      <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0}>
+      <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0 || !!overwrite}>
         {files.length <= 1 ? "取り込む" : `${files.length}件を取り込む`}
       </ActionButton>
+      {overwrite && (
+        <OverwriteWarning
+          message={`\u26A0\uFE0F 既存の月次サマリ ${overwrite.totalExisting}件 が上書きされます。\n${overwrite.details.join("\n")}\n\n上書きしますか？`}
+          onConfirm={doUpload}
+          onCancel={() => setOverwrite(null)}
+          loading={loading}
+        />
+      )}
       {results.length > 0 && (
         <div className="space-y-1">
           {results.map((r, i) => (

@@ -116,6 +116,9 @@ export async function POST(request: NextRequest) {
     const store = formData.get("store") as string;
     const year = parseInt(formData.get("year") as string, 10);
     const month = parseInt(formData.get("month") as string, 10);
+    // dryRun: CSV を解析して検知した (年, 月) に対する既存レコード件数だけ返し、
+    // DB への書き込みは行わない。アップロード前の上書き警告用。
+    const dryRun = formData.get("dryRun") === "true";
 
     if (!file || !type) {
       return NextResponse.json(
@@ -174,6 +177,21 @@ export async function POST(request: NextRequest) {
       const effectiveYear = isNaN(year) ? now.getFullYear() : year;
       const effectiveMonth = isNaN(month) ? now.getMonth() + 1 : month;
       const today = new Date();
+
+      if (dryRun) {
+        const existingCount = await prisma.memberData.count({
+          where: { storeName: store },
+        });
+        return NextResponse.json({
+          dryRun: true,
+          type: "ml001",
+          exists: existingCount > 0,
+          existingCount,
+          store,
+          year: effectiveYear,
+          month: effectiveMonth,
+        });
+      }
 
       interface MemberRecord {
         year: number;
@@ -320,6 +338,39 @@ export async function POST(request: NextRequest) {
         discount: number;
       }
 
+      // dryRun: 先頭データ行から年月を検知して既存件数を返すだけ
+      if (dryRun) {
+        let detYear: number | null = null;
+        let detMonth: number | null = null;
+        for (const row of dataRows) {
+          const saleDate = getVal(row, "精算日時");
+          if (!saleDate) continue;
+          const dt = parseDateLoose(saleDate);
+          if (dt) {
+            detYear = dt.getFullYear();
+            detMonth = dt.getMonth() + 1;
+            break;
+          }
+        }
+        const y = detYear ?? (isNaN(year) ? null : year);
+        const m = detMonth ?? (isNaN(month) ? null : month);
+        let existingCount = 0;
+        if (y !== null && m !== null) {
+          existingCount = await prisma.salesDetail.count({
+            where: { year: y, month: m, storeName: store },
+          });
+        }
+        return NextResponse.json({
+          dryRun: true,
+          type: "pl001",
+          exists: existingCount > 0,
+          existingCount,
+          store,
+          year: y,
+          month: m,
+        });
+      }
+
       const records: SalesRecord[] = [];
       let detectedYear: number | null = null;
       let detectedMonth: number | null = null;
@@ -456,6 +507,43 @@ export async function POST(request: NextRequest) {
         suspensions: number;
         cancellations: number;
         cancellationRate: string;
+      }
+
+      // dryRun: 対象年月 列から (年, 月) を抽出し、既存件数を合計して返す
+      if (dryRun) {
+        const periods = new Set<string>();
+        for (const row of dataRows) {
+          if (row.length < 3) continue;
+          const targetYm = getVal(row, "対象年月");
+          if (targetYm.length === 6) {
+            const y = parseInt(targetYm.slice(0, 4), 10);
+            const m = parseInt(targetYm.slice(4, 6), 10);
+            if (!isNaN(y) && !isNaN(m)) periods.add(`${y}-${m}`);
+          }
+        }
+        let existingCount = 0;
+        let firstY: number | null = null;
+        let firstM: number | null = null;
+        for (const key of periods) {
+          const [y, m] = key.split("-").map(Number);
+          if (firstY === null) {
+            firstY = y;
+            firstM = m;
+          }
+          existingCount += await prisma.monthlySummary.count({
+            where: { year: y, month: m, storeName: store },
+          });
+        }
+        return NextResponse.json({
+          dryRun: true,
+          type: "ma002",
+          exists: existingCount > 0,
+          existingCount,
+          store,
+          year: firstY,
+          month: firstM,
+          periodCount: periods.size,
+        });
       }
 
       const records: SummaryRecord[] = [];
