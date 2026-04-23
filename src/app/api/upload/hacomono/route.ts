@@ -350,13 +350,17 @@ export async function POST(request: NextRequest) {
         }
 
         // Simple category classification based on description
+        // NOTE: 月会費/月額 を 入会金 より先に判定する。hacomono の新規入会行は
+        // 「初月会費(日割) + 翌月分月会費 + 入会金 + 事務手数料 ...」が 1 行にまとまっており、
+        // 「入会」で先にマッチさせると月会費分まで入会金カテゴリに吸収され、客単価実績が過少になる。
+        // また「入会」→「入会金」と厳密化し、プロモ名等の誤マッチを防ぐ。
         let category: string | null = null;
         if (description) {
           if (description.includes("パーソナル")) category = "パーソナル";
           else if (description.includes("体験")) category = "体験";
-          else if (description.includes("入会")) category = "入会金";
           else if (description.includes("月会費") || description.includes("月額"))
             category = "月会費";
+          else if (description.includes("入会金")) category = "入会金";
           else if (description.includes("スポット")) category = "スポット";
           else if (description.includes("ロッカー")) category = "ロッカー";
           else if (description.includes("オプション")) category = "オプション";
