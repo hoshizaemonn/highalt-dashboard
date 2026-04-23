@@ -476,16 +476,26 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // NOTE: hacomono の MA002 CSV 列名が途中で変更されているため、
+        // 旧名（店舗在籍〜 / プラン新規入会数）でも拾えるようフォールバックを入れる。
+        const totalMembers =
+          getIntVal(row, "店舗全体会員数") || getIntVal(row, "店舗在籍会員数");
+        const newRegistrations =
+          getIntVal(row, "店舗全体新規会員登録数") ||
+          getIntVal(row, "店舗在籍新規会員登録数");
+        const newPlanSignups =
+          getIntVal(row, "プラン新規契約数") || getIntVal(row, "プラン新規入会数");
+
         records.push({
           year: rowYear,
           month: rowMonth,
           storeName: store,
-          totalMembers: getIntVal(row, "店舗在籍会員数"),
+          totalMembers,
           planSubscribers: getIntVal(row, "プラン契約者数"),
           planSubscribers1st: getIntVal(row, "プラン契約者数 (1日時点)"),
-          newRegistrations: getIntVal(row, "店舗在籍新規会員登録数"),
+          newRegistrations,
           newPlanApplications: getIntVal(row, "プラン新規申込数"),
-          newPlanSignups: getIntVal(row, "プラン新規入会数"),
+          newPlanSignups,
           planChanges: getIntVal(row, "プラン変更数"),
           suspensions: getIntVal(row, "休会数"),
           cancellations: getIntVal(row, "退会数"),
