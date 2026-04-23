@@ -98,8 +98,14 @@ export async function GET(request: NextRequest) {
       );
       const totalExpense = expenses.reduce((s, r) => s + r.amount, 0);
 
-      // Member summary - latest record for this store
-      const ms = allMonthlySummary.find((r) => r.storeName === storeName);
+      // Member summary - latest record for this store WITHIN the requested period.
+      // NOTE: Prisma where は年単位でのみフィルタしているため、例えば 8期 (2024/10〜2025/9)
+      // を表示しているときに同じ years=[2024,2025] に含まれる 9期の先頭月 (2025/10〜12)
+      // のレコードまで取り込まれ、year/month desc の find() で 9期値が 8期画面に
+      // 漏れていた。期間内のみを対象にするため isInPeriod を追加する。
+      const ms = allMonthlySummary.find(
+        (r) => r.storeName === storeName && isInPeriod(r.year, r.month),
+      );
 
       return {
         store: storeName,
