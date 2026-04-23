@@ -158,6 +158,7 @@ export interface MonthlyEntry {
   budget_labor: number;
   budget_expense: number;
   budget_profit: number;
+  budget_unit_price: number;
 }
 
 export interface PlanBreakdownEntry {

@@ -84,23 +84,37 @@ export default function PeriodView({
   const hasBudgetData = useMemo(() => {
     if (isAllStores) return false;
     return monthly.some(
-      (m) => m.budget_revenue > 0 || m.budget_labor > 0 || m.budget_expense > 0,
+      (m) =>
+        m.budget_revenue > 0 ||
+        m.budget_labor > 0 ||
+        m.budget_expense > 0 ||
+        m.budget_unit_price > 0,
     );
   }, [isAllStores, monthly]);
 
   const budgetChartData = useMemo(() => {
     if (!hasBudgetData) return null;
-    return monthly.map((m) => ({
-      name: m.month_label,
-      売上予算: m.budget_revenue,
-      売上実績: m.revenue,
-      人件費予算: m.budget_labor,
-      人件費実績: m.labor_cost,
-      経費予算: m.budget_expense,
-      経費実績: m.expense,
-      利益予算: m.budget_profit,
-      利益実績: m.operating_profit,
-    }));
+    return monthly.map((m) => {
+      // 客単価（実績）= 月会費売上 ÷ プラン契約者数
+      const monthlyFee = m.sales_by_category["月会費"] ?? 0;
+      const unitPriceActual =
+        m.ma_plan_subscribers > 0
+          ? Math.round(monthlyFee / m.ma_plan_subscribers)
+          : 0;
+      return {
+        name: m.month_label,
+        売上予算: m.budget_revenue,
+        売上実績: m.revenue,
+        人件費予算: m.budget_labor,
+        人件費実績: m.labor_cost,
+        経費予算: m.budget_expense,
+        経費実績: m.expense,
+        利益予算: m.budget_profit,
+        利益実績: m.operating_profit,
+        客単価予算: m.budget_unit_price,
+        客単価実績: unitPriceActual,
+      };
+    });
   }, [hasBudgetData, monthly]);
 
   return (
@@ -375,6 +389,24 @@ export default function PeriodView({
                 </BarChart>
               </ResponsiveContainer>
             </div>
+
+            {/* Unit price budget vs actual */}
+            {budgetChartData.some((d) => d.客単価予算 > 0 || d.客単価実績 > 0) && (
+              <div className="bg-white rounded-lg border shadow-sm p-4 lg:col-span-2">
+                <p className="text-sm font-medium text-gray-600 mb-3">客単価 予算 vs 実績</p>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={budgetChartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" fontSize={11} />
+                    <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend />
+                    <Bar dataKey="客単価予算" name="予算" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="客単価実績" name="実績" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
         </>
       )}
