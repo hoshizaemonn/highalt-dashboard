@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Upload, Clock } from "lucide-react";
 import { PayrollTab } from "./components/PayrollTab";
 import { ExpenseTab } from "./components/ExpenseTab";
@@ -17,6 +17,20 @@ export default function UploadPage() {
   const [activeTab, setActiveTab] = useState<TabId>("payroll");
   const [historyKey, setHistoryKey] = useState(0);
   const refreshHistory = () => setHistoryKey((k) => k + 1);
+
+  // 店長ロール（admin 以外）はアップロード対象が自店舗に固定されるため、
+  // 店舗セレクタを非表示にして session.storeName をそのまま使う。
+  const [lockedStore, setLockedStore] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && data.role !== "admin" && data.storeName) {
+          setLockedStore(data.storeName);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const tabs: { id: TabId; label: string }[] = [
     { id: "payroll", label: "人件費" },
@@ -60,9 +74,15 @@ export default function UploadPage() {
       {/* Tab Content */}
       <div className="bg-white rounded-b-lg shadow-sm p-6">
         {activeTab === "payroll" && <PayrollTab onSuccess={refreshHistory} />}
-        {activeTab === "expense" && <ExpenseTab onSuccess={refreshHistory} />}
-        {activeTab === "hacomono" && <HacomonoTab onSuccess={refreshHistory} />}
-        {activeTab === "budget" && <BudgetTab onSuccess={refreshHistory} />}
+        {activeTab === "expense" && (
+          <ExpenseTab onSuccess={refreshHistory} lockedStore={lockedStore} />
+        )}
+        {activeTab === "hacomono" && (
+          <HacomonoTab onSuccess={refreshHistory} lockedStore={lockedStore} />
+        )}
+        {activeTab === "budget" && (
+          <BudgetTab onSuccess={refreshHistory} lockedStore={lockedStore} />
+        )}
       </div>
 
       {/* Upload History */}

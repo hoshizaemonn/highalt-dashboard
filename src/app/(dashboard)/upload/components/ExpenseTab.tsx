@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { STORES, EXPENSE_CATEGORIES } from "@/lib/constants";
 import {
   StatusMessage,
@@ -16,7 +16,13 @@ import {
 
 // ─── Expense Tab ────────────────────────────────────────────
 
-export function ExpenseTab({ onSuccess }: { onSuccess?: () => void }) {
+export function ExpenseTab({
+  onSuccess,
+  lockedStore,
+}: {
+  onSuccess?: () => void;
+  lockedStore?: string | null;
+}) {
   const [amazonDone, setAmazonDone] = useState(false);
   const [skipAmazon, setSkipAmazon] = useState(false);
 
@@ -45,7 +51,10 @@ export function ExpenseTab({ onSuccess }: { onSuccess?: () => void }) {
         )}
 
         {!skipAmazon && !amazonDone && (
-          <AmazonExpenseSection onSuccess={() => { setAmazonDone(true); onSuccess?.(); }} />
+          <AmazonExpenseSection
+            onSuccess={() => { setAmazonDone(true); onSuccess?.(); }}
+            lockedStore={lockedStore}
+          />
         )}
 
         {amazonDone && (
@@ -70,7 +79,7 @@ export function ExpenseTab({ onSuccess }: { onSuccess?: () => void }) {
             先に①のAmazonデータを取り込むか、スキップにチェックを入れてください。
           </p>
         ) : (
-          <PayPayExpenseSection onSuccess={onSuccess} />
+          <PayPayExpenseSection onSuccess={onSuccess} lockedStore={lockedStore} />
         )}
       </div>
     </div>
@@ -79,9 +88,18 @@ export function ExpenseTab({ onSuccess }: { onSuccess?: () => void }) {
 
 // ─── PayPay Expense Section ─────────────────────────────────
 
-function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
+function PayPayExpenseSection({
+  onSuccess,
+  lockedStore,
+}: {
+  onSuccess?: () => void;
+  lockedStore?: string | null;
+}) {
   const [file, setFile] = useState<File | null>(null);
-  const [store, setStore] = useState<string>(STORES[0]);
+  const [store, setStore] = useState<string>(lockedStore ?? STORES[0]);
+  useEffect(() => {
+    if (lockedStore) setStore(lockedStore);
+  }, [lockedStore]);
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [autoDetected, setAutoDetected] = useState(false);
@@ -228,7 +246,18 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
       </p>
 
       <div className="grid grid-cols-3 gap-4">
-        <StoreSelect value={store} onChange={setStore} />
+        {lockedStore ? (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              対象店舗
+            </label>
+            <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md text-gray-700">
+              {lockedStore}
+            </div>
+          </div>
+        ) : (
+          <StoreSelect value={store} onChange={setStore} />
+        )}
         <YearSelect value={year} onChange={setYear} />
         <MonthSelect value={month} onChange={setMonth} />
       </div>
@@ -360,7 +389,13 @@ function PayPayExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
 
 // ─── Amazon Expense Section ─────────────────────────────────
 
-function AmazonExpenseSection({ onSuccess }: { onSuccess?: () => void }) {
+function AmazonExpenseSection({
+  onSuccess,
+}: {
+  onSuccess?: () => void;
+  /** 店長ロール時の自店舗（Amazon側は配送先から自動判定するためここでは未使用） */
+  lockedStore?: string | null;
+}) {
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

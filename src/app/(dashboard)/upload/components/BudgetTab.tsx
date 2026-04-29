@@ -17,9 +17,18 @@ const formatYen = (n: number) => `¥${n.toLocaleString("ja-JP")}`;
 
 // ─── Budget Tab ─────────────────────────────────────────────
 
-export function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
+export function BudgetTab({
+  onSuccess,
+  lockedStore,
+}: {
+  onSuccess?: () => void;
+  lockedStore?: string | null;
+}) {
   const [file, setFile] = useState<File | null>(null);
-  const [store, setStore] = useState<string>(STORES[0]);
+  const [store, setStore] = useState<string>(lockedStore ?? STORES[0]);
+  useEffect(() => {
+    if (lockedStore) setStore(lockedStore);
+  }, [lockedStore]);
   const [fiscalYear, setFiscalYear] = useState(2026);
   const [period, setPeriod] = useState(9);
   const [loading, setLoading] = useState(false);
@@ -93,7 +102,18 @@ export function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
       </p>
 
       <div className="grid grid-cols-3 gap-4">
-        <StoreSelect value={store} onChange={setStore} />
+        {lockedStore ? (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              対象店舗
+            </label>
+            <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md text-gray-700">
+              {lockedStore}
+            </div>
+          </div>
+        ) : (
+          <StoreSelect value={store} onChange={setStore} />
+        )}
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
             対象年度（決算年）
@@ -157,15 +177,22 @@ export function BudgetTab({ onSuccess }: { onSuccess?: () => void }) {
 
       <StatusBanner status={status} />
 
-      <UnitPriceBudgetForm />
+      <UnitPriceBudgetForm lockedStore={lockedStore} />
     </div>
   );
 }
 
 // ─── Unit Price Budget Form ─────────────────────────────────
 
-function UnitPriceBudgetForm() {
-  const [store, setStore] = useState<string>(STORES[0]);
+function UnitPriceBudgetForm({
+  lockedStore,
+}: {
+  lockedStore?: string | null;
+}) {
+  const [store, setStore] = useState<string>(lockedStore ?? STORES[0]);
+  useEffect(() => {
+    if (lockedStore) setStore(lockedStore);
+  }, [lockedStore]);
   const [fiscalYear, setFiscalYear] = useState(2026);
   const [amount, setAmount] = useState<string>("");
   const [initialAmount, setInitialAmount] = useState<number>(0);
@@ -252,7 +279,18 @@ function UnitPriceBudgetForm() {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <StoreSelect value={store} onChange={setStore} />
+        {lockedStore ? (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              対象店舗
+            </label>
+            <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md text-gray-700">
+              {lockedStore}
+            </div>
+          </div>
+        ) : (
+          <StoreSelect value={store} onChange={setStore} />
+        )}
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">対象年度（決算年）</label>
           <select
