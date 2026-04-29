@@ -21,7 +21,7 @@ export default function UploadPage() {
   const tabs: { id: TabId; label: string }[] = [
     { id: "payroll", label: "人件費" },
     { id: "expense", label: "経費" },
-    { id: "hacomono", label: "hacomono" },
+    { id: "hacomono", label: "hacomono（売上）" },
     { id: "budget", label: "予算" },
   ];
 
