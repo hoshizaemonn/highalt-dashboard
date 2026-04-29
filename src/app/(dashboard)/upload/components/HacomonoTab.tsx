@@ -36,20 +36,38 @@ const TYPE_LABEL: Record<DetectedType, string> = {
   unknown: "不明",
 };
 
-// CSV 1 行目（ヘッダー）の文字列から種別を判定する
-async function detectFileType(file: File): Promise<DetectedType> {
-  // 先頭 4KB だけ読めばヘッダー行は十分カバーできる
-  const slice = file.slice(0, 4096);
+// 1) ファイル名のパターンから種別を推測（hacomono 出力のデフォルトファイル名は
+//    `*_ML001_*.csv` 等の規則性があるため、まずここで判定する）
+function detectFromFilename(name: string): DetectedType {
+  const upper = name.toUpperCase();
+  if (upper.includes("PS001")) return "ps001";
+  if (upper.includes("ML001")) return "ml001";
+  if (upper.includes("MA002")) return "ma002";
+  if (upper.includes("PL001")) return "pl001";
+  return "unknown";
+}
+
+// 2) CSV ヘッダー行の中身から種別を判定（ファイル名でわからない場合のフォールバック）
+async function detectFromHeader(file: File): Promise<DetectedType> {
+  // 先頭 8KB だけ読めばヘッダー行は十分カバーできる
+  const slice = file.slice(0, 8192);
   const buffer = await slice.arrayBuffer();
-  // hacomono は Shift-JIS 出力。先頭でデコード判定する
+
+  // TextDecoder のラベル指定はブラウザ実装で揺れる（"shift_jis" が標準だが
+  // "shift-jis" / "sjis" を受け付ける処理系もある）。順に試す。
+  const labels = ["shift_jis", "shift-jis", "sjis", "utf-8"];
   let text = "";
-  try {
-    text = new TextDecoder("shift-jis").decode(buffer);
-  } catch {
-    text = new TextDecoder("utf-8").decode(buffer);
+  for (const label of labels) {
+    try {
+      text = new TextDecoder(label, { fatal: false }).decode(buffer);
+      // 文字化けでない（'�' 連発でない）かつ日本語1文字以上を含むかをざっくり確認
+      if (text && /[ぁ-んァ-ヶ一-龥]/.test(text)) break;
+    } catch {
+      // 次のラベルを試す
+    }
   }
   // BOM 除去
-  text = text.replace(/^﻿/, "");
+  text = text.replace(/^﻿/, "").replace(/^﻿/, "");
   const firstLine = text.split(/\r?\n/, 1)[0] || "";
 
   if (firstLine.includes("商品コード") && firstLine.includes("商品名")) return "ps001";
@@ -57,6 +75,13 @@ async function detectFileType(file: File): Promise<DetectedType> {
   if (firstLine.includes("対象年月") && firstLine.includes("プラン契約者数")) return "ma002";
   if (firstLine.includes("売上ID") || firstLine.includes("精算日時")) return "pl001";
   return "unknown";
+}
+
+// ファイル名 → ヘッダー の優先順で判定する
+async function detectFileType(file: File): Promise<DetectedType> {
+  const byName = detectFromFilename(file.name);
+  if (byName !== "unknown") return byName;
+  return detectFromHeader(file);
 }
 
 // ─── Hacomono Bulk Upload Tab ───────────────────────────────
