@@ -81,9 +81,19 @@ export async function GET(request: NextRequest) {
       count = await prisma.monthlySummary.count({
         where: { year, month, storeName: store },
       });
+    } else if (type === "ps001") {
+      if (!store || isNaN(year) || isNaN(month)) {
+        return NextResponse.json(
+          { error: "store, year, month are required for PS001" },
+          { status: 400 },
+        );
+      }
+      count = await prisma.productSales.count({
+        where: { year, month, storeName: store },
+      });
     } else {
       return NextResponse.json(
-        { error: "Invalid type. Use ml001, pl001, or ma002." },
+        { error: "Invalid type. Use ml001, pl001, ma002, or ps001." },
         { status: 400 },
       );
     }
@@ -628,8 +638,104 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // ─── PS001: Product Sales (商品別売上) ───────────────────
+    if (type === "ps001") {
+      if (!store || isNaN(year) || isNaN(month)) {
+        return NextResponse.json(
+          { error: "store, year, month are required for PS001" },
+          { status: 400 },
+        );
+      }
+
+      const getVal = (row: string[], colName: string): string => {
+        const idx = hmap[colName];
+        return idx !== undefined && idx < row.length ? row[idx].trim() : "";
+      };
+      const getIntVal = (row: string[], colName: string): number => {
+        return safeInt(getVal(row, colName));
+      };
+
+      interface ProductRecord {
+        year: number;
+        month: number;
+        storeName: string;
+        productCode: string;
+        productName: string;
+        totalCount: number;
+        saleCount: number;
+        refundCount: number;
+        couponCount: number;
+        totalAmount: number;
+      }
+
+      if (dryRun) {
+        const existingCount = await prisma.productSales.count({
+          where: { year, month, storeName: store },
+        });
+        return NextResponse.json({
+          dryRun: true,
+          type: "ps001",
+          exists: existingCount > 0,
+          existingCount,
+          store,
+          year,
+          month,
+        });
+      }
+
+      const records: ProductRecord[] = [];
+      for (const row of dataRows) {
+        if (row.length < 2) continue;
+        const productCode = getVal(row, "商品コード");
+        const productName = getVal(row, "商品名");
+        if (!productCode || !productName) continue;
+
+        records.push({
+          year,
+          month,
+          storeName: store,
+          productCode,
+          productName,
+          totalCount: getIntVal(row, "[総売上]件数"),
+          saleCount: getIntVal(row, "[売上]件数"),
+          refundCount: getIntVal(row, "[払い戻し・取り消し]件数"),
+          couponCount: getIntVal(row, "クーポン使用件数"),
+          totalAmount: getIntVal(row, "総売上金額"),
+        });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.productSales.deleteMany({
+          where: { year, month, storeName: store },
+        });
+        if (records.length > 0) {
+          await tx.productSales.createMany({ data: records });
+        }
+        await tx.uploadLog.create({
+          data: {
+            userId: session.userId,
+            userName:
+              session.displayName || session.storeName || "ユーザー",
+            dataType: "hacomono_ps001",
+            storeName: store,
+            year,
+            month,
+            fileName: file.name,
+            recordCount: records.length,
+          },
+        });
+      });
+
+      return NextResponse.json({
+        records: records.length,
+        type: "ps001",
+        year,
+        month,
+      });
+    }
+
     return NextResponse.json(
-      { error: "Invalid type. Use ml001, pl001, or ma002." },
+      { error: "Invalid type. Use ml001, pl001, ma002, or ps001." },
       { status: 400 },
     );
   } catch (error) {

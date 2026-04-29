@@ -350,3 +350,27 @@ model PromotionReport {
   @@unique([year, month, storeName])
   @@map("promotion_reports")
 }
+
+// ─── Product Sales (PS001 商品別売上) ──────────────────────
+//
+// hacomono の「商品別売上」CSV から取り込む。
+// 月会費と入会金の正確な分離が PL001 摘要のキーワード判定では難しいため、
+// 商品コード単位で集計したこのテーブルを客単価計算等に利用する。
+
+model ProductSales {
+  id           Int    @id @default(autoincrement())
+  year         Int
+  month        Int
+  storeName    String @map("store_name")
+  productCode  String @map("product_code")
+  productName  String @map("product_name")
+  totalCount   Int    @default(0) @map("total_count")
+  saleCount    Int    @default(0) @map("sale_count")
+  refundCount  Int    @default(0) @map("refund_count")
+  couponCount  Int    @default(0) @map("coupon_count")
+  totalAmount  Int    @default(0) @map("total_amount")
+
+  @@unique([year, month, storeName, productCode])
+  @@index([year, month, storeName])
+  @@map("product_sales")
+}
