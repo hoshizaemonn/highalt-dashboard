@@ -96,7 +96,10 @@ export default function PeriodView({
     if (!hasBudgetData) return null;
     return monthly.map((m) => {
       // 客単価（実績）= 月会費売上 ÷ プラン契約者数
-      const monthlyFee = m.sales_by_category["月会費"] ?? 0;
+      // PS001（商品別売上）が取り込まれていればそちらを優先利用し、
+      // なければ PL001 の摘要キーワード分類による月会費を使う。
+      const monthlyFee =
+        m.monthly_fee_ps001 ?? m.sales_by_category["月会費"] ?? 0;
       const unitPriceActual =
         m.ma_plan_subscribers > 0
           ? Math.round(monthlyFee / m.ma_plan_subscribers)

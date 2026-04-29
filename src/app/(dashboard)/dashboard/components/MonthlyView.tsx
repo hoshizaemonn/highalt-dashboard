@@ -343,7 +343,10 @@ export default function MonthlyView({
       {/* Promotion Report */}
       {!isAllStores && (() => {
         // 客単価（実績）= 月会費売上合計 ÷ プラン契約者数
-        const monthlyFee = data.revenue.by_category["月会費"] ?? 0;
+        // PS001（商品別売上）が取り込まれていればそちらを優先利用し、
+        // なければ PL001 の摘要キーワード分類による月会費を使う。
+        const monthlyFee =
+          data.revenue.monthly_fee_ps001 ?? data.revenue.by_category["月会費"] ?? 0;
         const planSubscribers = data.member?.plan_subscribers ?? 0;
         const unitPriceActual =
           planSubscribers > 0 ? Math.round(monthlyFee / planSubscribers) : null;

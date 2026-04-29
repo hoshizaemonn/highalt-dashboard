@@ -176,11 +176,26 @@ export async function GET(request: NextRequest) {
 
     const totalRevenue = salesTotal + squareTotal;
 
+    // ── 月会費 (PS001 商品別売上から正確に算出) ─────────────────
+    // PL001 の摘要キーワードマッチでは月会費と入会金等が混ざる可能性があり、
+    // 客単価実績が予算表とズレる原因になっている。
+    // PS001 が取り込まれている場合はそちらを優先利用する。
+    const productSalesRows = await prisma.productSales.findMany({
+      where: commonWhere,
+    });
+    let monthlyFeeFromPs001: number | null = null;
+    if (productSalesRows.length > 0) {
+      monthlyFeeFromPs001 = productSalesRows
+        .filter((r) => r.productName.includes("月会費"))
+        .reduce((s, r) => s + r.totalAmount, 0);
+    }
+
     const revenueSummary = {
       total: Math.round(totalRevenue),
       sales_total: Math.round(salesTotal),
       square_total: Math.round(squareTotal),
       by_category: salesByCategory,
+      monthly_fee_ps001: monthlyFeeFromPs001,
     };
 
     // ── Member Summary (MA002) ───────────────────────────────
