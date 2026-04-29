@@ -26,6 +26,8 @@ interface MonthlyEntry {
   ma_cancel_rate: string;
   expense_by_category: Record<string, number>;
   sales_by_category: Record<string, number>;
+  /** PS001 商品別売上から算出した月会費（PS001未取込時は null） */
+  monthly_fee_ps001: number | null;
   budget_revenue: number;
   budget_labor: number;
   budget_expense: number;
@@ -107,6 +109,9 @@ export async function GET(request: NextRequest) {
       where: { year: { in: years }, ...storeWhere },
     });
     const allMonthlySummary = await prisma.monthlySummary.findMany({
+      where: { year: { in: years }, ...storeWhere },
+    });
+    const allProductSales = await prisma.productSales.findMany({
       where: { year: { in: years }, ...storeWhere },
     });
     const allBudget = store
@@ -192,6 +197,17 @@ export async function GET(request: NextRequest) {
 
       const totalRevenue = salesTotal + squareTotal;
 
+      // 月会費 (PS001 商品別売上から正確に算出 — 取込時のみ)
+      const productSalesMonth = allProductSales.filter(
+        (r) => r.year === y && r.month === m,
+      );
+      const monthlyFeePs001 =
+        productSalesMonth.length > 0
+          ? productSalesMonth
+              .filter((r) => r.productName.includes("月会費"))
+              .reduce((s, r) => s + r.totalAmount, 0)
+          : null;
+
       // Member summary (MA002)
       const ms = allMonthlySummary.filter((r) => r.year === y && r.month === m);
 
@@ -242,6 +258,7 @@ export async function GET(request: NextRequest) {
         ma_cancel_rate: ms.length > 0 ? ms[0].cancellationRate : "",
         expense_by_category: expenseByCat,
         sales_by_category: salesByCat,
+        monthly_fee_ps001: monthlyFeePs001,
         budget_revenue: budgetRevenue,
         budget_labor: budgetLabor,
         budget_expense: budgetExpense,

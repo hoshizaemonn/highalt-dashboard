@@ -4,12 +4,12 @@ import { useState } from "react";
 import { Upload, Clock } from "lucide-react";
 import { PayrollTab } from "./components/PayrollTab";
 import { ExpenseTab } from "./components/ExpenseTab";
-import { SalesTab } from "./components/SalesTab";
+import { HacomonoTab } from "./components/HacomonoTab";
 import { BudgetTab, UploadHistory } from "./components/BudgetTab";
 
 // ─── Types ──────────────────────────────────────────────────
 
-type TabId = "payroll" | "expense" | "sales" | "budget";
+type TabId = "payroll" | "expense" | "hacomono" | "budget";
 
 // ─── Main Upload Page ───────────────────────────────────────
 
@@ -21,7 +21,7 @@ export default function UploadPage() {
   const tabs: { id: TabId; label: string }[] = [
     { id: "payroll", label: "人件費" },
     { id: "expense", label: "経費" },
-    { id: "sales", label: "売上" },
+    { id: "hacomono", label: "hacomono" },
     { id: "budget", label: "予算" },
   ];
 
@@ -61,7 +61,7 @@ export default function UploadPage() {
       <div className="bg-white rounded-b-lg shadow-sm p-6">
         {activeTab === "payroll" && <PayrollTab onSuccess={refreshHistory} />}
         {activeTab === "expense" && <ExpenseTab onSuccess={refreshHistory} />}
-        {activeTab === "sales" && <SalesTab onSuccess={refreshHistory} />}
+        {activeTab === "hacomono" && <HacomonoTab onSuccess={refreshHistory} />}
         {activeTab === "budget" && <BudgetTab onSuccess={refreshHistory} />}
       </div>
 
