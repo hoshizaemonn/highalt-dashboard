@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { STORES } from "@/lib/constants";
 import {
@@ -86,8 +86,19 @@ async function detectFileType(file: File): Promise<DetectedType> {
 
 // ─── Hacomono Bulk Upload Tab ───────────────────────────────
 
-export function HacomonoTab({ onSuccess }: { onSuccess?: () => void }) {
-  const [store, setStore] = useState<string>(STORES[0]);
+export function HacomonoTab({
+  onSuccess,
+  lockedStore,
+}: {
+  onSuccess?: () => void;
+  /** 店長ロールでアクセスしている時に渡される自店舗名。指定時は店舗セレクタを隠す。 */
+  lockedStore?: string | null;
+}) {
+  const [store, setStore] = useState<string>(lockedStore ?? STORES[0]);
+  // lockedStore は session 取得後に遅れてセットされるので追従する
+  useEffect(() => {
+    if (lockedStore) setStore(lockedStore);
+  }, [lockedStore]);
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
   const [files, setFiles] = useState<DetectedFile[]>([]);
@@ -267,7 +278,18 @@ export function HacomonoTab({ onSuccess }: { onSuccess?: () => void }) {
 
       {/* Store + Year/Month selector */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <StoreSelect value={store} onChange={setStore} />
+        {lockedStore ? (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              対象店舗
+            </label>
+            <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md text-gray-700">
+              {lockedStore}
+            </div>
+          </div>
+        ) : (
+          <StoreSelect value={store} onChange={setStore} />
+        )}
         {showYearMonth && (
           <>
             <YearSelect value={year} onChange={setYear} />
