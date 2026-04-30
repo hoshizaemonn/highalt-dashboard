@@ -35,12 +35,14 @@ export default function UploadPage() {
   }, []);
 
   // 並び順: 月次運用フローに沿って 売上 → 人件費 → 経費 → 予算
-  // ラベル: 「hacomono（売上）」だけだと初見ユーザに分からないので
-  //        「売上（hacomono）」を先頭に、説明的に
+  // ラベル: アップロード画面は「投入者視点」を優先するため Source-first 命名。
+  //        投入者は「hacomono からDLしたCSVをここに入れる」という思考順なので
+  //        外部システム名（出所）→ 業務カテゴリの順で並べる。
+  //        Amazon と PayPay銀行は業務上ペアで運用するため経費は1タブに統合。
   const tabs: { id: TabId; label: string }[] = [
-    { id: "hacomono", label: "売上（hacomono）" },
+    { id: "hacomono", label: "hacomono（売上）" },
     { id: "payroll", label: "人件費" },
-    { id: "expense", label: "経費" },
+    { id: "expense", label: "経費（Amazon＋PayPay銀行）" },
     { id: "budget", label: "予算" },
   ];
 
