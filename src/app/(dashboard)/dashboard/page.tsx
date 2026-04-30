@@ -291,10 +291,19 @@ export default function DashboardPage() {
 
   return (
     <div>
-      {/* Header */}
+      {/* Header — 印刷・スクショで何の画面か分かる文脈ヘッダー */}
       <div className="flex items-center gap-3 mb-6">
         <LayoutDashboard className="text-[#567FC0]" size={28} />
-        <h1 className="text-2xl font-bold text-gray-800">ダッシュボード</h1>
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-gray-800">ダッシュボード</h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {store} ／ {year}年度
+            {(() => {
+              const periodLabel = isMonthly ? `${period}月` : period;
+              return ` ／ ${periodLabel}`;
+            })()}
+          </p>
+        </div>
       </div>
 
       {/* Period selector */}

@@ -75,13 +75,22 @@ export function DashboardShell({
         `}
       >
         <div className="flex flex-col h-full">
-          {/* Logo */}
+          {/* Logo — クリックでダッシュボードへ戻る（SaaSの暗黙ルール） */}
           <div className="px-4 py-4 flex items-center justify-between">
-            <img
-              src="/logo.png"
-              alt="ハイアルチ 駅前高地™トレーニング"
-              className="w-32 rounded-lg"
-            />
+            <button
+              onClick={() => {
+                router.push("/dashboard");
+                setSidebarOpen(false);
+              }}
+              className="block focus:outline-none focus:ring-2 focus:ring-[#567FC0] rounded-lg"
+              aria-label="ダッシュボードへ戻る"
+            >
+              <img
+                src="/logo.png"
+                alt="ハイアルチ 駅前高地™トレーニング"
+                className="w-32 rounded-lg"
+              />
+            </button>
             <button
               onClick={() => setSidebarOpen(false)}
               className="lg:hidden text-gray-500 hover:text-gray-700"
