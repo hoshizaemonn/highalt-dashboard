@@ -8,6 +8,7 @@ import {
   FileDropzone,
   StatusBanner,
   StoreSelect,
+  LockedStoreField,
   YearSelect,
   MonthSelect,
   ActionButton,
@@ -279,14 +280,7 @@ export function HacomonoTab({
       {/* Store + Year/Month selector */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {lockedStore ? (
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              対象店舗
-            </label>
-            <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md text-gray-700">
-              {lockedStore}
-            </div>
-          </div>
+          <LockedStoreField storeName={lockedStore} />
         ) : (
           <StoreSelect value={store} onChange={setStore} />
         )}

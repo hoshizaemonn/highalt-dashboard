@@ -8,6 +8,7 @@ import {
   AlertCircle,
   Loader2,
   Trash2,
+  Lock,
 } from "lucide-react";
 import { STORES } from "@/lib/constants";
 
@@ -204,6 +205,28 @@ export function StatusBanner({ status }: { status: StatusMessage | null }) {
 }
 
 // ─── Select Components ──────────────────────────────────────
+
+/**
+ * 店長ロール時に「対象店舗」が固定で変えられないことを視覚的に示す表示。
+ * 鍵アイコン+「自店舗のみアップロード可」のヒントを併記する。
+ */
+export function LockedStoreField({ storeName }: { storeName: string }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1">
+        対象店舗
+      </label>
+      <div
+        className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md text-gray-700 flex items-center gap-2"
+        title="店長アカウントは自店舗のみアップロード可能です。他店舗を扱う場合は管理者へご連絡ください。"
+      >
+        <Lock size={13} className="text-gray-400 shrink-0" />
+        <span className="flex-1">{storeName}</span>
+        <span className="text-[10px] text-gray-400">自店舗のみ</span>
+      </div>
+    </div>
+  );
+}
 
 export function StoreSelect({
   value,

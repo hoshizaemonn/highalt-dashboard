@@ -247,6 +247,85 @@ export async function GET(request: NextRequest) {
     // ── Operating Profit ─────────────────────────────────────
     const operatingProfit = totalRevenue - totalLaborCost - totalExpense;
 
+    // ── 前月 / 前年同月 の合計（KPIカードの前期比表示に使う）─────
+    // 月次ビューで year + month が指定されているときのみ計算する。
+    // 集計のみで重い詳細は不要なので、軽量な集約クエリで取得する。
+    type Totals = { revenue: number; labor: number; expense: number; profit: number };
+    let prevMonthTotals: Totals | null = null;
+    let prevYearTotals: Totals | null = null;
+    if (month !== undefined) {
+      const computeTotals = async (y: number, m: number): Promise<Totals> => {
+        const sf = store && store !== "全体"
+          ? { storeName: store }
+          : { storeName: { not: HQ_STORE } };
+        // payroll: grossTotal × ratio/100 を集計
+        const payRows = await prisma.payrollData.findMany({
+          where: { year: y, month: m, ...sf },
+          select: { grossTotal: true, ratio: true },
+        });
+        const labor = payRows.reduce(
+          (s, r) => s + r.grossTotal * (r.ratio / 100),
+          0,
+        );
+
+        const expWhere = {
+          year: y,
+          month: m,
+          isRevenue: 0,
+          ...(store && { storeName: store }),
+        };
+        const expAgg = await prisma.expenseData.aggregate({
+          _sum: { amount: true },
+          where: expWhere,
+        });
+        const expenseTotal = expAgg._sum.amount ?? 0;
+
+        const cw = {
+          year: y,
+          month: m,
+          ...(store && { storeName: store }),
+        };
+        const sd = await prisma.salesDetail.aggregate({
+          _sum: { amount: true },
+          where: cw,
+        });
+        const rev = await prisma.revenueData.aggregate({
+          _sum: { amount: true },
+          where: cw,
+        });
+        const sq = await prisma.squareSales.aggregate({
+          _sum: { grossSales: true },
+          where: cw,
+        });
+        // PL001 がある月はそちら優先、無ければ revenueData
+        const sales = (sd._sum.amount ?? 0) || (rev._sum.amount ?? 0);
+        const square = sq._sum.grossSales ?? 0;
+        const revenueTotal = sales + square;
+
+        return {
+          revenue: Math.round(revenueTotal),
+          labor: Math.round(labor),
+          expense: Math.round(expenseTotal),
+          profit: Math.round(revenueTotal - labor - expenseTotal),
+        };
+      };
+
+      // 前月（月をまたぐ場合は年も繰り上げ/繰り下げ）
+      const prevMonth = month === 1 ? 12 : month - 1;
+      const prevMonthYear = month === 1 ? year - 1 : year;
+      try {
+        prevMonthTotals = await computeTotals(prevMonthYear, prevMonth);
+      } catch {
+        prevMonthTotals = null;
+      }
+      // 前年同月
+      try {
+        prevYearTotals = await computeTotals(year - 1, month);
+      } catch {
+        prevYearTotals = null;
+      }
+    }
+
     return NextResponse.json({
       year,
       month: month ?? null,
@@ -261,6 +340,8 @@ export async function GET(request: NextRequest) {
       total_labor: Math.round(totalLaborCost),
       total_expense: Math.round(totalExpense),
       operating_profit: Math.round(operatingProfit),
+      prev_month_totals: prevMonthTotals,
+      prev_year_totals: prevYearTotals,
     });
   } catch (error) {
     console.error("Dashboard API error:", error);

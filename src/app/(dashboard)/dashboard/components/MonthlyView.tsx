@@ -86,18 +86,29 @@ export default function MonthlyView({
           value={formatYen(data.total_revenue)}
           color={COLORS.blue}
           help="月会費・パーソナル・物販・体験・スポット等の売上合計（Square含む）。"
+          current={data.total_revenue}
+          previousMonth={data.prev_month_totals?.revenue}
+          previousYear={data.prev_year_totals?.revenue}
         />
         <KPICard
           title="人件費合計"
           value={formatYen(data.total_labor)}
           color={COLORS.red}
           help="正社員・契約社員給与の課税支給合計＋法定福利費＋通勤手当の合計。"
+          current={data.total_labor}
+          previousMonth={data.prev_month_totals?.labor}
+          previousYear={data.prev_year_totals?.labor}
+          lowerIsBetter
         />
         <KPICard
           title="経費合計"
           value={formatYen(data.total_expense)}
           color={COLORS.orange}
           help="広告宣伝費・賃借料・水道光熱費・消耗品費など、人件費以外の経費の合計。"
+          current={data.total_expense}
+          previousMonth={data.prev_month_totals?.expense}
+          previousYear={data.prev_year_totals?.expense}
+          lowerIsBetter
         />
         <KPICard
           title="営業利益"
@@ -105,6 +116,9 @@ export default function MonthlyView({
           // 赤字（営業利益マイナス）の場合は赤色で警告。緑固定だとミスリード。
           color={data.operating_profit >= 0 ? COLORS.green : COLORS.red}
           help="売上合計 − 人件費合計 − 経費合計。プラスなら黒字、マイナスなら赤字。"
+          current={data.operating_profit}
+          previousMonth={data.prev_month_totals?.profit}
+          previousYear={data.prev_year_totals?.profit}
         />
       </div>
 
