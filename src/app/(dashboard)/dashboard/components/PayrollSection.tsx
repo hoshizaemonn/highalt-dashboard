@@ -101,8 +101,9 @@ export function PayrollDetailSection({
   const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Only show for admin or own-store manager
-  const canView = isAdmin || (sessionStoreName != null && sessionStoreName === store);
+  // 従業員別明細は admin のみ閲覧可
+  // （安蒜さんの依頼により、自店店長にも非表示にする変更）
+  const canView = isAdmin;
 
   useEffect(() => {
     if (!canView) {

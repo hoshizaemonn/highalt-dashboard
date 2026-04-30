@@ -30,6 +30,8 @@ export async function GET(request: NextRequest) {
     });
 
     // Group by store and compute summaries
+    // 「正社員・契約社員給与」は安蒜さんの依頼により 課税支給合計（taxableTotal）
+    // ベースの集計に変更（旧仕様は grossTotal ベース）。
     const storeData: Record<
       string,
       {
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
         legal_welfare: number;
         commute: number;
         total_hours: number;
-        total_salary: number;
+        taxable_total: number;
       }
     > = {};
 
@@ -50,7 +52,7 @@ export async function GET(request: NextRequest) {
         legal_welfare: 0,
         commute: 0,
         total_hours: 0,
-        total_salary: 0,
+        taxable_total: 0,
       };
     }
 
@@ -63,12 +65,12 @@ export async function GET(request: NextRequest) {
           legal_welfare: 0,
           commute: 0,
           total_hours: 0,
-          total_salary: 0,
+          taxable_total: 0,
         };
       }
 
       const ratio = row.ratio / 100;
-      const gross = row.grossTotal * ratio;
+      const taxable = row.taxableTotal * ratio;
       const hours = (row.scheduledHours + row.overtimeHours) * ratio;
       const commute = (row.commuteTaxable + row.commuteNontax) * ratio;
       const welfare =
@@ -89,20 +91,24 @@ export async function GET(request: NextRequest) {
         ct.includes("full-time") ||
         ct === "";
 
+      // 内訳行（正社員給与 / 契約社員給与）も課税支給合計ベースに揃える
+      // → 合計（正社員・契約社員給与）と内訳の sum が一致する
       if (isFulltime) {
-        storeData[store].fulltime_salary += gross;
+        storeData[store].fulltime_salary += taxable;
       } else {
-        storeData[store].parttime_salary += gross;
+        storeData[store].parttime_salary += taxable;
       }
 
       storeData[store].legal_welfare += welfare;
       storeData[store].commute += commute;
       storeData[store].total_hours += hours;
-      storeData[store].total_salary += gross;
+      storeData[store].taxable_total += taxable;
     }
 
     // Build CSV rows
-    const stores = STORES.filter((s) => storeData[s].total_salary > 0 || storeData[s].total_hours > 0);
+    const stores = STORES.filter(
+      (s) => storeData[s].taxable_total > 0 || storeData[s].total_hours > 0,
+    );
 
     const categories = [
       "正社員・契約社員給与",
@@ -123,7 +129,7 @@ export async function GET(request: NextRequest) {
         let val = 0;
         switch (cat) {
           case "正社員・契約社員給与":
-            val = d.total_salary;
+            val = d.taxable_total;
             break;
           case "法定福利":
             val = d.legal_welfare;

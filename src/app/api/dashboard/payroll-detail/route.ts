@@ -24,14 +24,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Permission check
-    const isAdmin = session.role === "admin";
-    const isOwnStore =
-      session.role === "store_manager" &&
-      session.storeName === storeParam;
-
-    if (!isAdmin && !isOwnStore) {
-      // Other-store manager or insufficient role -> return empty
+    // 従業員別明細は admin のみ閲覧可
+    // （安蒜さんの依頼により、自店店長にも非表示にする変更）
+    if (session.role !== "admin") {
       return NextResponse.json({ employees: [] });
     }
 
