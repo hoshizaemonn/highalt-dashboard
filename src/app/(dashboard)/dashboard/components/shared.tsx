@@ -74,9 +74,17 @@ export function formatYen(n: number): string {
   return yenFormat.format(n);
 }
 
+/**
+ * グラフ軸用のコンパクト表記。日本の経営文脈に合わせて「万」基準で統一。
+ * （旧仕様は 1000万円以上で "M" 表記が混ざっていたが、円文脈で英語単位は不自然）
+ *   1000万円以上 → "1.2億"
+ *   1万円以上    → "1,234万"
+ *   それ以下     → そのまま
+ */
 export function formatCompact(n: number): string {
-  if (Math.abs(n) >= 10_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 10_000) return `${(n / 10_000).toFixed(0)}万`;
+  const abs = Math.abs(n);
+  if (abs >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}億`;
+  if (abs >= 10_000) return `${numFormat.format(Math.round(n / 10_000))}万`;
   return numFormat.format(n);
 }
 
@@ -149,6 +157,20 @@ export interface DashboardData {
     total_members: number;
   } | null;
   budget: Record<string, number>;
+  /** 前月の合計KPI（KPIカードの前月比表示に使用、データなしの場合 null） */
+  prev_month_totals?: {
+    revenue: number;
+    labor: number;
+    expense: number;
+    profit: number;
+  } | null;
+  /** 前年同月の合計KPI（同上） */
+  prev_year_totals?: {
+    revenue: number;
+    labor: number;
+    expense: number;
+    profit: number;
+  } | null;
   total_revenue: number;
   total_labor: number;
   total_expense: number;
@@ -247,14 +269,28 @@ export function KPICard({
   color,
   sub,
   help,
+  current,
+  previousMonth,
+  previousYear,
+  /** 数値が低いほど良い指標（人件費・経費）の場合は true。delta の色判定が反転する。 */
+  lowerIsBetter,
 }: {
   title: string;
   value: string;
   color: string;
   sub?: string;
-  /** 用語の意味を ? アイコンホバーで補助表示する。会計用語など解説が必要な指標で使う。 */
+  /** 用語の意味を ? アイコンホバーで補助表示する。 */
   help?: string;
+  /** 前月比/前年同月比の計算に使う。指定すると delta バッジを自動表示。 */
+  current?: number;
+  previousMonth?: number | null;
+  previousYear?: number | null;
+  lowerIsBetter?: boolean;
 }) {
+  const showDelta = current !== undefined && (
+    (previousMonth !== undefined && previousMonth !== null) ||
+    (previousYear !== undefined && previousYear !== null)
+  );
   return (
     <div className="bg-white rounded-lg border shadow-sm p-4">
       <p className="text-xs text-gray-500 font-medium flex items-center gap-1">
@@ -265,7 +301,67 @@ export function KPICard({
         {value}
       </p>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      {showDelta && (
+        <div className="mt-2 pt-2 border-t border-gray-100 flex flex-col gap-0.5">
+          {previousMonth !== undefined && previousMonth !== null && (
+            <DeltaRow
+              label="前月比"
+              current={current!}
+              previous={previousMonth}
+              lowerIsBetter={lowerIsBetter}
+            />
+          )}
+          {previousYear !== undefined && previousYear !== null && (
+            <DeltaRow
+              label="前年同月比"
+              current={current!}
+              previous={previousYear}
+              lowerIsBetter={lowerIsBetter}
+            />
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * 前月比/前年同月比の1行。
+ * ▲▼記号 + 増減率 + 増減額（絶対値） を表示し、色は良し悪しで切替。
+ */
+function DeltaRow({
+  label,
+  current,
+  previous,
+  lowerIsBetter,
+}: {
+  label: string;
+  current: number;
+  previous: number;
+  lowerIsBetter?: boolean;
+}) {
+  const diff = current - previous;
+  const ratio = previous !== 0 ? diff / previous : 0;
+  // 数値が増えたか減ったか
+  const isUp = diff > 0;
+  // 増減が「良い」かどうか（人件費・経費は減ったほうが良い）
+  const isGood = lowerIsBetter ? !isUp : isUp;
+  const sign = isUp ? "▲" : diff < 0 ? "▼" : "＝";
+  const color = diff === 0
+    ? "#9ca3af"
+    : isGood
+      ? "#16a34a" // green-600
+      : "#dc2626"; // red-600
+  const ratioText = previous === 0
+    ? "—"
+    : `${(Math.abs(ratio) * 100).toFixed(1)}%`;
+  return (
+    <p className="text-[10px] flex items-center justify-between" style={{ color }}>
+      <span className="text-gray-400">{label}</span>
+      <span className="tabular-nums">
+        {sign} {ratioText}
+      </span>
+    </p>
   );
 }
 
