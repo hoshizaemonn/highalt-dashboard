@@ -7,6 +7,7 @@ import {
   formatCompact,
   formatPercent,
   KPICard,
+  HelpHint,
   SectionTitle,
   ChartTooltip,
   DashboardData,
@@ -380,18 +381,21 @@ export default function MonthlyView({
                     value={revRow ? formatPercent(revRow.ratio) : "-"}
                     color={revRow?.isGood ? COLORS.green : COLORS.red}
                     sub={revRow ? `予算差: ${formatYen(revRow.diff)}` : undefined}
+                    help="売上の達成率（実績÷予算）。100%以上で予算達成。予算差は「実績−予算」で、プラスなら予算超過達成。"
                   />
                   <KPICard
                     title="人件費予算比"
                     value={laborRow ? formatPercent(laborRow.ratio) : "-"}
                     color={laborRow?.isGood ? COLORS.green : COLORS.red}
                     sub={laborRow ? `予算差: ${formatYen(laborRow.diff)}` : undefined}
+                    help="人件費の予算比（実績÷予算）。100%以下が望ましい（予算内に収まっている）。予算差はマイナスだと予算節約。"
                   />
                   <KPICard
                     title="経費予算比"
                     value={expRow ? formatPercent(expRow.ratio) : "-"}
                     color={expRow?.isGood ? COLORS.green : COLORS.red}
                     sub={expRow ? `予算差: ${formatYen(expRow.diff)}` : undefined}
+                    help="経費の予算比（実績÷予算）。100%以下が望ましい（予算内に収まっている）。予算差はマイナスだと予算節約。"
                   />
                   <KPICard
                     title="営業利益予算差"
@@ -400,6 +404,7 @@ export default function MonthlyView({
                     sub={
                       profitRow ? `達成率: ${formatPercent(profitRow.ratio)}` : undefined
                     }
+                    help="営業利益の予算差（実績−予算）。プラスなら予算超過達成、マイナスなら予算未達。達成率は実績÷予算。"
                   />
                 </>
               );
@@ -442,10 +447,16 @@ export default function MonthlyView({
                   <th className="text-right px-4 py-2 font-medium text-gray-600">予算</th>
                   <th className="text-right px-4 py-2 font-medium text-gray-600">実績</th>
                   <th className="text-right px-4 py-2 font-medium text-gray-600">
-                    予算差
+                    <span className="inline-flex items-center gap-1">
+                      予算差
+                      <HelpHint text="実績 − 予算。売上・利益はプラスが良い、人件費・経費はマイナスが良い。" />
+                    </span>
                   </th>
                   <th className="text-right px-4 py-2 font-medium text-gray-600">
-                    予算比
+                    <span className="inline-flex items-center gap-1">
+                      予算比
+                      <HelpHint text="実績 ÷ 予算 × 100%。売上・利益は100%以上が達成、人件費・経費は100%以下が予算内。" />
+                    </span>
                   </th>
                 </tr>
               </thead>
