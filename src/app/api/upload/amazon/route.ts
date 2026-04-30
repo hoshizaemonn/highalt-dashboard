@@ -77,6 +77,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // 非admin（店長）は自店舗以外のレコードを送信できないように
+      // 全レコードの storeName を自店舗に強制する。
+      if (session.role !== "admin" && session.storeName) {
+        for (const rec of inputRecords) {
+          rec.storeName = session.storeName;
+        }
+      }
+
       // Save to product master (upsert — always update with latest product name)
       for (const rec of inputRecords) {
         if (rec.asin) {

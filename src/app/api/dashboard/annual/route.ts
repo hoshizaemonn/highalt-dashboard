@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
-import { requireSession } from "@/lib/auth";
+import { requireSession, effectiveStoreScope } from "@/lib/auth";
 
 interface MonthlyEntry {
   month: number;
@@ -42,7 +42,9 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = request.nextUrl;
     const yearParam = searchParams.get("year");
-    const store = searchParams.get("store") || undefined;
+    const requestedStore = searchParams.get("store") || undefined;
+    // 非adminは店舗パラメータを無視して自店舗に強制スコープ
+    const store = effectiveStoreScope(auth.session, requestedStore) ?? undefined;
     const fiscalYearParam = searchParams.get("fiscalYear");
     const monthStartParam = searchParams.get("monthStart");
     const monthEndParam = searchParams.get("monthEnd");

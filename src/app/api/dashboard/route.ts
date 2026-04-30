@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE } from "@/lib/constants";
-import { requireSession } from "@/lib/auth";
+import { requireSession, effectiveStoreScope } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,7 +21,10 @@ export async function GET(request: NextRequest) {
     }
 
     const month = monthParam ? parseInt(monthParam, 10) : undefined;
-    const store = storeParam || undefined;
+    // 非adminは店舗パラメータを無視して自店舗に強制スコープ
+    const requestedStore = storeParam || undefined;
+    const scopedStore = effectiveStoreScope(auth.session, requestedStore);
+    const store = scopedStore ?? undefined;
 
     // ── Payroll ──────────────────────────────────────────────
     const storeFilter = store && store !== "全体"

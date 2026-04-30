@@ -7,7 +7,14 @@ export async function GET() {
     const auth = await requireSession();
     if (auth.error) return auth.error;
 
+    // 非adminは自店舗のログのみ閲覧可
+    const where =
+      auth.session.role === "admin"
+        ? {}
+        : { storeName: auth.session.storeName ?? "__no_store__" };
+
     const logs = await prisma.uploadLog.findMany({
+      where,
       orderBy: { createdAt: "desc" },
       take: 100,
     });
@@ -39,12 +46,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 非adminは自店舗以外の storeName でログを残せないように強制
+    const safeStoreName =
+      auth.session.role === "admin" ? storeName || null : auth.session.storeName ?? null;
+
     const log = await prisma.uploadLog.create({
       data: {
         userId: typeof userId === "string" ? parseInt(userId, 10) : userId,
         userName,
         dataType,
-        storeName: storeName || null,
+        storeName: safeStoreName,
         year: year ? parseInt(String(year), 10) : null,
         month: month ? parseInt(String(month), 10) : null,
         fileName: fileName || null,

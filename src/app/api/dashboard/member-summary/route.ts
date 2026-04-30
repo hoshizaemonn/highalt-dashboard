@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth";
+import { requireStoreUploadAccess } from "@/lib/auth";
 
 export async function PUT(request: NextRequest) {
   try {
-    const auth = await requireSession();
-    if (auth.error) return auth.error;
-
     const body = await request.json();
     const { year, month, storeName, fields } = body as {
       year: number;
@@ -21,6 +18,10 @@ export async function PUT(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // 非adminは自店舗以外の MA002 を編集不可
+    const auth = await requireStoreUploadAccess(storeName);
+    if (auth.error) return auth.error;
 
     // Map frontend field names to Prisma model fields
     const fieldMap: Record<string, string> = {
