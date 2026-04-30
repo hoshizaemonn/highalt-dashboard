@@ -32,7 +32,8 @@ export function ExpenseTab({
   return (
     <div className="space-y-6">
       <p className="text-sm text-gray-500">
-        経費の取込みフロー：今月のAmazon注文があるかどうかで操作が変わります。
+        経費は <strong>Amazon（経費の内訳）</strong> と <strong>PayPay銀行（経費）</strong> の2つを組み合わせて取込みます。
+        今月のAmazon購入の有無で操作が変わります。
       </p>
 
       {/* モード選択 */}
@@ -52,7 +53,7 @@ export function ExpenseTab({
             <div className="text-sm">
               <p className="font-medium text-gray-700">Amazon購入あり</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Amazon注文履歴CSVを先に取り込んで、内訳を自動マッチさせる
+                Amazon（経費の内訳）CSVを先に取り込み、PayPay銀行CSVに自動マッチさせる
               </p>
             </div>
           </label>
@@ -68,9 +69,11 @@ export function ExpenseTab({
               className="mt-1"
             />
             <div className="text-sm">
-              <p className="font-medium text-gray-700">Amazon購入なし（PayPay銀行CSVのみ）</p>
+              <p className="font-medium text-gray-700">
+                Amazon購入なし（PayPay銀行CSVのみ）
+              </p>
               <p className="text-xs text-gray-500 mt-0.5">
-                内訳マッチを行わず、PayPay銀行CSVだけで経費を取り込む
+                内訳マッチを行わず、PayPay銀行（経費）のみで取り込む
               </p>
             </div>
           </label>
@@ -81,7 +84,7 @@ export function ExpenseTab({
       {mode === "with_amazon" && (
         <div className="border border-gray-200 rounded-lg p-4">
           <h3 className="text-sm font-bold text-gray-700 mb-3">
-            ステップ1：Amazon注文履歴の取込み
+            Amazon（経費の内訳）の取込み
           </h3>
 
           {!amazonDone ? (
@@ -91,7 +94,7 @@ export function ExpenseTab({
             />
           ) : (
             <div className="bg-green-50 border border-green-200 rounded px-4 py-2 text-sm text-green-700">
-              ✅ Amazon注文データ取込完了。次のステップに進めます。
+              ✅ Amazon（経費の内訳）取込完了。次に PayPay銀行（経費）を取込みます。
             </div>
           )}
         </div>
@@ -101,7 +104,7 @@ export function ExpenseTab({
       {((mode === "with_amazon" && amazonDone) || mode === "no_amazon") && (
         <div className="border border-gray-200 rounded-lg p-4">
           <h3 className="text-sm font-bold text-gray-700 mb-3">
-            {mode === "with_amazon" ? "ステップ2：" : ""}PayPay銀行CSVの取込み
+            PayPay銀行（経費）の取込み
           </h3>
           <PayPayExpenseSection onSuccess={onSuccess} lockedStore={lockedStore} />
         </div>
