@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth";
+import { requireSession, effectiveStoreScope } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +10,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const year = parseInt(searchParams.get("year") ?? "", 10);
     const month = parseInt(searchParams.get("month") ?? "", 10);
-    const store = searchParams.get("store") ?? "";
+    const requestedStore = searchParams.get("store") ?? "";
+    // 非adminは店舗パラメータを無視して自店舗に強制スコープ
+    const store = effectiveStoreScope(auth.session, requestedStore) ?? "";
 
     if (isNaN(year) || isNaN(month)) {
       return NextResponse.json(
@@ -180,6 +182,20 @@ export async function PUT(request: NextRequest) {
       if (update.breakdown !== undefined) data.breakdown = update.breakdown;
 
       if (Object.keys(data).length === 0) continue;
+
+      // 非adminは自店舗のレコードのみ更新可
+      if (auth.session.role !== "admin") {
+        const existing = await prisma.expenseData.findUnique({
+          where: { id: update.id },
+          select: { storeName: true },
+        });
+        if (!existing || existing.storeName !== auth.session.storeName) {
+          return NextResponse.json(
+            { error: "他店舗のデータは編集できません" },
+            { status: 403 },
+          );
+        }
+      }
 
       const result = await prisma.expenseData.update({
         where: { id: update.id },

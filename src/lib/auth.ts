@@ -174,3 +174,53 @@ export async function requireAdmin(): Promise<
   }
   return result;
 }
+
+/**
+ * 書き込み系 API 用：要求された店舗が許可されているか厳密に検証する。
+ *
+ * - admin: 任意の店舗（または店舗指定なし）を許可
+ * - store_manager: requestedStore が session.storeName と一致しない場合は 403
+ *
+ * UI 側で店舗セレクタをロックしていても、curl や DevTools 直叩きで
+ * 他店舗のデータを書き換えられないよう、サーバ側で必ず本関数を通す。
+ */
+export async function requireStoreUploadAccess(
+  requestedStore: string | null | undefined,
+): Promise<
+  | { session: SessionUser; error?: never }
+  | { session?: never; error: Response }
+> {
+  const result = await requireSession();
+  if (result.error) return result;
+  if (result.session.role === "admin") return result;
+  // 店長: 店舗未指定 or 自店舗以外は拒否
+  if (!requestedStore || requestedStore !== result.session.storeName) {
+    const { NextResponse } = await import("next/server");
+    return {
+      error: NextResponse.json(
+        { error: "他店舗のデータは操作できません" },
+        { status: 403 }
+      ),
+    };
+  }
+  return result;
+}
+
+/**
+ * 読み取り系 API 用：非 admin の閲覧スコープを自店舗に強制する。
+ *
+ * - admin: requestedStore をそのまま返す（null なら全店舗集計）
+ * - store_manager: 何が要求されても session.storeName を返す（silent override）
+ *
+ * 403 にしてしまうと UI が壊れるため、読み取りは silent override を採用する。
+ * 店舗未指定（全店舗集計）の挙動を要求した非 admin も、強制的に自店舗のみに絞られる。
+ */
+export function effectiveStoreScope(
+  session: SessionUser,
+  requestedStore: string | null | undefined,
+): string | null {
+  if (session.role === "admin") {
+    return requestedStore || null;
+  }
+  return session.storeName;
+}

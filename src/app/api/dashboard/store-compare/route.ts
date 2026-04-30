@@ -8,6 +8,14 @@ export async function GET(request: NextRequest) {
     const auth = await requireSession();
     if (auth.error) return auth.error;
 
+    // 店舗比較は全店舗のデータを返すため admin のみ閲覧可
+    if (auth.session.role !== "admin") {
+      return NextResponse.json(
+        { error: "店舗比較は管理者のみ閲覧できます" },
+        { status: 403 },
+      );
+    }
+
     const { searchParams } = request.nextUrl;
     const yearParam = searchParams.get("year");
     const monthsParam = searchParams.get("months");

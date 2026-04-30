@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth";
+import { requireSession, effectiveStoreScope } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,7 +9,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = request.nextUrl;
     const fiscalYearParam = searchParams.get("fiscalYear");
-    const store = searchParams.get("store") || undefined;
+    const requestedStore = searchParams.get("store") || undefined;
+    const store = effectiveStoreScope(auth.session, requestedStore) ?? undefined;
 
     if (!fiscalYearParam) {
       return NextResponse.json(

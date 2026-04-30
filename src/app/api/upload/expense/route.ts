@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getSession, requireStoreUploadAccess } from "@/lib/auth";
 import { decodeFileBuffer, parseCSV, safeFloat } from "@/lib/csv-utils";
 
 /**
@@ -51,11 +51,6 @@ function classifyExpense(
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const year = parseInt(searchParams.get("year") || "", 10);
     const month = parseInt(searchParams.get("month") || "", 10);
@@ -67,6 +62,9 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    const auth = await requireStoreUploadAccess(store);
+    if (auth.error) return auth.error;
 
     const count = await prisma.expenseData.count({
       where: { year, month, storeName: store },
@@ -121,6 +119,10 @@ export async function POST(request: NextRequest) {
           { status: 400 },
         );
       }
+
+      // 店舗スコープ厳格化: 非adminは自店舗以外への保存を拒否
+      const saveAuth = await requireStoreUploadAccess(store);
+      if (saveAuth.error) return saveAuth.error;
 
       // Delete existing expense data for this year/month/store, then insert
       await prisma.$transaction(async (tx) => {
@@ -213,6 +215,10 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // 店舗スコープ厳格化: 非adminは自店舗以外へのパース／保存を拒否
+    const parseAuth = await requireStoreUploadAccess(store);
+    if (parseAuth.error) return parseAuth.error;
 
     const { validateUploadedFile } = await import("@/lib/upload-validation");
     const fileError = validateUploadedFile(file);

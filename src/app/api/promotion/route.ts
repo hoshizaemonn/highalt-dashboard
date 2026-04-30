@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth";
+import { requireSession, effectiveStoreScope, requireStoreUploadAccess } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +10,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const yearParam = searchParams.get("year");
     const monthParam = searchParams.get("month");
-    const store = searchParams.get("store") || undefined;
+    const requestedStore = searchParams.get("store") || undefined;
+    const store = effectiveStoreScope(auth.session, requestedStore) ?? undefined;
 
     if (!yearParam || !monthParam) {
       return NextResponse.json(
@@ -47,9 +48,6 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireSession();
-    if (auth.error) return auth.error;
-
     const body = await request.json();
     const { year, month, storeName, ...fields } = body;
 
@@ -59,6 +57,10 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // 店舗スコープ厳格化: 非adminは自店舗以外への保存を拒否
+    const auth = await requireStoreUploadAccess(storeName);
+    if (auth.error) return auth.error;
 
     // Compute totals
     const trialTotal =

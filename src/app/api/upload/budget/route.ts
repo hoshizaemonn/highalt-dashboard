@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getSession, requireStoreUploadAccess } from "@/lib/auth";
 import { BUDGET_ITEMS, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 import { decodeFileBuffer, parseCSV, safeInt } from "@/lib/csv-utils";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const store = searchParams.get("store") || "";
     const fiscalYear = parseInt(searchParams.get("fiscalYear") || "", 10);
@@ -21,6 +16,9 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    const auth = await requireStoreUploadAccess(store);
+    if (auth.error) return auth.error;
 
     const count = await prisma.budgetData.count({
       where: { storeName: store, year: fiscalYear },
@@ -60,6 +58,10 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // 店舗スコープ厳格化: 非adminは自店舗以外への保存を拒否
+    const auth = await requireStoreUploadAccess(store);
+    if (auth.error) return auth.error;
 
     const { validateUploadedFile } = await import("@/lib/upload-validation");
     const fileError = validateUploadedFile(file);

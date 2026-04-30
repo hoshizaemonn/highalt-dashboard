@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { requireStoreUploadAccess } from "@/lib/auth";
 import {
   decodeFileBuffer,
   parseCSV,
@@ -31,16 +31,15 @@ function mapHacomonoStore(fullName: string): string {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type") || "";
     const year = parseInt(searchParams.get("year") || "", 10);
     const month = parseInt(searchParams.get("month") || "", 10);
     const store = searchParams.get("store") || "";
+
+    // 既存件数チェック（dryRun 用）も自店舗以外は拒否する
+    const auth = await requireStoreUploadAccess(store);
+    if (auth.error) return auth.error;
 
     if (!type) {
       return NextResponse.json(
@@ -115,14 +114,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const type = formData.get("type") as string; // ml001, pl001, ma002
+    const type = formData.get("type") as string; // ml001, pl001, ma002, ps001
     const store = formData.get("store") as string;
     const year = parseInt(formData.get("year") as string, 10);
     const month = parseInt(formData.get("month") as string, 10);
@@ -136,6 +130,11 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // 店舗スコープを厳密に検証（非adminは自店舗以外への書き込み禁止）
+    const auth = await requireStoreUploadAccess(store);
+    if (auth.error) return auth.error;
+    const session = auth.session;
 
     const { validateUploadedFile } = await import("@/lib/upload-validation");
     const fileError = validateUploadedFile(file);

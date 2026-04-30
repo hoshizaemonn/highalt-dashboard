@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth";
+import { requireStoreUploadAccess } from "@/lib/auth";
 import { BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 
 // Fiscal year months: Oct(fy-1), Nov(fy-1), Dec(fy-1), Jan(fy), ..., Sep(fy)
@@ -12,9 +12,6 @@ function fiscalYearMonths(fiscalYear: number): { year: number; month: number }[]
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireSession();
-  if (auth.error) return auth.error;
-
   const { searchParams } = new URL(request.url);
   const store = searchParams.get("store") || "";
   const fiscalYear = parseInt(searchParams.get("fiscalYear") || "", 10);
@@ -25,6 +22,10 @@ export async function GET(request: NextRequest) {
       { status: 400 },
     );
   }
+
+  // 非adminは自店舗以外の客単価予算を閲覧不可
+  const auth = await requireStoreUploadAccess(store);
+  if (auth.error) return auth.error;
 
   const months = fiscalYearMonths(fiscalYear);
   const rows = await prisma.budgetData.findMany({
@@ -50,9 +51,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireSession();
-  if (auth.error) return auth.error;
-
   const body = await request.json().catch(() => null) as
     | { store?: string; fiscalYear?: number; amount?: number }
     | null;
@@ -67,6 +65,10 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+
+  // 非adminは自店舗以外の客単価予算を編集不可
+  const auth = await requireStoreUploadAccess(store);
+  if (auth.error) return auth.error;
 
   if (amount < 0 || !Number.isFinite(amount)) {
     return NextResponse.json({ error: "amount must be a non-negative finite number" }, { status: 400 });
