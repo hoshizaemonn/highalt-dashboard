@@ -29,12 +29,14 @@ function useSessionRole() {
 }
 
 // ─── Tab Definitions ────────────────────────────────────────────────
+// 並び順は安全な閲覧系を先頭に。誤操作で人件費の店舗判定が崩れるリスクのある
+// 「従業員→店舗マッピング」は最後に配置する。
 
 const TABS = [
-  { key: "overrides", label: "従業員→店舗マッピング" },
   { key: "expense-rules", label: "経費分類ルール" },
   { key: "amazon-master", label: "Amazon商品マスタ" },
   { key: "users", label: "ユーザー管理" },
+  { key: "overrides", label: "従業員→店舗マッピング" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -43,7 +45,9 @@ type TabKey = (typeof TABS)[number]["key"];
 
 export default function SettingsPage() {
   const role = useSessionRole();
-  const [activeTab, setActiveTab] = useState<TabKey>("overrides");
+  // 初期タブを最も安全な「経費分類ルール」に変更。
+  // 旧仕様は overrides（人件費の店舗判定マスタ）が初期表示で、誤操作リスクが高かった。
+  const [activeTab, setActiveTab] = useState<TabKey>("expense-rules");
 
   const visibleTabs =
     role === "admin" ? TABS : TABS.filter((t) => t.key !== "users");

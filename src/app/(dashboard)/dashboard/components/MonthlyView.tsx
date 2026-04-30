@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Download } from "lucide-react";
 import {
   COLORS,
   formatYen,
@@ -80,13 +81,30 @@ export default function MonthlyView({
     <>
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <KPICard title="売上合計" value={formatYen(data.total_revenue)} color={COLORS.blue} />
-        <KPICard title="人件費合計" value={formatYen(data.total_labor)} color={COLORS.red} />
-        <KPICard title="経費合計" value={formatYen(data.total_expense)} color={COLORS.orange} />
+        <KPICard
+          title="売上合計"
+          value={formatYen(data.total_revenue)}
+          color={COLORS.blue}
+          help="月会費・パーソナル・物販・体験・スポット等の売上合計（Square含む）。"
+        />
+        <KPICard
+          title="人件費合計"
+          value={formatYen(data.total_labor)}
+          color={COLORS.red}
+          help="正社員・契約社員給与の課税支給合計＋法定福利費＋通勤手当の合計。"
+        />
+        <KPICard
+          title="経費合計"
+          value={formatYen(data.total_expense)}
+          color={COLORS.orange}
+          help="広告宣伝費・賃借料・水道光熱費・消耗品費など、人件費以外の経費の合計。"
+        />
         <KPICard
           title="営業利益"
           value={formatYen(data.operating_profit)}
-          color={COLORS.green}
+          // 赤字（営業利益マイナス）の場合は赤色で警告。緑固定だとミスリード。
+          color={data.operating_profit >= 0 ? COLORS.green : COLORS.red}
+          help="売上合計 − 人件費合計 − 経費合計。プラスなら黒字、マイナスなら赤字。"
         />
       </div>
 
@@ -174,13 +192,23 @@ export default function MonthlyView({
             )}
             {data.payroll.taxable_total > 0 && (
               <tr className="border-b">
-                <td className="px-4 py-1.5 pl-8 text-gray-600">課税支給合計</td>
+                <td className="px-4 py-1.5 pl-8 text-gray-600">
+                  <span className="inline-flex items-center gap-1">
+                    課税支給合計
+                    <HelpHint text="所得税の課税対象となる支給額の合計。基本給+役職手当+残業代+通勤手当（課税分）。" />
+                  </span>
+                </td>
                 <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.taxable_total)}</td>
               </tr>
             )}
             {data.payroll.legal_welfare > 0 && (
               <tr className="border-b">
-                <td className="px-4 py-1.5 pl-8 text-gray-600">法定福利費（会社負担）</td>
+                <td className="px-4 py-1.5 pl-8 text-gray-600">
+                  <span className="inline-flex items-center gap-1">
+                    法定福利費（会社負担）
+                    <HelpHint text="健康保険・厚生年金・雇用保険など、法律で会社負担が定められた社会保険料。" />
+                  </span>
+                </td>
                 <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.legal_welfare)}</td>
               </tr>
             )}
@@ -525,9 +553,10 @@ export default function MonthlyView({
               });
               window.open(`/api/download/payroll-excel?${params}`, "_blank");
             }}
-            className="text-sm bg-white border rounded-lg px-4 py-2 hover:bg-gray-50 text-gray-700 shadow-sm"
+            className="text-sm bg-white border rounded-lg px-4 py-2 hover:bg-gray-50 text-gray-700 shadow-sm inline-flex items-center gap-2"
           >
-            📥 人件費サマリをダウンロード
+            <Download size={16} />
+            人件費サマリをダウンロード
           </button>
         </div>
       )}
