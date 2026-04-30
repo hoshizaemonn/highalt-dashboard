@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -89,16 +91,27 @@ export default function LoginPage() {
               >
                 パスワード
               </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#567FC0] focus:border-transparent"
-                placeholder="パスワードを入力"
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#567FC0] focus:border-transparent"
+                  placeholder="パスワードを入力"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                  aria-label={showPassword ? "パスワードを隠す" : "パスワードを表示"}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -109,10 +122,20 @@ export default function LoginPage() {
               {loading ? "ログイン中..." : "ログイン"}
             </button>
           </form>
+
+          {/* パスワード忘れ・困った時の連絡先 */}
+          <div className="mt-6 pt-5 border-t border-gray-100 text-xs text-gray-500 space-y-1.5">
+            <p className="font-medium text-gray-600">ログインできない場合</p>
+            <p>
+              パスワードを忘れた・アカウントが分からない場合は、
+              <br />
+              管理者（鈴木さん）までご連絡ください。
+            </p>
+          </div>
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-4">
-          High-Alti 業績ダッシュボード v2.0
+          High-Alti 業績ダッシュボード
         </p>
       </div>
     </div>

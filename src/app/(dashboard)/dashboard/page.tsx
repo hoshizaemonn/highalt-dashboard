@@ -21,6 +21,22 @@ import PeriodView from "./components/PeriodView";
 
 const STORE_OPTIONS = [...STORES, "全体"] as const;
 
+// ─── Error message helpers ─────────────────────────────────
+// API由来のステータスコードを人が読める文言に変換する。
+// （技術的な "API error: 500" を画面に出さないため）
+function humanizeFetchError(status: number): string {
+  if (status === 401 || status === 403) {
+    return "ログインの有効期限が切れた、もしくは権限がありません。再度ログインしてください。";
+  }
+  if (status === 404) {
+    return "対象のデータが見つかりませんでした。";
+  }
+  if (status >= 500) {
+    return "サーバーが一時的に応答できません。少し時間をおいて再読込してください。問題が続く場合は管理者へご連絡ください。";
+  }
+  return "データの取得に失敗しました。再読込してください。";
+}
+
 // ─── Main Dashboard Page ────────────────────────────────────
 
 export default function DashboardPage() {
@@ -118,7 +134,7 @@ export default function DashboardPage() {
           if (!isAllStores) params.set("store", store);
 
           const res = await fetch(`/api/dashboard?${params}`);
-          if (!res.ok) throw new Error(`API error: ${res.status}`);
+          if (!res.ok) throw new Error(humanizeFetchError(res.status));
           const data = await res.json();
           if (!cancelled) setMonthlyData(data);
         } else {
@@ -165,7 +181,7 @@ export default function DashboardPage() {
 
           const responses = await Promise.all(fetches);
           for (const r of responses) {
-            if (!r.ok) throw new Error(`API error: ${r.status}`);
+            if (!r.ok) throw new Error(humanizeFetchError(r.status));
           }
 
           const annualJson = await responses[0].json();

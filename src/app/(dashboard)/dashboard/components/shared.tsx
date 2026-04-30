@@ -224,20 +224,43 @@ export function KPICard({
   value,
   color,
   sub,
+  help,
 }: {
   title: string;
   value: string;
   color: string;
   sub?: string;
+  /** 用語の意味を ? アイコンホバーで補助表示する。会計用語など解説が必要な指標で使う。 */
+  help?: string;
 }) {
   return (
     <div className="bg-white rounded-lg border shadow-sm p-4">
-      <p className="text-xs text-gray-500 font-medium">{title}</p>
+      <p className="text-xs text-gray-500 font-medium flex items-center gap-1">
+        <span>{title}</span>
+        {help && <HelpHint text={help} />}
+      </p>
       <p className="text-xl font-bold mt-1" style={{ color }}>
         {value}
       </p>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
     </div>
+  );
+}
+
+/**
+ * 用語解説用の小さな ? アイコン。ホバーでツールチップ表示。
+ * 会計用語（予算比、客単価、課税支給合計 など）の理解を支援する。
+ */
+export function HelpHint({ text }: { text: string }) {
+  return (
+    <span
+      className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold cursor-help hover:bg-gray-300 transition-colors"
+      title={text}
+      role="img"
+      aria-label={`説明: ${text}`}
+    >
+      ?
+    </span>
   );
 }
 
