@@ -23,65 +23,89 @@ export function ExpenseTab({
   onSuccess?: () => void;
   lockedStore?: string | null;
 }) {
+  // モード選択: 未選択 / Amazonあり / Amazonなし
+  // 旧仕様は「opacity-50だがクリック反応なし」でバグに見えたので、
+  // 明示的にラジオで選択させてから該当フローのみ表示する。
+  const [mode, setMode] = useState<"unset" | "with_amazon" | "no_amazon">("unset");
   const [amazonDone, setAmazonDone] = useState(false);
-  const [skipAmazon, setSkipAmazon] = useState(false);
-
-  const amazonReady = amazonDone || skipAmazon;
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-gray-500">
-        ① Amazon注文履歴 → ② PayPay銀行CSV の順にアップロード
+        経費の取込みフロー：今月のAmazon注文があるかどうかで操作が変わります。
       </p>
 
-      {/* Step 1: Amazon */}
-      <div className="border border-gray-200 rounded-lg p-4">
-        <h3 className="text-sm font-bold text-gray-700 mb-2">① Amazon注文履歴（内訳データ）</h3>
-
-        {!amazonDone && (
-          <label className="flex items-center gap-2 mb-3">
+      {/* モード選択 */}
+      <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <p className="text-sm font-medium text-gray-700 mb-3">
+          今月の経費にAmazon購入はありますか？
+        </p>
+        <div className="space-y-2">
+          <label className="flex items-start gap-2 cursor-pointer p-2 rounded hover:bg-white transition-colors">
             <input
-              type="checkbox"
-              checked={skipAmazon}
-              onChange={(e) => setSkipAmazon(e.target.checked)}
-              className="rounded"
+              type="radio"
+              name="expense-mode"
+              checked={mode === "with_amazon"}
+              onChange={() => setMode("with_amazon")}
+              className="mt-1"
             />
-            <span className="text-sm text-gray-600">Amazonデータをスキップ（内訳不要の場合）</span>
+            <div className="text-sm">
+              <p className="font-medium text-gray-700">Amazon購入あり</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Amazon注文履歴CSVを先に取り込んで、内訳を自動マッチさせる
+              </p>
+            </div>
           </label>
-        )}
-
-        {!skipAmazon && !amazonDone && (
-          <AmazonExpenseSection
-            onSuccess={() => { setAmazonDone(true); onSuccess?.(); }}
-            lockedStore={lockedStore}
-          />
-        )}
-
-        {amazonDone && (
-          <div className="bg-green-50 border border-green-200 rounded px-4 py-2 text-sm text-green-700">
-            ✅ Amazon注文データ取込完了
-          </div>
-        )}
-
-        {skipAmazon && !amazonDone && (
-          <div className="bg-blue-50 border border-blue-200 rounded px-4 py-2 text-sm text-blue-700">
-            Amazonデータはスキップされます
-          </div>
-        )}
+          <label className="flex items-start gap-2 cursor-pointer p-2 rounded hover:bg-white transition-colors">
+            <input
+              type="radio"
+              name="expense-mode"
+              checked={mode === "no_amazon"}
+              onChange={() => {
+                setMode("no_amazon");
+                setAmazonDone(false);
+              }}
+              className="mt-1"
+            />
+            <div className="text-sm">
+              <p className="font-medium text-gray-700">Amazon購入なし（PayPay銀行CSVのみ）</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                内訳マッチを行わず、PayPay銀行CSVだけで経費を取り込む
+              </p>
+            </div>
+          </label>
+        </div>
       </div>
 
-      {/* Step 2: PayPay */}
-      <div className={`border rounded-lg p-4 ${amazonReady ? "border-gray-200" : "border-gray-100 opacity-50"}`}>
-        <h3 className="text-sm font-bold text-gray-700 mb-2">② PayPay銀行CSV</h3>
+      {/* Step 1: Amazon (mode = with_amazon の時のみ表示) */}
+      {mode === "with_amazon" && (
+        <div className="border border-gray-200 rounded-lg p-4">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">
+            ステップ1：Amazon注文履歴の取込み
+          </h3>
 
-        {!amazonReady ? (
-          <p className="text-sm text-yellow-600">
-            先に①のAmazonデータを取り込むか、スキップにチェックを入れてください。
-          </p>
-        ) : (
+          {!amazonDone ? (
+            <AmazonExpenseSection
+              onSuccess={() => { setAmazonDone(true); onSuccess?.(); }}
+              lockedStore={lockedStore}
+            />
+          ) : (
+            <div className="bg-green-50 border border-green-200 rounded px-4 py-2 text-sm text-green-700">
+              ✅ Amazon注文データ取込完了。次のステップに進めます。
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 2: PayPay (with_amazon かつ amazonDone のとき / no_amazon のとき) */}
+      {((mode === "with_amazon" && amazonDone) || mode === "no_amazon") && (
+        <div className="border border-gray-200 rounded-lg p-4">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">
+            {mode === "with_amazon" ? "ステップ2：" : ""}PayPay銀行CSVの取込み
+          </h3>
           <PayPayExpenseSection onSuccess={onSuccess} lockedStore={lockedStore} />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

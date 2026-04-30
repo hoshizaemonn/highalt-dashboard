@@ -49,16 +49,31 @@ export default function DashboardPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [sessionStoreName, setSessionStoreName] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
+  // session取得済みフラグ。session 未取得で fetch を走らせると、店長なのに
+  // 一瞬「全体」で API を叩いてしまうので、取得後に最初の fetch を行う。
+  const [sessionReady, setSessionReady] = useState(false);
 
   // Check admin status and store name from session cookie (read via API)
   useEffect(() => {
     fetch("/api/auth/session")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
-        if (data?.role === "admin") setIsAdmin(true);
-        if (data?.storeName) setSessionStoreName(data.storeName);
+        if (data?.role === "admin") {
+          setIsAdmin(true);
+        } else if (data?.storeName) {
+          // 店長ロール時は「自店舗・今月」をデフォルト表示にする。
+          // ログイン直後の通期サマリは情報過多で離脱を招くため、
+          // 店長が真っ先に確認したい数値（自店舗の今月）を即表示する。
+          setSessionStoreName(data.storeName);
+          setStore(data.storeName);
+          const m = new Date().getMonth() + 1;
+          setPeriod(String(m));
+        }
+        setSessionReady(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        setSessionReady(true);
+      });
   }, []);
 
   // Monthly data (single month selected)
@@ -112,15 +127,18 @@ export default function DashboardPage() {
 
   // Fetch data
   useEffect(() => {
+    // session 取得前は fetch を走らせない（店長デフォルト「自店舗」が反映される前に
+    // 「全体」で叩いてしまうのを防ぐ）
+    if (!sessionReady) return;
+
     let cancelled = false;
 
     async function fetchData() {
       setLoading(true);
       setError(null);
-      setMonthlyData(null);
-      setAnnualData(null);
-      setStoreCompareData(null);
-      setPeriodBudget({});
+      // ⑧ 既存データを即座に消すと「フラッシュ→空→新データ」の3段階再描画になり酔うので、
+      //   fetch 中は前回データを保持し、新データ到着時に置き換える（Stale-While-Revalidate）。
+      //   エラー時のみ明示的にクリアする。
       setPlanBreakdown(null);
 
       try {
@@ -248,6 +266,11 @@ export default function DashboardPage() {
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "データの取得に失敗しました");
+          // エラー時のみ古いデータを消す（成功時は置き換わるので保持）
+          setMonthlyData(null);
+          setAnnualData(null);
+          setStoreCompareData(null);
+          setPeriodBudget({});
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -258,7 +281,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [year, period, store, isMonthly, isAllStores, getCalendarYearMonth, buildMonthsParam, refreshCount]);
+  }, [year, period, store, isMonthly, isAllStores, getCalendarYearMonth, buildMonthsParam, refreshCount, sessionReady]);
 
   // Compute calendar year/month for MonthlyView props
   const calendarYM = useMemo(() => {

@@ -6,6 +6,7 @@ import {
   formatYen,
   formatCompact,
   formatPercent,
+  signedYen,
   KPICard,
   HelpHint,
   SectionTitle,
@@ -380,26 +381,26 @@ export default function MonthlyView({
                     title="売上達成率"
                     value={revRow ? formatPercent(revRow.ratio) : "-"}
                     color={revRow?.isGood ? COLORS.green : COLORS.red}
-                    sub={revRow ? `予算差: ${formatYen(revRow.diff)}` : undefined}
+                    sub={revRow ? `予算差: ${signedYen(revRow.diff)}` : undefined}
                     help="売上の達成率（実績÷予算）。100%以上で予算達成。予算差は「実績−予算」で、プラスなら予算超過達成。"
                   />
                   <KPICard
                     title="人件費予算比"
                     value={laborRow ? formatPercent(laborRow.ratio) : "-"}
                     color={laborRow?.isGood ? COLORS.green : COLORS.red}
-                    sub={laborRow ? `予算差: ${formatYen(laborRow.diff)}` : undefined}
+                    sub={laborRow ? `予算差: ${signedYen(laborRow.diff)}` : undefined}
                     help="人件費の予算比（実績÷予算）。100%以下が望ましい（予算内に収まっている）。予算差はマイナスだと予算節約。"
                   />
                   <KPICard
                     title="経費予算比"
                     value={expRow ? formatPercent(expRow.ratio) : "-"}
                     color={expRow?.isGood ? COLORS.green : COLORS.red}
-                    sub={expRow ? `予算差: ${formatYen(expRow.diff)}` : undefined}
+                    sub={expRow ? `予算差: ${signedYen(expRow.diff)}` : undefined}
                     help="経費の予算比（実績÷予算）。100%以下が望ましい（予算内に収まっている）。予算差はマイナスだと予算節約。"
                   />
                   <KPICard
                     title="営業利益予算差"
-                    value={profitRow ? formatYen(profitRow.diff) : "-"}
+                    value={profitRow ? signedYen(profitRow.diff) : "-"}
                     color={profitRow?.isGood ? COLORS.green : COLORS.red}
                     sub={
                       profitRow ? `達成率: ${formatPercent(profitRow.ratio)}` : undefined
@@ -475,10 +476,10 @@ export default function MonthlyView({
                       <td className="px-4 py-1.5 text-right">{formatYen(row.budget)}</td>
                       <td className="px-4 py-1.5 text-right">{formatYen(row.actual)}</td>
                       <td
-                        className="px-4 py-1.5 text-right"
+                        className="px-4 py-1.5 text-right tabular-nums"
                         style={{ color: row.isGood ? COLORS.green : COLORS.red }}
                       >
-                        {formatYen(row.diff)}
+                        {signedYen(row.diff)}
                       </td>
                       <td
                         className="px-4 py-1.5 text-right"

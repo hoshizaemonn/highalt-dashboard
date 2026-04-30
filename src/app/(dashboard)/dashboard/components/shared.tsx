@@ -81,7 +81,29 @@ export function formatCompact(n: number): string {
 }
 
 export function formatPercent(n: number): string {
+  if (!Number.isFinite(n)) return "-";
   return `${(n * 100).toFixed(1)}%`;
+}
+
+/**
+ * 数値の符号を表すマーク。色だけに頼らず形でも判別できるようにする
+ * （色覚多様性: 男性の約5%が緑↔赤の判別が苦手）。
+ *   plus → ▲（増加・プラス）
+ *   minus → ▼（減少・マイナス）
+ *   zero → ＝
+ */
+export function signMark(n: number): string {
+  if (n > 0) return "▲";
+  if (n < 0) return "▼";
+  return "＝";
+}
+
+/**
+ * 金額に符号マーク＋¥金額（絶対値）を返す。
+ * 例: signedYen(-12000) → "▼¥12,000"
+ */
+export function signedYen(n: number): string {
+  return `${signMark(n)}${formatYen(Math.abs(n))}`;
 }
 
 // ─── Types ──────────────────────────────────────────────────

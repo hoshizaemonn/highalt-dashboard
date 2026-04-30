@@ -14,7 +14,9 @@ type TabId = "payroll" | "expense" | "hacomono" | "budget";
 // ─── Main Upload Page ───────────────────────────────────────
 
 export default function UploadPage() {
-  const [activeTab, setActiveTab] = useState<TabId>("payroll");
+  // 月次運用の自然なフロー（売上→人件費→経費→予算照合）に合わせて並べる。
+  // 触る頻度が一番高い「売上（hacomono）」を最初のタブにする。
+  const [activeTab, setActiveTab] = useState<TabId>("hacomono");
   const [historyKey, setHistoryKey] = useState(0);
   const refreshHistory = () => setHistoryKey((k) => k + 1);
 
@@ -32,10 +34,13 @@ export default function UploadPage() {
       .catch(() => {});
   }, []);
 
+  // 並び順: 月次運用フローに沿って 売上 → 人件費 → 経費 → 予算
+  // ラベル: 「hacomono（売上）」だけだと初見ユーザに分からないので
+  //        「売上（hacomono）」を先頭に、説明的に
   const tabs: { id: TabId; label: string }[] = [
+    { id: "hacomono", label: "売上（hacomono）" },
     { id: "payroll", label: "人件費" },
     { id: "expense", label: "経費" },
-    { id: "hacomono", label: "hacomono（売上）" },
     { id: "budget", label: "予算" },
   ];
 
@@ -85,14 +90,16 @@ export default function UploadPage() {
         )}
       </div>
 
-      {/* Upload History */}
+      {/* Upload History — タブに紐づく履歴のみ表示 */}
       <div className="mt-6 bg-white rounded-lg shadow-sm">
         <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-200">
           <Clock size={16} className="text-gray-400" />
-          <h2 className="text-sm font-medium text-gray-700">アップロード履歴</h2>
+          <h2 className="text-sm font-medium text-gray-700">
+            このタブのアップロード履歴
+          </h2>
         </div>
         <div className="p-4">
-          <UploadHistory key={historyKey} />
+          <UploadHistory key={`${historyKey}-${activeTab}`} filterTab={activeTab} />
         </div>
       </div>
     </div>
