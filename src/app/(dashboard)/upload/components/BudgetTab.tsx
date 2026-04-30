@@ -343,7 +343,18 @@ function UnitPriceBudgetForm({
 
 // ─── Upload History ─────────────────────────────────────────
 
-export function UploadHistory() {
+/**
+ * 開いているタブで関連する dataType だけに絞り込むためのマッピング。
+ * filterTab を渡さなければ全件表示。
+ */
+const TAB_DATATYPES: Record<string, string[]> = {
+  hacomono: ["hacomono_ml001", "hacomono_pl001", "hacomono_ma002", "hacomono_ps001"],
+  payroll: ["payroll"],
+  expense: ["expense", "amazon"],
+  budget: ["budget"],
+};
+
+export function UploadHistory({ filterTab }: { filterTab?: string }) {
   const [logs, setLogs] = useState<UploadLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
@@ -372,7 +383,13 @@ export function UploadHistory() {
     hacomono_ml001: "会員 (ML001)",
     hacomono_pl001: "売上明細 (PL001)",
     hacomono_ma002: "月次サマリ (MA002)",
+    hacomono_ps001: "商品別売上 (PS001)",
   };
+
+  // 現在開いているタブに応じてフィルタ。タブ未指定なら全件。
+  const filteredLogs = filterTab && TAB_DATATYPES[filterTab]
+    ? logs.filter((log) => TAB_DATATYPES[filterTab].includes(log.dataType))
+    : logs;
 
   if (loading) {
     return (
@@ -382,10 +399,10 @@ export function UploadHistory() {
     );
   }
 
-  if (logs.length === 0) {
+  if (filteredLogs.length === 0) {
     return (
       <p className="text-sm text-gray-400 text-center py-4">
-        アップロード履歴はありません
+        {filterTab ? "このタブのアップロード履歴はありません" : "アップロード履歴はありません"}
       </p>
     );
   }
@@ -406,7 +423,7 @@ export function UploadHistory() {
           </tr>
         </thead>
         <tbody>
-          {(showAll ? logs : logs.slice(0, INITIAL_SHOW)).map((log) => (
+          {(showAll ? filteredLogs : filteredLogs.slice(0, INITIAL_SHOW)).map((log) => (
             <tr key={log.id} className="border-t border-gray-100 hover:bg-gray-50">
               <td className="py-1.5 px-3 whitespace-nowrap">
                 {new Date(log.createdAt).toLocaleString("ja-JP", {
@@ -437,17 +454,17 @@ export function UploadHistory() {
           ))}
         </tbody>
       </table>
-      {!showAll && logs.length > INITIAL_SHOW && (
+      {!showAll && filteredLogs.length > INITIAL_SHOW && (
         <div className="text-center py-3 border-t border-gray-100">
           <button
             onClick={() => setShowAll(true)}
             className="text-sm text-[#567FC0] hover:underline"
           >
-            さらに表示（全{logs.length}件）
+            さらに表示（全{filteredLogs.length}件）
           </button>
         </div>
       )}
-      {showAll && logs.length > INITIAL_SHOW && (
+      {showAll && filteredLogs.length > INITIAL_SHOW && (
         <div className="text-center py-3 border-t border-gray-100">
           <button
             onClick={() => setShowAll(false)}
