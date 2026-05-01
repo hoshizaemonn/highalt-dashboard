@@ -22,14 +22,50 @@ export function ExpenseTab({
   lockedStore,
 }: {
   onSuccess?: () => void;
+  /** 店長アカウント時に渡される自店舗名。指定時は admin専用機能を非表示にする。 */
   lockedStore?: string | null;
 }) {
+  // 役割の整理:
+  //   - 店長（lockedStore あり）: 自店舗の Amazon 注文履歴 のみ取り込む
+  //   - 管理者（admin、lockedStore なし）: Amazon＋PayPay銀行 の両方を扱う
+  // 銀行明細は会社全体の経費で店舗単位ではないため、店長には PayPay 欄を表示しない。
+  const isStoreManager = !!lockedStore;
+
   // モード選択: 未選択 / Amazonあり / Amazonなし
-  // 旧仕様は「opacity-50だがクリック反応なし」でバグに見えたので、
-  // 明示的にラジオで選択させてから該当フローのみ表示する。
-  const [mode, setMode] = useState<"unset" | "with_amazon" | "no_amazon">("unset");
+  // 店長は Amazon 必須なので mode は固定で with_amazon。
+  const [mode, setMode] = useState<"unset" | "with_amazon" | "no_amazon">(
+    isStoreManager ? "with_amazon" : "unset",
+  );
   const [amazonDone, setAmazonDone] = useState(false);
 
+  // 店長向けの簡易表示
+  if (isStoreManager) {
+    return (
+      <div className="space-y-6">
+        <p className="text-sm text-gray-500">
+          自店舗の <strong>Amazon（経費の内訳）</strong> CSV を取り込みます。<br />
+          PayPay銀行CSV（会社全体の銀行明細）は管理者のみが取込みます。
+        </p>
+        <div className="border border-gray-200 rounded-lg p-4">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">
+            Amazon（経費の内訳）の取込み
+          </h3>
+          {!amazonDone ? (
+            <AmazonExpenseSection
+              onSuccess={() => { setAmazonDone(true); onSuccess?.(); }}
+              lockedStore={lockedStore}
+            />
+          ) : (
+            <div className="bg-green-50 border border-green-200 rounded px-4 py-2 text-sm text-green-700">
+              ✅ Amazon（経費の内訳）取込完了。
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // 管理者向けフル機能
   return (
     <div className="space-y-6">
       <p className="text-sm text-gray-500">
