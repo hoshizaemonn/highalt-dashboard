@@ -398,18 +398,6 @@ export default function OverridesTab() {
 
   return (
     <div>
-      {/* 注意喚起バナー — このマスタを誤って変更すると人件費の店舗判定が崩れるため */}
-      <div className="mb-5 bg-amber-50 border border-amber-300 rounded-lg p-4">
-        <p className="text-sm font-bold text-amber-800 mb-1">
-          ⚠️ 操作前に必ずお読みください
-        </p>
-        <p className="text-xs text-amber-700 leading-relaxed">
-          ここは人件費の店舗振り分けルールを管理する場所です。誤って変更すると、
-          その従業員の人件費が間違った店舗に集計されます。<br />
-          内容が分からない場合は変更せず、管理者（鈴木さん）にお問い合わせください。
-        </p>
-      </div>
-
       {/* Search & actions */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <input
