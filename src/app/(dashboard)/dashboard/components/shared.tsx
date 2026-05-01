@@ -347,37 +347,71 @@ function DeltaRow({
   // 増減が「良い」かどうか（人件費・経費は減ったほうが良い）
   const isGood = lowerIsBetter ? !isUp : isUp;
   const sign = isUp ? "▲" : diff < 0 ? "▼" : "＝";
-  const color = diff === 0
-    ? "#9ca3af"
+  // パッと見で「良い/悪い」が分かるよう色をはっきり付ける（背景バッジ＋濃い文字色）
+  const palette = diff === 0
+    ? { bg: "#f3f4f6", text: "#6b7280" }              // gray
     : isGood
-      ? "#16a34a" // green-600
-      : "#dc2626"; // red-600
+      ? { bg: "#dcfce7", text: "#15803d" }            // green-100 + green-700
+      : { bg: "#fee2e2", text: "#b91c1c" };           // red-100 + red-700
   const ratioText = previous === 0
     ? "—"
     : `${(Math.abs(ratio) * 100).toFixed(1)}%`;
   return (
-    <p className="text-[10px] flex items-center justify-between" style={{ color }}>
-      <span className="text-gray-400">{label}</span>
-      <span className="tabular-nums">
+    <div className="text-[10px] flex items-center justify-between gap-1">
+      <span className="text-gray-500">{label}</span>
+      <span
+        className="tabular-nums font-semibold px-1.5 py-0.5 rounded"
+        style={{ backgroundColor: palette.bg, color: palette.text }}
+      >
         {sign} {ratioText}
       </span>
-    </p>
+    </div>
   );
 }
 
 /**
- * 用語解説用の小さな ? アイコン。ホバーでツールチップ表示。
+ * 用語解説用の小さな ? アイコン。ホバー/タップでカスタムツールチップを即時表示。
+ * ブラウザ標準の title 属性は表示まで1〜2秒かかり、文字も小さく可読性が低いため、
+ * 自前のツールチップ要素で 200ms 程度で表示する。
+ *
  * 会計用語（予算比、客単価、課税支給合計 など）の理解を支援する。
  */
 export function HelpHint({ text }: { text: string }) {
   return (
-    <span
-      className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold cursor-help hover:bg-gray-300 transition-colors"
-      title={text}
-      role="img"
-      aria-label={`説明: ${text}`}
-    >
-      ?
+    <span className="relative inline-flex group/help align-middle">
+      <button
+        type="button"
+        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold cursor-help hover:bg-blue-100 hover:text-blue-700 transition-colors"
+        aria-label={`説明: ${text}`}
+        // タップでもツールチップを出すため、focusを当てる
+        onClick={(e) => e.preventDefault()}
+      >
+        ?
+      </button>
+      {/* ツールチップ本体。group-hover/group-focus で即時表示 */}
+      <span
+        role="tooltip"
+        className="
+          pointer-events-none
+          absolute left-1/2 -translate-x-1/2 bottom-full mb-2
+          whitespace-normal w-64
+          bg-gray-900 text-white text-xs leading-relaxed font-normal
+          rounded-md px-3 py-2 shadow-lg
+          opacity-0 invisible
+          group-hover/help:opacity-100 group-hover/help:visible
+          group-focus-within/help:opacity-100 group-focus-within/help:visible
+          transition-opacity duration-150
+          z-50
+        "
+      >
+        {text}
+        {/* 三角形の矢印 */}
+        <span
+          className="absolute top-full left-1/2 -translate-x-1/2 -mt-px
+                     border-4 border-transparent border-t-gray-900"
+          aria-hidden="true"
+        />
+      </span>
     </span>
   );
 }
