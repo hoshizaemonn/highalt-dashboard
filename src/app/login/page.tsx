@@ -2,7 +2,34 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Mail } from "lucide-react";
+
+// 管理者問い合わせ先（パスワードリセット用）
+// 受付メールボックスは星崎さん運用 → 鈴木さんへ連携の流れ
+const ADMIN_CONTACT_EMAIL = "system@high-alti.com";
+const PASSWORD_HELP_SUBJECT = "[ハイアルチ業績ダッシュボード] ログインに関するお問い合わせ";
+const PASSWORD_HELP_BODY = `ハイアルチ業績ダッシュボードの管理者ご担当者様
+
+ログインができないため、お手数ですがアカウント情報を確認いただけますでしょうか。
+
+【店舗名】
+（例：東日本橋）
+
+【ユーザー名（分かる範囲で）】
+
+
+【困っている内容】
+（例：パスワードを忘れてしまった / ユーザー名が分からない / ログイン画面でエラーが出る など）
+
+
+お忙しいところ恐れ入りますが、ご対応のほどよろしくお願いいたします。
+`;
+
+function buildHelpMailto(): string {
+  const subject = encodeURIComponent(PASSWORD_HELP_SUBJECT);
+  const body = encodeURIComponent(PASSWORD_HELP_BODY);
+  return `mailto:${ADMIN_CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -124,12 +151,22 @@ export default function LoginPage() {
           </form>
 
           {/* パスワード忘れ・困った時の連絡先 */}
-          <div className="mt-6 pt-5 border-t border-gray-100 text-xs text-gray-500 space-y-1.5">
-            <p className="font-medium text-gray-600">ログインできない場合</p>
-            <p>
-              パスワードを忘れた・アカウントが分からない場合は、
-              <br />
-              管理者（鈴木さん）までご連絡ください。
+          <div className="mt-6 pt-5 border-t border-gray-100 text-xs text-gray-500 space-y-3">
+            <div>
+              <p className="font-medium text-gray-600 mb-1">ログインできない場合</p>
+              <p>
+                パスワードを忘れた・アカウントが分からない場合は、下記ボタンから管理者へお問い合わせください。
+              </p>
+            </div>
+            <a
+              href={buildHelpMailto()}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors text-sm font-medium"
+            >
+              <Mail size={14} />
+              管理者にメールで問い合わせる
+            </a>
+            <p className="text-[11px] text-gray-400">
+              送信先：{ADMIN_CONTACT_EMAIL}
             </p>
           </div>
         </div>
