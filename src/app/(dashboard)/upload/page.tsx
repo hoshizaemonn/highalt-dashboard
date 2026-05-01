@@ -38,11 +38,17 @@ export default function UploadPage() {
   // ラベル: アップロード画面は「投入者視点」を優先するため Source-first 命名。
   //        投入者は「hacomono からDLしたCSVをここに入れる」という思考順なので
   //        外部システム名（出所）→ 業務カテゴリの順で並べる。
-  //        Amazon と PayPay銀行は業務上ペアで運用するため経費は1タブに統合。
+  //
+  // 経費タブのラベルは役割で出し分け:
+  //   - 店長: Amazon のみ取り込むため「経費（Amazon）」
+  //   - admin: Amazon と PayPay銀行 両方扱うため「経費（Amazon＋PayPay銀行）」
   const tabs: { id: TabId; label: string }[] = [
     { id: "hacomono", label: "hacomono（売上）" },
     { id: "payroll", label: "人件費" },
-    { id: "expense", label: "経費（Amazon＋PayPay銀行）" },
+    {
+      id: "expense",
+      label: lockedStore ? "経費（Amazon）" : "経費（Amazon＋PayPay銀行）",
+    },
     { id: "budget", label: "予算" },
   ];
 

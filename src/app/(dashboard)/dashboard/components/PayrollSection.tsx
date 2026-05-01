@@ -290,48 +290,73 @@ function RatioAdjustList({
 }: RatioAdjustListProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const employees = Array.from(employeeRatios.entries());
-
-  // 表示数: 一覧は折りたたみ表示。誤クリック防止のため初期は閉じる。
-  const [open, setOpen] = useState(false);
+  // フィルタ: 検索ボックスで人数が多い時に絞り込み
+  const [filter, setFilter] = useState("");
+  const filtered = employees.filter(([empId, info]) => {
+    if (!filter.trim()) return true;
+    const q = filter.trim();
+    return (
+      empId.includes(q) ||
+      (info.name && info.name.includes(q))
+    );
+  });
 
   return (
-    <details
-      className="bg-white border rounded-lg shadow-sm mb-4"
-      open={open}
-      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
-    >
-      <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 select-none flex items-center justify-between">
-        <span>
-          🔧 店舗按分を調整（応援勤務・兼務の月単位調整）
-        </span>
-        <span className="text-xs text-gray-400">{employees.length}名</span>
-      </summary>
-      <div className="px-4 pb-4 pt-2 border-t">
-        <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-          特定の従業員を、その月だけ複数店舗に按分します（合計100%）。<br />
-          ここで保存した内容は <strong>その月のダッシュボード集計に即時反映</strong> されます。
-          来月以降は元のルール（従業員→店舗マッピング）に戻ります。
+    <div className="bg-white border rounded-lg shadow-sm mb-4">
+      <div className="px-4 py-3 border-b bg-blue-50/50">
+        <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+          👥 この月だけ別の店舗で働いた人の調整
+        </h3>
+        <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+          応援勤務や兼務などで、<strong>特定の月だけ複数店舗に人件費を按分</strong>したい場合はここで編集します。<br />
+          人件費CSVを取込み済みの状態でも調整可能で、保存すると<strong>即時にダッシュボードへ反映</strong>されます。
         </p>
-        <div className="border rounded divide-y">
-          {employees.map(([empId, info]) => {
-            const splitText = info.splits
-              .map((s) => `${s.storeName} ${s.ratio}%`)
-              .join(" / ");
-            return (
-              <div key={empId} className="px-3 py-2 flex items-center gap-2 text-sm">
-                <span className="w-12 text-gray-400 text-xs tabular-nums">{empId}</span>
-                <span className="flex-1 text-gray-700">{info.name}</span>
-                <span className="text-xs text-gray-500">{splitText}</span>
-                <button
-                  onClick={() => setEditing(empId)}
-                  className="ml-2 text-xs px-2 py-1 rounded bg-gray-100 hover:bg-blue-100 hover:text-blue-700 text-gray-600 transition-colors"
+      </div>
+      <div className="px-4 py-3">
+        <input
+          type="text"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="氏名・従業員番号で絞り込み"
+          className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0] mb-3"
+        />
+        <div className="border rounded divide-y max-h-80 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-6">
+              該当する従業員がいません
+            </p>
+          ) : (
+            filtered.map(([empId, info]) => {
+              const splitText = info.splits
+                .map((s) => `${s.storeName} ${s.ratio}%`)
+                .join(" / ");
+              const isMulti = info.splits.length > 1;
+              return (
+                <div
+                  key={empId}
+                  className="px-3 py-2 flex items-center gap-2 text-sm hover:bg-gray-50"
                 >
-                  編集
-                </button>
-              </div>
-            );
-          })}
+                  <span className="w-12 text-gray-400 text-xs tabular-nums">{empId}</span>
+                  <span className="flex-1 text-gray-700 truncate">{info.name}</span>
+                  <span
+                    className={`text-xs ${isMulti ? "text-blue-700 font-medium" : "text-gray-500"}`}
+                  >
+                    {splitText}
+                  </span>
+                  <button
+                    onClick={() => setEditing(empId)}
+                    className="ml-2 text-xs px-2.5 py-1 rounded bg-[#567FC0] hover:bg-[#4a6da8] text-white transition-colors"
+                  >
+                    編集
+                  </button>
+                </div>
+              );
+            })
+          )}
         </div>
+        <p className="text-[11px] text-gray-400 mt-2">
+          ※ ここで保存した内容はその月のみ有効。来月以降は元のルールに戻ります。
+        </p>
       </div>
       {editing && (
         <RatioEditModal
@@ -347,7 +372,7 @@ function RatioAdjustList({
           }}
         />
       )}
-    </details>
+    </div>
   );
 }
 
