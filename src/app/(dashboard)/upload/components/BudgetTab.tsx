@@ -337,7 +337,10 @@ function UnitPriceBudgetForm({
 const TAB_DATATYPES: Record<string, string[]> = {
   hacomono: ["hacomono_ml001", "hacomono_pl001", "hacomono_ma002", "hacomono_ps001"],
   payroll: ["payroll"],
+  // 旧 expense タブ向けの互換マッピング（amazon-expense / paypay-expense に分割後も両方を見せる）
   expense: ["expense", "amazon"],
+  "amazon-expense": ["amazon"],
+  "paypay-expense": ["expense"],
   budget: ["budget"],
 };
 

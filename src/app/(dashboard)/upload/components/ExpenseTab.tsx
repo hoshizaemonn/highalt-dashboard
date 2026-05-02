@@ -15,57 +15,109 @@ import {
   detectYearMonthFromFilename,
 } from "./SharedComponents";
 
-// ─── Expense Tab ────────────────────────────────────────────
+// ─── Amazon Expense Tab ─────────────────────────────────────
+// Amazon 注文履歴を取り込む単独タブ。
+// 店長/管理者ともに使用可。データは amazon_orders に保存され、
+// 後で PayPay銀行CSVを取り込んだ際に内訳マッチに利用される。
+
+export function AmazonExpenseTab({
+  onSuccess,
+  lockedStore,
+}: {
+  onSuccess?: () => void;
+  lockedStore?: string | null;
+}) {
+  const [done, setDone] = useState(false);
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500">
+        Amazon 注文履歴 CSV を取り込みます。<br />
+        ここで取込んだ商品は <strong>商品マスタに自動学習</strong> され、次回以降は科目分類が自動適用されます。
+      </p>
+      <div className="border border-gray-200 rounded-lg p-4">
+        <h3 className="text-sm font-bold text-gray-700 mb-3">
+          Amazon（経費の内訳）の取込み
+        </h3>
+        {!done ? (
+          <AmazonExpenseSection
+            onSuccess={() => { setDone(true); onSuccess?.(); }}
+            lockedStore={lockedStore}
+          />
+        ) : (
+          <div className="bg-green-50 border border-green-200 rounded px-4 py-2 text-sm text-green-700 flex items-center justify-between">
+            <span>✅ Amazon（経費の内訳）取込完了</span>
+            <button
+              onClick={() => setDone(false)}
+              className="text-xs text-green-700 hover:text-green-900 underline"
+            >
+              続けて別ファイルを取込む
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── PayPay 銀行 Expense Tab ────────────────────────────────
+// PayPay銀行 入出金明細を取り込む単独タブ。admin 専用。
+// 既に取り込まれている Amazon 注文履歴と自動マッチして内訳を補完する。
+
+export function PayPayExpenseTab({
+  onSuccess,
+  lockedStore,
+}: {
+  onSuccess?: () => void;
+  lockedStore?: string | null;
+}) {
+  // PayPay銀行は会社全体の銀行明細で、店舗単位ではないため admin 限定。
+  // ガード: 店長アカウントが万が一表示してしまった場合のフェイルセーフ。
+  if (lockedStore) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+        PayPay銀行CSVは管理者のみが取込みます。<br />
+        店長アカウントは「Amazon（経費）」タブから自店舗の購入履歴を取込んでください。
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500">
+        PayPay銀行 入出金明細CSV を取り込みます。<br />
+        既に取込済みの <strong>Amazon商品マスタ</strong> と自動マッチして内訳を補完します。
+        Amazon 注文がない月もそのまま PayPay銀行のみで取込み可能です。
+      </p>
+      <div className="border border-gray-200 rounded-lg p-4">
+        <h3 className="text-sm font-bold text-gray-700 mb-3">
+          PayPay銀行（経費）の取込み
+        </h3>
+        <PayPayExpenseSection onSuccess={onSuccess} lockedStore={lockedStore} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Expense Tab (旧2ステップ統合表示・後方互換) ──────────────
+// 旧 page.tsx が ExpenseTab を import している場合のフォールバック。
+// 新タブ構造（AmazonExpenseTab / PayPayExpenseTab）に置換後、削除予定。
 
 export function ExpenseTab({
   onSuccess,
   lockedStore,
 }: {
   onSuccess?: () => void;
-  /** 店長アカウント時に渡される自店舗名。指定時は admin専用機能を非表示にする。 */
   lockedStore?: string | null;
 }) {
-  // 役割の整理:
-  //   - 店長（lockedStore あり）: 自店舗の Amazon 注文履歴 のみ取り込む
-  //   - 管理者（admin、lockedStore なし）: Amazon＋PayPay銀行 の両方を扱う
-  // 銀行明細は会社全体の経費で店舗単位ではないため、店長には PayPay 欄を表示しない。
   const isStoreManager = !!lockedStore;
-
-  // モード選択: 未選択 / Amazonあり / Amazonなし
-  // 店長は Amazon 必須なので mode は固定で with_amazon。
   const [mode, setMode] = useState<"unset" | "with_amazon" | "no_amazon">(
     isStoreManager ? "with_amazon" : "unset",
   );
   const [amazonDone, setAmazonDone] = useState(false);
 
-  // 店長向けの簡易表示
   if (isStoreManager) {
-    return (
-      <div className="space-y-6">
-        <p className="text-sm text-gray-500">
-          自店舗の <strong>Amazon（経費の内訳）</strong> CSV を取り込みます。<br />
-          PayPay銀行CSV（会社全体の銀行明細）は管理者のみが取込みます。
-        </p>
-        <div className="border border-gray-200 rounded-lg p-4">
-          <h3 className="text-sm font-bold text-gray-700 mb-3">
-            Amazon（経費の内訳）の取込み
-          </h3>
-          {!amazonDone ? (
-            <AmazonExpenseSection
-              onSuccess={() => { setAmazonDone(true); onSuccess?.(); }}
-              lockedStore={lockedStore}
-            />
-          ) : (
-            <div className="bg-green-50 border border-green-200 rounded px-4 py-2 text-sm text-green-700">
-              ✅ Amazon（経費の内訳）取込完了。
-            </div>
-          )}
-        </div>
-      </div>
-    );
+    return <AmazonExpenseTab onSuccess={onSuccess} lockedStore={lockedStore} />;
   }
 
-  // 管理者向けフル機能
   return (
     <div className="space-y-6">
       <p className="text-sm text-gray-500">
