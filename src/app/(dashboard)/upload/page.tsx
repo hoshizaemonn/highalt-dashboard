@@ -3,13 +3,20 @@
 import { useState, useEffect } from "react";
 import { Upload, Clock } from "lucide-react";
 import { PayrollTab } from "./components/PayrollTab";
-import { ExpenseTab } from "./components/ExpenseTab";
+import { AmazonExpenseTab, PayPayExpenseTab } from "./components/ExpenseTab";
 import { HacomonoTab } from "./components/HacomonoTab";
 import { BudgetTab, UploadHistory } from "./components/BudgetTab";
 
 // ─── Types ──────────────────────────────────────────────────
+//   amazon-expense: Amazon 注文履歴（店長/admin両対応）
+//   paypay-expense: PayPay銀行明細（admin専用）
 
-type TabId = "payroll" | "expense" | "hacomono" | "budget";
+type TabId =
+  | "payroll"
+  | "amazon-expense"
+  | "paypay-expense"
+  | "hacomono"
+  | "budget";
 
 // ─── Main Upload Page ───────────────────────────────────────
 
@@ -34,23 +41,25 @@ export default function UploadPage() {
       .catch(() => {});
   }, []);
 
-  // 並び順: 月次運用フローに沿って 売上 → 人件費 → 経費 → 予算
+  // 並び順: 月次運用フローに沿って 売上 → 人件費 → Amazon → PayPay → 予算
   // ラベル: アップロード画面は「投入者視点」を優先するため Source-first 命名。
-  //        投入者は「hacomono からDLしたCSVをここに入れる」という思考順なので
+  //        投入者は「hacomono / Amazon / PayPay からDLしたCSVをここに入れる」という思考順なので
   //        外部システム名（出所）→ 業務カテゴリの順で並べる。
   //
-  // 経費タブのラベルは役割で出し分け:
-  //   - 店長: Amazon のみ取り込むため「経費（Amazon）」
-  //   - admin: Amazon と PayPay銀行 両方扱うため「経費（Amazon＋PayPay銀行）」
-  const tabs: { id: TabId; label: string }[] = [
+  // 経費は Amazon タブと PayPay銀行 タブに分割:
+  //   - Amazon（経費）: 店長/admin両方が利用
+  //   - PayPay銀行（経費）: admin限定（会社全体の銀行明細）
+  const allTabs: { id: TabId; label: string }[] = [
     { id: "hacomono", label: "hacomono（売上）" },
     { id: "payroll", label: "人件費" },
-    {
-      id: "expense",
-      label: lockedStore ? "経費（Amazon）" : "経費（Amazon＋PayPay銀行）",
-    },
+    { id: "amazon-expense", label: "Amazon（経費）" },
+    { id: "paypay-expense", label: "PayPay銀行（経費）" },
     { id: "budget", label: "予算" },
   ];
+  // 店長は PayPay銀行 タブを非表示
+  const tabs = lockedStore
+    ? allTabs.filter((t) => t.id !== "paypay-expense")
+    : allTabs;
 
   return (
     <div>
@@ -87,8 +96,11 @@ export default function UploadPage() {
       {/* Tab Content */}
       <div className="bg-white rounded-b-lg shadow-sm p-6">
         {activeTab === "payroll" && <PayrollTab onSuccess={refreshHistory} />}
-        {activeTab === "expense" && (
-          <ExpenseTab onSuccess={refreshHistory} lockedStore={lockedStore} />
+        {activeTab === "amazon-expense" && (
+          <AmazonExpenseTab onSuccess={refreshHistory} lockedStore={lockedStore} />
+        )}
+        {activeTab === "paypay-expense" && (
+          <PayPayExpenseTab onSuccess={refreshHistory} lockedStore={lockedStore} />
         )}
         {activeTab === "hacomono" && (
           <HacomonoTab onSuccess={refreshHistory} lockedStore={lockedStore} />
