@@ -6,7 +6,6 @@ import {
   decodeFileBuffer,
   parseCSV,
   safeFloat,
-  applyRatio,
 } from "@/lib/csv-utils";
 
 interface StoreAssignment {
@@ -246,6 +245,15 @@ export async function POST(request: NextRequest) {
 
       for (const assignment of assignments) {
         const r = assignment.ratio;
+        // 【重要】各フィールドには「100%換算（CSV原本そのまま）」の値を保存し、
+        // ratio は別フィールドで保持する。集計側 (dashboard/route.ts) で
+        // value × (ratio/100) を行う仕様に統一。
+        //
+        // 旧実装は applyRatio(value, r) で「按分済みの値」を保存していたが、
+        // 集計側でも ratio を掛けるため二重 ratio バグになっていた。
+        // ratio=100 の従業員は影響ゼロ（× 1.0 × 1.0 = ×1）だが、
+        // 按分対象の従業員（例: 渡邉さん）は本来の値の (ratio/100) 倍に
+        // 過小集計されていた。
         records.push({
           year,
           month,
@@ -254,27 +262,25 @@ export async function POST(request: NextRequest) {
           contractType,
           storeName: assignment.storeName,
           ratio: r,
-          workDaysWeekday: applyRatio(workDaysWeekday, r),
-          workDaysHoliday: applyRatio(workDaysHoliday, r),
-          scheduledHours: applyRatio(scheduledHours, r),
-          overtimeHours: applyRatio(overtimeHours, r),
-          
-          
-          baseSalary: applyRatio(baseSalary, r),
-          positionAllowance: applyRatio(positionAllowance, r),
-          overtimePay: applyRatio(overtimePay, r),
-          commuteTaxable: applyRatio(commuteTaxable, r),
-          commuteNontax: applyRatio(commuteNontax, r),
-          taxableTotal: applyRatio(taxableTotal, r),
-          grossTotal: applyRatio(grossTotal, r),
-          healthInsuranceCo: applyRatio(healthInsuranceCo, r),
-          careInsuranceCo: applyRatio(careInsuranceCo, r),
-          pensionCo: applyRatio(pensionCo, r),
-          childContributionCo: applyRatio(childContributionCo, r),
-          pensionFundCo: applyRatio(pensionFundCo, r),
-          employmentInsuranceCo: applyRatio(employmentInsuranceCo, r),
-          workersCompCo: applyRatio(workersCompCo, r),
-          generalContributionCo: applyRatio(generalContributionCo, r),
+          workDaysWeekday,
+          workDaysHoliday,
+          scheduledHours,
+          overtimeHours,
+          baseSalary,
+          positionAllowance,
+          overtimePay,
+          commuteTaxable,
+          commuteNontax,
+          taxableTotal,
+          grossTotal,
+          healthInsuranceCo,
+          careInsuranceCo,
+          pensionCo,
+          childContributionCo,
+          pensionFundCo,
+          employmentInsuranceCo,
+          workersCompCo,
+          generalContributionCo,
         });
       }
     }
