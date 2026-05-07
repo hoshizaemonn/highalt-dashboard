@@ -553,6 +553,7 @@ export default function MonthlyView({
           store={store}
           isAdmin={isAdmin}
           sessionStoreName={sessionStoreName}
+          onRefresh={onRefresh}
         />
       )}
 

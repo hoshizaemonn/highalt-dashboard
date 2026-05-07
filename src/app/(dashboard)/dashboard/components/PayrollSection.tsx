@@ -91,6 +91,8 @@ export interface PayrollDetailSectionProps {
   store: string;
   isAdmin: boolean;
   sessionStoreName: string | null;
+  /** 按分編集の保存後に親側のデータ再取得をトリガーするコールバック */
+  onRefresh?: () => void;
 }
 
 export function PayrollDetailSection({
@@ -99,9 +101,13 @@ export function PayrollDetailSection({
   store,
   isAdmin,
   sessionStoreName,
+  onRefresh,
 }: PayrollDetailSectionProps) {
   const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
   const [loading, setLoading] = useState(true);
+  // 内部 fetch 用のキー。RatioEditModal 保存時に親 onRefresh と一緒に
+  // 自セクションも再取得することで、画面遷移なしで反映する。
+  const [reloadKey, setReloadKey] = useState(0);
 
   // 従業員別明細は admin のみ閲覧可
   // （安蒜さんの依頼により、自店店長にも非表示にする変更）
@@ -134,7 +140,7 @@ export function PayrollDetailSection({
     }
     load();
     return () => { cancelled = true; };
-  }, [year, month, store, canView]);
+  }, [year, month, store, canView, reloadKey]);
 
   if (!canView) return null;
 
@@ -185,9 +191,10 @@ export function PayrollDetailSection({
         month={month}
         employeeRatios={employeeRatios}
         onSaved={() => {
-          // 親 Section が refetch する仕組みに依存。簡易: window reload
-          // TODO: onRefresh プロップを上から流すよう改修
-          if (typeof window !== "undefined") window.location.reload();
+          // 自セクションを再取得（リロードしないので開いている年月・店舗は維持される）
+          setReloadKey((k) => k + 1);
+          // 親（MonthlyView/page.tsx）にも通知してKPIや明細を再描画
+          onRefresh?.();
         }}
       />
       <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
