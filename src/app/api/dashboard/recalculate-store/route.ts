@@ -78,30 +78,11 @@ export async function POST(request: NextRequest) {
 
         if (assignments.length === 0) continue;
 
-        const sumRow = {
-          employeeName: rows[0].employeeName,
-          contractType: rows[0].contractType,
-          workDaysWeekday: rows.reduce((s, r) => s + r.workDaysWeekday, 0),
-          workDaysHoliday: rows.reduce((s, r) => s + r.workDaysHoliday, 0),
-          workDaysLegalHoliday: rows.reduce((s, r) => s + r.workDaysLegalHoliday, 0),
-          scheduledHours: rows.reduce((s, r) => s + r.scheduledHours, 0),
-          overtimeHours: rows.reduce((s, r) => s + r.overtimeHours, 0),
-          baseSalary: rows.reduce((s, r) => s + r.baseSalary, 0),
-          positionAllowance: rows.reduce((s, r) => s + r.positionAllowance, 0),
-          overtimePay: rows.reduce((s, r) => s + r.overtimePay, 0),
-          commuteTaxable: rows.reduce((s, r) => s + r.commuteTaxable, 0),
-          commuteNontax: rows.reduce((s, r) => s + r.commuteNontax, 0),
-          taxableTotal: rows.reduce((s, r) => s + r.taxableTotal, 0),
-          grossTotal: rows.reduce((s, r) => s + r.grossTotal, 0),
-          healthInsuranceCo: rows.reduce((s, r) => s + r.healthInsuranceCo, 0),
-          careInsuranceCo: rows.reduce((s, r) => s + r.careInsuranceCo, 0),
-          pensionCo: rows.reduce((s, r) => s + r.pensionCo, 0),
-          childContributionCo: rows.reduce((s, r) => s + r.childContributionCo, 0),
-          pensionFundCo: rows.reduce((s, r) => s + r.pensionFundCo, 0),
-          employmentInsuranceCo: rows.reduce((s, r) => s + r.employmentInsuranceCo, 0),
-          workersCompCo: rows.reduce((s, r) => s + r.workersCompCo, 0),
-          generalContributionCo: rows.reduce((s, r) => s + r.generalContributionCo, 0),
-        };
+        // 【重要】PayrollData の各フィールドは 100%換算（CSV原本そのまま）の値が保存されている。
+        // すべての行が同じ 100%換算値を持つため、最初の1行をそのまま再利用すれば良い。
+        // （旧実装は applyRatio 済みデータを想定して reduce(sum) していたが、新仕様では行ごとに
+        //   完全な値が入っているので合算すると n 倍になってバグる）
+        const baseRow = rows[0];
 
         // Delete old rows for this employee/month
         await tx.payrollData.deleteMany({
@@ -109,38 +90,38 @@ export async function POST(request: NextRequest) {
         });
         deleted += rows.length;
 
-        // Create new rows with correct assignments
+        // Create new rows — 値は 100%換算のまま、ratio だけ assign の値で保存。
+        // 集計時に dashboard 側で value × (ratio/100) を行う仕様。
         for (const assign of assignments) {
-          const r = assign.ratio / 100;
           await tx.payrollData.create({
             data: {
               year: rowYear,
               month: rowMonth,
               employeeId: empId,
-              employeeName: sumRow.employeeName,
-              contractType: sumRow.contractType,
+              employeeName: baseRow.employeeName,
+              contractType: baseRow.contractType,
               storeName: assign.storeName,
               ratio: assign.ratio,
-              workDaysWeekday: sumRow.workDaysWeekday * r,
-              workDaysHoliday: sumRow.workDaysHoliday * r,
-              workDaysLegalHoliday: sumRow.workDaysLegalHoliday * r,
-              scheduledHours: sumRow.scheduledHours * r,
-              overtimeHours: sumRow.overtimeHours * r,
-              baseSalary: sumRow.baseSalary * r,
-              positionAllowance: sumRow.positionAllowance * r,
-              overtimePay: sumRow.overtimePay * r,
-              commuteTaxable: sumRow.commuteTaxable * r,
-              commuteNontax: sumRow.commuteNontax * r,
-              taxableTotal: sumRow.taxableTotal * r,
-              grossTotal: sumRow.grossTotal * r,
-              healthInsuranceCo: sumRow.healthInsuranceCo * r,
-              careInsuranceCo: sumRow.careInsuranceCo * r,
-              pensionCo: sumRow.pensionCo * r,
-              childContributionCo: sumRow.childContributionCo * r,
-              pensionFundCo: sumRow.pensionFundCo * r,
-              employmentInsuranceCo: sumRow.employmentInsuranceCo * r,
-              workersCompCo: sumRow.workersCompCo * r,
-              generalContributionCo: sumRow.generalContributionCo * r,
+              workDaysWeekday: baseRow.workDaysWeekday,
+              workDaysHoliday: baseRow.workDaysHoliday,
+              workDaysLegalHoliday: baseRow.workDaysLegalHoliday,
+              scheduledHours: baseRow.scheduledHours,
+              overtimeHours: baseRow.overtimeHours,
+              baseSalary: baseRow.baseSalary,
+              positionAllowance: baseRow.positionAllowance,
+              overtimePay: baseRow.overtimePay,
+              commuteTaxable: baseRow.commuteTaxable,
+              commuteNontax: baseRow.commuteNontax,
+              taxableTotal: baseRow.taxableTotal,
+              grossTotal: baseRow.grossTotal,
+              healthInsuranceCo: baseRow.healthInsuranceCo,
+              careInsuranceCo: baseRow.careInsuranceCo,
+              pensionCo: baseRow.pensionCo,
+              childContributionCo: baseRow.childContributionCo,
+              pensionFundCo: baseRow.pensionFundCo,
+              employmentInsuranceCo: baseRow.employmentInsuranceCo,
+              workersCompCo: baseRow.workersCompCo,
+              generalContributionCo: baseRow.generalContributionCo,
             },
           });
           updated++;
