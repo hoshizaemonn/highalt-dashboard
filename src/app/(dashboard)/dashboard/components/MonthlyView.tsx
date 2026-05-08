@@ -209,7 +209,7 @@ export default function MonthlyView({
                 <td className="px-4 py-1.5 pl-8 text-gray-600">
                   <span className="inline-flex items-center gap-1">
                     課税支給合計
-                    <HelpHint text="所得税の課税対象となる支給額の合計。基本給+役職手当+残業代+通勤手当（課税分）。" />
+                    <HelpHint text="基本給+役職手当+残業代の合計（通勤手当は別行で表示）。" />
                   </span>
                 </td>
                 <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.taxable_total)}</td>
