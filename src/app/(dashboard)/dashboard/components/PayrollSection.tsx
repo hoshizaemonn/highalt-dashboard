@@ -231,7 +231,7 @@ export function PayrollDetailSection({
                 subtotal.positionAllowance += e.positionAllowance * r;
                 subtotal.overtimePay += e.overtimePay * r;
                 subtotal.commute += (e.commuteTaxable + e.commuteNontax) * r;
-                subtotal.taxableTotal += e.taxableTotal * r;
+                subtotal.taxableTotal += (e.taxableTotal - e.commuteTaxable) * r;
                 subtotal.grossTotal += e.grossTotal * r;
                 subtotal.hours += (e.scheduledHours + e.overtimeHours) * r;
               }
@@ -247,7 +247,7 @@ export function PayrollDetailSection({
                       <td className="px-3 py-1.5 text-right">{formatYen(Math.round(e.positionAllowance * r))}</td>
                       <td className="px-3 py-1.5 text-right">{formatYen(Math.round(e.overtimePay * r))}</td>
                       <td className="px-3 py-1.5 text-right">{formatYen(Math.round((e.commuteTaxable + e.commuteNontax) * r))}</td>
-                      <td className="px-3 py-1.5 text-right">{formatYen(Math.round(e.taxableTotal * r))}</td>
+                      <td className="px-3 py-1.5 text-right">{formatYen(Math.round((e.taxableTotal - e.commuteTaxable) * r))}</td>
                       <td className="px-3 py-1.5 text-right">{formatYen(Math.round(e.grossTotal * r))}</td>
                       <td className="px-3 py-1.5 text-right">{((e.scheduledHours + e.overtimeHours) * r).toFixed(1)}h</td>
                     </tr>

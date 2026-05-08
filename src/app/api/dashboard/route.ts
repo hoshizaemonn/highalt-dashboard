@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
     let totalPositionAllowance = 0;
     let totalOvertimePay = 0;
     let totalCommute = 0;
+    let totalCommuteTaxable = 0;
     let totalTaxableTotal = 0;
     const employeeIds = new Set<string>();
     let fulltimeCount = 0;
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
       totalPositionAllowance += row.positionAllowance * ratio;
       totalOvertimePay += row.overtimePay * ratio;
       totalCommute += (row.commuteTaxable + row.commuteNontax) * ratio;
+      totalCommuteTaxable += row.commuteTaxable * ratio;
       totalTaxableTotal += row.taxableTotal * ratio;
 
       const hours =
@@ -105,7 +107,9 @@ export async function GET(request: NextRequest) {
       position_allowance: Math.round(totalPositionAllowance),
       overtime_pay: Math.round(totalOvertimePay),
       commute: Math.round(totalCommute),
-      taxable_total: Math.round(totalTaxableTotal),
+      // 課税支給合計から通勤手当(課税分)を除外して表示する
+      // （CSVの「課税支給合計」は通勤手当課税分を含むが、運用上は基本給+役職手当+残業代のみを表示したい）
+      taxable_total: Math.round(totalTaxableTotal - totalCommuteTaxable),
       total_hours: Math.round(totalHours * 10) / 10,
       employee_count: employeeIds.size,
       fulltime_count: fulltimeCount,

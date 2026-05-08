@@ -70,7 +70,9 @@ export async function GET(request: NextRequest) {
       }
 
       const ratio = row.ratio / 100;
-      const taxable = row.taxableTotal * ratio;
+      // 課税支給合計から通勤手当(課税分)を除外して「正社員・契約社員給与」に計上する
+      // （CSVの「課税支給合計」は通勤手当課税分を含むため、運用要件に合わせて減算）
+      const taxable = (row.taxableTotal - row.commuteTaxable) * ratio;
       const hours = (row.scheduledHours + row.overtimeHours) * ratio;
       const commute = (row.commuteTaxable + row.commuteNontax) * ratio;
       const welfare =
