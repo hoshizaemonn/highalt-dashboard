@@ -374,3 +374,21 @@ model ProductSales {
   @@index([year, month, storeName])
   @@map("product_sales")
 }
+
+// ─── Manual Entry (店長手動追記) ─────────────────────────────
+// 坪井さん要望: 体験者数（hacomonoに無いため手動）と
+// 請求書ベースの「その他売上」を店長が月次で追記できるようにする。
+model ManualEntry {
+  id              Int      @id @default(autoincrement())
+  year            Int
+  month           Int
+  storeName       String   @map("store_name")
+  trialCount      Int      @default(0) @map("trial_count")
+  otherSalesAmount Int     @default(0) @map("other_sales_amount")
+  otherSalesNote  String?  @map("other_sales_note")
+  updatedByName   String?  @map("updated_by_name")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([year, month, storeName])
+  @@map("manual_entry")
+}

@@ -28,6 +28,7 @@ import { EditableMemberSection, PlanBreakdownPie } from "./MemberSection";
 import { PromotionSection } from "./PromotionSection";
 import ExpenseDetailSection from "./ExpenseDetailSection";
 import { RecalculateButton, PayrollDetailSection } from "./PayrollSection";
+import { ManualEntrySection } from "./ManualEntrySection";
 
 export interface MonthlyViewProps {
   data: DashboardData;
@@ -411,6 +412,17 @@ export default function MonthlyView({
         year={year}
         month={month}
         store={store}
+        onSaved={onRefresh}
+      />
+
+      {/* 店長手動追記（坪井さん要望15）: 体験者数・その他売上 */}
+      <ManualEntrySection
+        year={year}
+        month={month}
+        store={store}
+        // admin = 任意店舗で編集可、店長 = 自店舗のみ編集可
+        canEdit={isAdmin || (sessionStoreName !== null && sessionStoreName === store)}
+        initialTrialCount={data.member?.trial_count ?? 0}
         onSaved={onRefresh}
       />
 
