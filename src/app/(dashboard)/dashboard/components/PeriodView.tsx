@@ -200,18 +200,7 @@ export default function PeriodView({
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <div className="bg-white rounded-lg border shadow-sm p-4">
-          <p className="text-sm font-medium text-gray-600 mb-3">休会数 推移</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" fontSize={11} />
-              <YAxis fontSize={11} allowDecimals={false} unit="人" />
-              <Tooltip content={<MemberTooltip />} />
-              <Bar dataKey="休会数" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {/* 退会数の隣に退会率を並べる（坪井さん要望: 比較しやすくするため） */}
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">退会率推移</p>
           <ResponsiveContainer width="100%" height={220}>
@@ -230,6 +219,18 @@ export default function PeriodView({
                 dot={{ r: 4 }}
               />
             </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">休会数 推移</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis fontSize={11} allowDecimals={false} unit="人" />
+              <Tooltip content={<MemberTooltip />} />
+              <Bar dataKey="休会数" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
