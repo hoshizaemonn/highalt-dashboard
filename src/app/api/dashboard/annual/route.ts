@@ -44,6 +44,9 @@ interface MonthlyEntry {
   budget_expense: number;
   budget_profit: number;
   budget_unit_price: number;
+  /** 経費の項目別予算（坪井さん要望: 各推移グラフに予算折れ線を重ねるため） */
+  budget_advertising: number;
+  budget_supplies: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -127,11 +130,15 @@ export async function GET(request: NextRequest) {
     const allProductSales = await prisma.productSales.findMany({
       where: { year: { in: years }, ...storeWhere },
     });
+    // 予算: 店舗指定があればその店舗、全体時は本部除外で全店舗合算
+    // （坪井さん要望: 全体ビューでも予算折れ線を出したい）
     const allBudget = store
       ? await prisma.budgetData.findMany({
           where: { year: { in: years }, storeName: store },
         })
-      : [];
+      : await prisma.budgetData.findMany({
+          where: { year: { in: years }, storeName: { not: HQ_STORE } },
+        });
 
     const monthLabels = [
       "", "1月", "2月", "3月", "4月", "5月", "6月",
@@ -254,6 +261,8 @@ export async function GET(request: NextRequest) {
         .reduce((s, [, v]) => s + v, 0);
       const budgetProfit = budgetRevenue - budgetLabor - budgetExpense;
       const budgetUnitPrice = budgetMap[BUDGET_CATEGORY_UNIT_PRICE] ?? 0;
+      const budgetAdvertising = budgetMap["広告宣伝費"] ?? 0;
+      const budgetSupplies = budgetMap["消耗品費"] ?? 0;
 
       return {
         month: m,
@@ -289,6 +298,8 @@ export async function GET(request: NextRequest) {
         budget_expense: budgetExpense,
         budget_profit: budgetProfit,
         budget_unit_price: budgetUnitPrice,
+        budget_advertising: budgetAdvertising,
+        budget_supplies: budgetSupplies,
       };
     });
 

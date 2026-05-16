@@ -18,6 +18,7 @@ import {
   BarChart,
   Bar,
   Cell,
+  ComposedChart,
   LineChart,
   Line,
   XAxis,
@@ -90,6 +91,13 @@ export default function PeriodView({
           退会数: m.ma_cancellations,
           休会数: m.ma_suspensions,
           退会率: parseFloat(m.ma_cancel_rate.replace("%", "")) || 0,
+          // 予算（坪井さん要望: 各推移グラフに予算を折れ線で重ねる）
+          売上予算: m.budget_revenue,
+          人件費予算: m.budget_labor,
+          経費予算: m.budget_expense,
+          営業利益予算: m.budget_profit,
+          広告宣伝費予算: m.budget_advertising,
+          消耗品費予算: m.budget_supplies,
         };
       }),
     [monthly],
@@ -122,17 +130,26 @@ export default function PeriodView({
 
       {/* Main charts (2x2) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        {/* Revenue trend */}
+        {/* Revenue trend with budget overlay */}
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">売上推移</p>
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
               <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="売上" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Line
+                type="monotone"
+                dataKey="売上予算"
+                name="売上予算"
+                stroke="#9CA3AF"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+              />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
 
@@ -271,43 +288,46 @@ export default function PeriodView({
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">人件費推移</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
               <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="人件費" fill={COLORS.red} radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Line type="monotone" dataKey="人件費予算" name="人件費予算" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">広告宣伝費推移</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
               <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="広告宣伝費" fill={COLORS.orange} radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Line type="monotone" dataKey="広告宣伝費予算" name="広告宣伝費予算" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">消耗品費推移</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
               <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="消耗品費" fill={COLORS.teal} radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Line type="monotone" dataKey="消耗品費予算" name="消耗品費予算" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">営業利益推移</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
               <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
@@ -317,7 +337,8 @@ export default function PeriodView({
                   <Cell key={i} fill={d.営業利益 >= 0 ? COLORS.green : COLORS.red} />
                 ))}
               </Bar>
-            </BarChart>
+              <Line type="monotone" dataKey="営業利益予算" name="営業利益予算" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
         <div className="bg-white rounded-lg border shadow-sm p-4 lg:col-span-2">
