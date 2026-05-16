@@ -456,11 +456,15 @@ export function MemberTooltip({
   return (
     <div className="bg-white border rounded-lg shadow-lg p-3 text-xs">
       <p className="font-bold mb-1">{label}</p>
-      {payload.map((entry, i) => (
-        <p key={i} style={{ color: entry.color }}>
-          {entry.name}: {numFormat.format(entry.value)}
-        </p>
-      ))}
+      {payload.map((entry, i) => {
+        // 退会率 などの率表記は元の文字列をそのまま使い、人数系のみ「人」を付ける
+        const isRate = entry.name?.includes("率");
+        return (
+          <p key={i} style={{ color: entry.color }}>
+            {entry.name}: {isRate ? entry.value : `${numFormat.format(entry.value)}人`}
+          </p>
+        );
+      })}
     </div>
   );
 }

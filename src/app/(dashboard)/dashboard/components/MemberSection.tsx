@@ -208,7 +208,7 @@ export function EditableMemberSection({
       return (
         <KPICard
           title={title}
-          value={isRate ? (String(val) || "-") : numFormat.format(Number(val))}
+          value={isRate ? (String(val) || "-") : `${numFormat.format(Number(val))}人`}
           color={color}
         />
       );
@@ -235,7 +235,7 @@ export function EditableMemberSection({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard
             title="在籍会員数"
-            value={data ? numFormat.format(data.total_members) : "-"}
+            value={data ? `${numFormat.format(data.total_members)}人` : "-"}
             color={COLORS.blue}
           />
         </div>
@@ -244,9 +244,9 @@ export function EditableMemberSection({
   }
 
   const memberMovementRows = [
-    { title: "新規入会", fieldKey: "new_plan_signups" as const, color: COLORS.green },
-    { title: "退会", fieldKey: "cancellations" as const, color: COLORS.red },
-    { title: "休会", fieldKey: "suspensions" as const, color: COLORS.gray },
+    { title: "新規入会数", fieldKey: "new_plan_signups" as const, color: COLORS.green },
+    { title: "退会数", fieldKey: "cancellations" as const, color: COLORS.red },
+    { title: "休会数", fieldKey: "suspensions" as const, color: COLORS.gray },
   ];
 
   return (
