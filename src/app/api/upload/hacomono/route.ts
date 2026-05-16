@@ -181,6 +181,23 @@ export async function POST(request: NextRequest) {
       const idxInitialPlan = colIdx("初回契約プラン", 55);
       const idxTenure = colIdx("在籍期間", 56);
       const idxPlanContractDate = colIdx("プラン契約日", 50);
+      // 会員属性カラム（hacomono CSV にあれば取込、無ければ -1 で無視）
+      const idxGender = (() => {
+        const candidates = ["性別", "Gender", "ジェンダー"];
+        for (const c of candidates) {
+          const v = hmap[c];
+          if (v !== undefined) return v;
+        }
+        return -1;
+      })();
+      const idxBirthdate = (() => {
+        const candidates = ["生年月日", "誕生日", "Birthday", "Birth Date"];
+        for (const c of candidates) {
+          const v = hmap[c];
+          if (v !== undefined) return v;
+        }
+        return -1;
+      })();
 
       const now = new Date();
       const effectiveYear = isNaN(year) ? now.getFullYear() : year;
@@ -218,6 +235,9 @@ export async function POST(request: NextRequest) {
         trialDate: string | null;
         firstTrialDate: string | null;
         initialPlan: string | null;
+        gender: string | null;
+        birthdate: string | null;
+        ageBucket: string | null;
       }
 
       const records: MemberRecord[] = [];
@@ -266,6 +286,36 @@ export async function POST(request: NextRequest) {
           hadTrial = 1;
         }
 
+        // 属性カラム抽出（あれば）
+        const genderRaw = idxGender >= 0 ? getCell(row, idxGender) : "";
+        const birthdateRaw = idxBirthdate >= 0 ? getCell(row, idxBirthdate) : "";
+        // 性別正規化
+        const gender = genderRaw
+          ? /^(男|男性|M|male)/i.test(genderRaw)
+            ? "男性"
+            : /^(女|女性|F|female)/i.test(genderRaw)
+              ? "女性"
+              : "その他"
+          : null;
+        // 年代算出: 生年月日（YYYY-MM-DD or YYYY/MM/DD）から
+        let ageBucket: string | null = null;
+        if (birthdateRaw) {
+          const bd = parseDateLoose(birthdateRaw);
+          if (bd) {
+            const age = Math.floor(
+              (today.getTime() - bd.getTime()) / (365.25 * 24 * 3600 * 1000),
+            );
+            if (age < 10) ageBucket = "9歳以下";
+            else if (age < 20) ageBucket = "10代";
+            else if (age < 30) ageBucket = "20代";
+            else if (age < 40) ageBucket = "30代";
+            else if (age < 50) ageBucket = "40代";
+            else if (age < 60) ageBucket = "50代";
+            else if (age < 70) ageBucket = "60代";
+            else ageBucket = "70代以上";
+          }
+        }
+
         records.push({
           year: effectiveYear,
           month: effectiveMonth,
@@ -282,6 +332,9 @@ export async function POST(request: NextRequest) {
           trialDate: trialDateStr || null,
           firstTrialDate: firstTrialStr || null,
           initialPlan: initialPlan || null,
+          gender,
+          birthdate: birthdateRaw || null,
+          ageBucket,
         });
       }
 
