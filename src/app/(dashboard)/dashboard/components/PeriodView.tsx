@@ -72,6 +72,10 @@ export default function PeriodView({
         // 月次の獲得コスト = 広告宣伝費 ÷ 新規入会数（入会1名を獲得するためにいくら広告費を使ったか）
         const acquisitionCost =
           m.ma_new_signups > 0 ? Math.round(advertising / m.ma_new_signups) : 0;
+        // 客単価 = 月会費売上 ÷ プラン契約者数（1人あたりの月会費収入）
+        const monthlyFee = m.monthly_fee_ps001 ?? m.sales_by_category["月会費"] ?? 0;
+        const unitPrice =
+          m.ma_plan_subscribers > 0 ? Math.round(monthlyFee / m.ma_plan_subscribers) : 0;
         return {
           name: m.month_label,
           売上: m.revenue,
@@ -98,6 +102,8 @@ export default function PeriodView({
           営業利益予算: m.budget_profit,
           広告宣伝費予算: m.budget_advertising,
           消耗品費予算: m.budget_supplies,
+          客単価: unitPrice,
+          客単価予算: m.budget_unit_price,
         };
       }),
     [monthly],
@@ -504,6 +510,27 @@ export default function PeriodView({
               <Tooltip content={<MemberTooltip />} />
               <Bar dataKey="休会数" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
             </BarChart>
+          </ResponsiveContainer>
+        </div>
+        {/* 客単価推移（坪井さん要望: 月会費売上÷プラン契約者数、予算折れ線重ね） */}
+        <div className="bg-white rounded-lg border shadow-sm p-4 lg:col-span-2">
+          <p className="text-sm font-medium text-gray-600 mb-3">
+            <span className="inline-flex items-center gap-2">
+              客単価推移
+              <span className="text-xs text-gray-400 font-normal">（月会費売上 ÷ プラン契約者数）</span>
+            </span>
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
+            <ComposedChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              <Tooltip
+                formatter={(value, name) => [formatYen(Number(value)), String(name)]}
+              />
+              <Bar dataKey="客単価" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
+              <Line type="monotone" dataKey="客単価予算" name="客単価予算" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
