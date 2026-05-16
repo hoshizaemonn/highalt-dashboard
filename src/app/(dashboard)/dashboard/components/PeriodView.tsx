@@ -17,6 +17,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
   LineChart,
   Line,
   XAxis,
@@ -146,14 +147,20 @@ export default function PeriodView({
         {/* Expense breakdown or store comparison */}
         {isAllStores && storeCompareData ? (
           <div className="bg-white rounded-lg border shadow-sm p-4">
-            <p className="text-sm font-medium text-gray-600 mb-3">店舗別営業利益</p>
+            {/* 「店舗別営業利益」→「店舗別営業損益」: 赤字店舗の可能性があるため "損益" 表記。
+                個別バーは利益マイナスなら赤色で警告（Cell で個別塗り） */}
+            <p className="text-sm font-medium text-gray-600 mb-3">店舗別営業損益</p>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={storeCompareData.stores}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="store" fontSize={10} />
                 <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                 <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="profit" name="営業利益" fill={COLORS.green} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="profit" name="営業損益" radius={[4, 4, 0, 0]}>
+                  {storeCompareData.stores.map((s, i) => (
+                    <Cell key={i} fill={s.profit >= 0 ? COLORS.green : COLORS.red} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -272,16 +279,20 @@ export default function PeriodView({
               </ResponsiveContainer>
             </div>
 
-            {/* Labor comparison */}
+            {/* 店舗別営業損益（坪井さん要望: 「店舗別人件費」は削除して損益に差替） */}
             <div className="bg-white rounded-lg border shadow-sm p-4">
-              <p className="text-sm font-medium text-gray-600 mb-3">店舗別人件費</p>
+              <p className="text-sm font-medium text-gray-600 mb-3">店舗別営業損益</p>
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={storeCompareData.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="store" fontSize={10} />
                   <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="labor" name="人件費" fill={COLORS.red} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="profit" name="営業損益" radius={[4, 4, 0, 0]}>
+                    {storeCompareData.stores.map((s, i) => (
+                      <Cell key={i} fill={s.profit >= 0 ? COLORS.green : COLORS.red} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
