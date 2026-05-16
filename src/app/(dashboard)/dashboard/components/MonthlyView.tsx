@@ -29,6 +29,7 @@ import { PromotionSection } from "./PromotionSection";
 import ExpenseDetailSection from "./ExpenseDetailSection";
 import { RecalculateButton, PayrollDetailSection } from "./PayrollSection";
 import { ManualEntrySection } from "./ManualEntrySection";
+import { AttributesSection } from "./AttributesSection";
 
 export interface MonthlyViewProps {
   data: DashboardData;
@@ -424,6 +425,26 @@ export default function MonthlyView({
         canEdit={isAdmin || (sessionStoreName !== null && sessionStoreName === store)}
         initialTrialCount={data.member?.trial_count ?? 0}
         onSaved={onRefresh}
+      />
+
+      {/* 会員属性（坪井さん要望13）: 男女構成比・年代別構成比 */}
+      <AttributesSection
+        year={year}
+        month={month}
+        store={store}
+        trialOnly={false}
+        title="会員属性"
+        helpText="アクティブ会員の男女構成比と年代別構成比（hacomono CSV 由来）"
+      />
+
+      {/* 新規体験者属性（坪井さん要望14）: hacomono のhad_trial=1で集計 */}
+      <AttributesSection
+        year={year}
+        month={month}
+        store={store}
+        trialOnly={true}
+        title="新規体験者属性"
+        helpText="当月体験を受講した会員の男女構成比と年代別構成比（hacomono CSV 由来）"
       />
 
       {/* Plan Breakdown Pie Chart */}

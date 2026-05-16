@@ -167,6 +167,10 @@ model MemberData {
   trialDate      String? @map("trial_date")
   firstTrialDate String? @map("first_trial_date")
   initialPlan    String? @map("initial_plan")
+  // 会員属性（坪井さん要望13: hacomono CSV由来）
+  gender         String? @map("gender")
+  birthdate      String? @map("birthdate")
+  ageBucket      String? @map("age_bucket")
 
   @@unique([year, month, storeName, memberId])
   @@map("member_data")
