@@ -274,6 +274,8 @@ export function KPICard({
   previousYear,
   /** 数値が低いほど良い指標（人件費・経費）の場合は true。delta の色判定が反転する。 */
   lowerIsBetter,
+  /** 売上比バッジを表示する場合、分子と分母の組（current/revenue）。current だけ渡しても OK */
+  salesRatioOf,
 }: {
   title: string;
   value: string;
@@ -286,20 +288,36 @@ export function KPICard({
   previousMonth?: number | null;
   previousYear?: number | null;
   lowerIsBetter?: boolean;
+  salesRatioOf?: { numerator: number; revenue: number };
 }) {
   const showDelta = current !== undefined && (
     (previousMonth !== undefined && previousMonth !== null) ||
     (previousYear !== undefined && previousYear !== null)
   );
+  const salesRatioPct =
+    salesRatioOf && salesRatioOf.revenue > 0
+      ? (salesRatioOf.numerator / salesRatioOf.revenue) * 100
+      : null;
   return (
-    <div className="bg-white rounded-lg border shadow-sm p-4">
+    <div className="bg-white rounded-lg border shadow-sm p-4 relative">
       <p className="text-xs text-gray-500 font-medium flex items-center gap-1">
         <span>{title}</span>
         {help && <HelpHint text={help} />}
       </p>
-      <p className="text-xl font-bold mt-1" style={{ color }}>
-        {value}
-      </p>
+      <div className="flex items-end justify-between gap-2">
+        <p className="text-xl font-bold mt-1" style={{ color }}>
+          {value}
+        </p>
+        {salesRatioPct !== null && (
+          <span
+            className="inline-flex flex-col items-center text-[10px] font-medium text-white bg-[#567FC0] rounded px-2 py-1 leading-tight whitespace-nowrap"
+            title="売上に対する割合"
+          >
+            <span>売上比</span>
+            <span className="text-xs font-bold">{salesRatioPct.toFixed(1)}%</span>
+          </span>
+        )}
+      </div>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
       {showDelta && (
         <div className="mt-2 pt-2 border-t border-gray-100 flex flex-col gap-0.5">

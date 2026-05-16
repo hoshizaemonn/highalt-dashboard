@@ -85,12 +85,23 @@ export default function PeriodView({
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <KPICard title="売上合計" value={formatYen(totals.revenue)} color={COLORS.blue} />
-        <KPICard title="人件費合計" value={formatYen(totals.labor)} color={COLORS.red} />
-        <KPICard title="経費合計" value={formatYen(totals.expense)} color={COLORS.orange} />
+        <KPICard
+          title="人件費合計"
+          value={formatYen(totals.labor)}
+          color={COLORS.red}
+          salesRatioOf={{ numerator: totals.labor, revenue: totals.revenue }}
+        />
+        <KPICard
+          title="経費合計"
+          value={formatYen(totals.expense)}
+          color={COLORS.orange}
+          salesRatioOf={{ numerator: totals.expense, revenue: totals.revenue }}
+        />
         <KPICard
           title="営業利益"
           value={formatYen(totals.profit)}
-          color={COLORS.green}
+          color={totals.profit >= 0 ? COLORS.green : COLORS.red}
+          salesRatioOf={{ numerator: totals.profit, revenue: totals.revenue }}
         />
       </div>
 
