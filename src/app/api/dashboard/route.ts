@@ -197,12 +197,23 @@ export async function GET(request: NextRequest) {
         .reduce((s, r) => s + r.totalAmount, 0);
     }
 
+    // 売上4分類（坪井さん要望: 会費/パーソナル/物販/その他）
+    const salesMembership =
+      (salesByCategory["月会費"] ?? 0) + (salesByCategory["入会金"] ?? 0);
+    const salesPersonal = salesByCategory["パーソナル"] ?? 0;
+    const salesProduct = squareTotal; // Square=物販
+    const salesOther = salesTotal - salesMembership - salesPersonal;
+
     const revenueSummary = {
       total: Math.round(totalRevenue),
       sales_total: Math.round(salesTotal),
       square_total: Math.round(squareTotal),
       by_category: salesByCategory,
       monthly_fee_ps001: monthlyFeeFromPs001,
+      membership: Math.round(salesMembership),
+      personal: Math.round(salesPersonal),
+      product: Math.round(salesProduct),
+      other: Math.round(salesOther),
     };
 
     // ── Member Summary (MA002) ───────────────────────────────
