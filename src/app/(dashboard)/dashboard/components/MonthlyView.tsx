@@ -264,12 +264,29 @@ export default function MonthlyView({
             </tr>
 
             {/* Operating Profit */}
-            <tr className="bg-green-50">
-              <td className="px-4 py-3 font-bold text-green-700">営業利益</td>
-              <td className="px-4 py-3 text-right font-bold text-green-700">
+            <tr className={data.operating_profit >= 0 ? "bg-green-50" : "bg-red-50"}>
+              <td className={`px-4 py-3 font-bold ${data.operating_profit >= 0 ? "text-green-700" : "text-red-700"}`}>
+                {data.operating_profit >= 0 ? "営業利益" : "営業損失"}
+              </td>
+              <td className={`px-4 py-3 text-right font-bold ${data.operating_profit >= 0 ? "text-green-700" : "text-red-700"}`}>
                 {formatYen(data.operating_profit)}
               </td>
             </tr>
+
+            {/* タイムバリュー（営業利益 ÷ 総勤務時間 = 1時間あたりの稼ぎ） */}
+            {data.payroll.total_hours > 0 && (
+              <tr className="border-b">
+                <td className="px-4 py-1.5 text-gray-600">
+                  <span className="inline-flex items-center gap-1">
+                    タイムバリュー
+                    <HelpHint text="営業利益 ÷ 総勤務時間。1時間の労働あたり、いくらの営業利益を生んでいるかを示す。" />
+                  </span>
+                </td>
+                <td className="px-4 py-1.5 text-right">
+                  {formatYen(Math.round(data.operating_profit / data.payroll.total_hours))}/h
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
