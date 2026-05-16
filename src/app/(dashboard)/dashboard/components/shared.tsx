@@ -9,6 +9,7 @@ import {
   Line,
   PieChart,
   Pie,
+  ComposedChart,
   XAxis,
   YAxis,
   Tooltip,
@@ -26,6 +27,7 @@ export {
   Line,
   PieChart,
   Pie,
+  ComposedChart,
   XAxis,
   YAxis,
   Tooltip,
@@ -218,6 +220,8 @@ export interface MonthlyEntry {
   budget_expense: number;
   budget_profit: number;
   budget_unit_price: number;
+  budget_advertising: number;
+  budget_supplies: number;
 }
 
 export interface PlanBreakdownEntry {
