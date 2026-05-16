@@ -99,6 +99,7 @@ export default function MonthlyView({
           previousMonth={data.prev_month_totals?.labor}
           previousYear={data.prev_year_totals?.labor}
           lowerIsBetter
+          salesRatioOf={{ numerator: data.total_labor, revenue: data.total_revenue }}
         />
         <KPICard
           title="経費合計"
@@ -109,6 +110,7 @@ export default function MonthlyView({
           previousMonth={data.prev_month_totals?.expense}
           previousYear={data.prev_year_totals?.expense}
           lowerIsBetter
+          salesRatioOf={{ numerator: data.total_expense, revenue: data.total_revenue }}
         />
         <KPICard
           title="営業利益"
@@ -119,6 +121,7 @@ export default function MonthlyView({
           current={data.operating_profit}
           previousMonth={data.prev_month_totals?.profit}
           previousYear={data.prev_year_totals?.profit}
+          salesRatioOf={{ numerator: data.operating_profit, revenue: data.total_revenue }}
         />
       </div>
 
