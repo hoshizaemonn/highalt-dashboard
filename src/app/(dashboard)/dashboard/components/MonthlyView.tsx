@@ -136,28 +136,43 @@ export default function MonthlyView({
             </tr>
           </thead>
           <tbody>
-            {/* Revenue */}
+            {/* Revenue — 坪井さん要望: 会費 / パーソナル / 物販 / その他 の4分類で表示 */}
             <tr className="border-b bg-blue-50/50">
               <td className="px-4 py-2 font-bold text-blue-700" colSpan={2}>
                 売上
               </td>
             </tr>
-            {Object.entries(data.revenue.by_category)
-              .sort(([, a], [, b]) => b - a)
-              .map(([cat, amt]) => (
-                <tr key={`rev-${cat}`} className="border-b">
-                  <td className="px-4 py-1.5 pl-8 text-gray-600">{cat}</td>
-                  <td className="px-4 py-1.5 text-right">{formatYen(amt)}</td>
-                </tr>
-              ))}
-            {data.revenue.square_total > 0 && (
-              <tr className="border-b">
-                <td className="px-4 py-1.5 pl-8 text-gray-600">Square売上</td>
-                <td className="px-4 py-1.5 text-right">
-                  {formatYen(data.revenue.square_total)}
-                </td>
-              </tr>
-            )}
+            <tr className="border-b">
+              <td className="px-4 py-1.5 pl-8 text-gray-600">
+                <span className="inline-flex items-center gap-1">
+                  会費
+                  <HelpHint text="月会費 + 入会金。hacomono の売上明細から集計。" />
+                </span>
+              </td>
+              <td className="px-4 py-1.5 text-right">{formatYen(data.revenue.membership)}</td>
+            </tr>
+            <tr className="border-b">
+              <td className="px-4 py-1.5 pl-8 text-gray-600">パーソナル</td>
+              <td className="px-4 py-1.5 text-right">{formatYen(data.revenue.personal)}</td>
+            </tr>
+            <tr className="border-b">
+              <td className="px-4 py-1.5 pl-8 text-gray-600">
+                <span className="inline-flex items-center gap-1">
+                  物販
+                  <HelpHint text="Square POS 売上（物販想定）。" />
+                </span>
+              </td>
+              <td className="px-4 py-1.5 text-right">{formatYen(data.revenue.product)}</td>
+            </tr>
+            <tr className="border-b">
+              <td className="px-4 py-1.5 pl-8 text-gray-600">
+                <span className="inline-flex items-center gap-1">
+                  その他
+                  <HelpHint text="スポット・体験・ロッカー・オプション等、会費・パーソナル・物販以外。" />
+                </span>
+              </td>
+              <td className="px-4 py-1.5 text-right">{formatYen(data.revenue.other)}</td>
+            </tr>
             <tr className="border-b font-bold">
               <td className="px-4 py-2 text-blue-700">売上合計</td>
               <td className="px-4 py-2 text-right text-blue-700">

@@ -74,6 +74,10 @@ export default function PeriodView({
         return {
           name: m.month_label,
           売上: m.revenue,
+          会費売上: m.sales_membership,
+          パーソナル売上: m.sales_personal,
+          物販売上: m.sales_product,
+          その他売上: m.sales_other,
           人件費: m.labor_cost,
           経費: m.expense,
           広告宣伝費: advertising,
@@ -200,6 +204,64 @@ export default function PeriodView({
           </div>
         )}
       </div>
+
+      {/* 売上4分類推移（店舗ビュー時のみ）
+          坪井さん要望: 各店については、「会費」「パーソナル」「物販」「その他」に分けたい。 */}
+      {!isAllStores && (
+        <>
+          <SectionTitle>売上内訳推移</SectionTitle>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">会費売上推移</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="会費売上" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">パーソナル売上推移</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="パーソナル売上" fill={COLORS.teal} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">物販売上推移</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="物販売上" fill={COLORS.orange} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">その他売上推移</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="その他売上" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* コスト・利益推移（全社×月次）
           坪井さん要望: 人件費だけでなく、広告宣伝費・消耗品費・営業利益も個別に推移を見たい。

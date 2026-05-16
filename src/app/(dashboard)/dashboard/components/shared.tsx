@@ -146,6 +146,11 @@ export interface DashboardData {
     by_category: Record<string, number>;
     /** PS001 商品別売上から算出した月会費合計（PS001未取込時は null） */
     monthly_fee_ps001: number | null;
+    /** 売上4分類（会費/パーソナル/物販/その他） */
+    membership: number;
+    personal: number;
+    product: number;
+    other: number;
   };
   member: {
     plan_subscribers: number;
@@ -202,6 +207,12 @@ export interface MonthlyEntry {
   sales_by_category: Record<string, number>;
   /** PS001 商品別売上から算出した月会費（PS001未取込時は null） */
   monthly_fee_ps001: number | null;
+  square_total: number;
+  /** 売上4分類（会費/パーソナル/物販/その他） */
+  sales_membership: number;
+  sales_personal: number;
+  sales_product: number;
+  sales_other: number;
   budget_revenue: number;
   budget_labor: number;
   budget_expense: number;

@@ -28,6 +28,17 @@ interface MonthlyEntry {
   sales_by_category: Record<string, number>;
   /** PS001 商品別売上から算出した月会費（PS001未取込時は null） */
   monthly_fee_ps001: number | null;
+  /** Square売上（物販想定） */
+  square_total: number;
+  /** 4分類集計（坪井さん要望: 会費/パーソナル/物販/その他）
+      会費 = 月会費 + 入会金
+      パーソナル = パーソナル
+      物販 = Square売上
+      その他 = 全hacomono売上 − 会費 − パーソナル */
+  sales_membership: number;
+  sales_personal: number;
+  sales_product: number;
+  sales_other: number;
   budget_revenue: number;
   budget_labor: number;
   budget_expense: number;
@@ -199,6 +210,13 @@ export async function GET(request: NextRequest) {
 
       const totalRevenue = salesTotal + squareTotal;
 
+      // 売上4分類（坪井さん要望: 会費/パーソナル/物販/その他）
+      const salesMembership =
+        (salesByCat["月会費"] ?? 0) + (salesByCat["入会金"] ?? 0);
+      const salesPersonal = salesByCat["パーソナル"] ?? 0;
+      const salesProduct = squareTotal;
+      const salesOther = salesTotal - salesMembership - salesPersonal;
+
       // 月会費 (PS001 商品別売上から正確に算出 — 取込時のみ)
       const productSalesMonth = allProductSales.filter(
         (r) => r.year === y && r.month === m,
@@ -261,6 +279,11 @@ export async function GET(request: NextRequest) {
         expense_by_category: expenseByCat,
         sales_by_category: salesByCat,
         monthly_fee_ps001: monthlyFeePs001,
+        square_total: Math.round(squareTotal),
+        sales_membership: Math.round(salesMembership),
+        sales_personal: Math.round(salesPersonal),
+        sales_product: Math.round(salesProduct),
+        sales_other: Math.round(salesOther),
         budget_revenue: budgetRevenue,
         budget_labor: budgetLabor,
         budget_expense: budgetExpense,
