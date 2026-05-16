@@ -162,6 +162,8 @@ export interface DashboardData {
     cancellation_rate: string;
     plan_changes: number;
     total_members: number;
+    /** 体験者数（店長手動追記） */
+    trial_count?: number;
   } | null;
   budget: Record<string, number>;
   /** 前月の合計KPI（KPIカードの前月比表示に使用、データなしの場合 null） */
@@ -205,6 +207,10 @@ export interface MonthlyEntry {
   ma_cancellations: number;
   ma_suspensions: number;
   ma_cancel_rate: string;
+  /** 体験者数（店長手動追記） */
+  trial_count: number;
+  /** 請求書ベースの「その他」売上（店長手動追記） */
+  manual_other_sales: number;
   expense_by_category: Record<string, number>;
   sales_by_category: Record<string, number>;
   /** PS001 商品別売上から算出した月会費（PS001未取込時は null） */

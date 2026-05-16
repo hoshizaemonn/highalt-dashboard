@@ -164,6 +164,15 @@ export async function GET(request: NextRequest) {
 
     const squareTotal = squareRows.reduce((s, r) => s + r.grossSales, 0);
 
+    // ── 店長手動追記（坪井さん要望） ─────────────────────────
+    // 単月ビューは store 指定必須相当だが、全体ビューでは複数店舗を合算する
+    const manualWhere = store && store !== "全体"
+      ? { year, ...(month !== undefined && { month }), storeName: store }
+      : { year, ...(month !== undefined && { month }), storeName: { not: HQ_STORE } };
+    const manualRows = await prisma.manualEntry.findMany({ where: manualWhere });
+    const manualTrial = manualRows.reduce((s, r) => s + r.trialCount, 0);
+    const manualOtherSales = manualRows.reduce((s, r) => s + r.otherSalesAmount, 0);
+
     let salesTotal = 0;
     const salesByCategory: Record<string, number> = {};
 
@@ -181,7 +190,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const totalRevenue = salesTotal + squareTotal;
+    // 手動追記の「その他売上」は売上合計に含める（坪井さん要望: 請求書ベースの売上を計上）
+    const totalRevenue = salesTotal + squareTotal + manualOtherSales;
 
     // ── 月会費 (PS001 商品別売上から正確に算出) ─────────────────
     // PL001 の摘要キーワードマッチでは月会費と入会金等が混ざる可能性があり、
@@ -202,7 +212,9 @@ export async function GET(request: NextRequest) {
       (salesByCategory["月会費"] ?? 0) + (salesByCategory["入会金"] ?? 0);
     const salesPersonal = salesByCategory["パーソナル"] ?? 0;
     const salesProduct = squareTotal; // Square=物販
-    const salesOther = salesTotal - salesMembership - salesPersonal;
+    // その他 = hacomonoのスポット等 + 手動追記の請求書「その他」
+    const salesOther =
+      salesTotal - salesMembership - salesPersonal + manualOtherSales;
 
     const revenueSummary = {
       total: Math.round(totalRevenue),
@@ -239,6 +251,19 @@ export async function GET(request: NextRequest) {
             cancellation_rate: memberRows[0].cancellationRate,
             plan_changes: memberRows.reduce((s, r) => s + r.planChanges, 0),
             total_members: memberRows.reduce((s, r) => s + r.totalMembers, 0),
+            // 体験者数（坪井さん要望: 店長手動追記）。入会率 = 新規入会÷体験者数 の分母。
+            trial_count: manualTrial,
+          }
+        : manualTrial > 0
+        ? {
+            plan_subscribers: 0,
+            new_plan_signups: 0,
+            cancellations: 0,
+            suspensions: 0,
+            cancellation_rate: "",
+            plan_changes: 0,
+            total_members: 0,
+            trial_count: manualTrial,
           }
         : null;
 

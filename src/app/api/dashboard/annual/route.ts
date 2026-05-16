@@ -24,6 +24,10 @@ interface MonthlyEntry {
   ma_cancellations: number;
   ma_suspensions: number;
   ma_cancel_rate: string;
+  /** 体験者数（店長手動追記） */
+  trial_count: number;
+  /** 請求書ベースの「その他」売上（店長手動追記） */
+  manual_other_sales: number;
   expense_by_category: Record<string, number>;
   sales_by_category: Record<string, number>;
   /** PS001 商品別売上から算出した月会費（PS001未取込時は null） */
@@ -132,6 +136,11 @@ export async function GET(request: NextRequest) {
     });
     // 予算: 店舗指定があればその店舗、全体時は本部除外で全店舗合算
     // （坪井さん要望: 全体ビューでも予算折れ線を出したい）
+    // 店長手動追記（体験者数 / 請求書その他売上）
+    const allManual = await prisma.manualEntry.findMany({
+      where: { year: { in: years }, ...storeWhere },
+    });
+
     const allBudget = store
       ? await prisma.budgetData.findMany({
           where: { year: { in: years }, storeName: store },
@@ -215,14 +224,19 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const totalRevenue = salesTotal + squareTotal;
+      // 店長手動追記の合算（その月の全店舗合算）
+      const manualMonth = allManual.filter((r) => r.year === y && r.month === m);
+      const manualTrial = manualMonth.reduce((s, r) => s + r.trialCount, 0);
+      const manualOther = manualMonth.reduce((s, r) => s + r.otherSalesAmount, 0);
+
+      const totalRevenue = salesTotal + squareTotal + manualOther;
 
       // 売上4分類（坪井さん要望: 会費/パーソナル/物販/その他）
       const salesMembership =
         (salesByCat["月会費"] ?? 0) + (salesByCat["入会金"] ?? 0);
       const salesPersonal = salesByCat["パーソナル"] ?? 0;
       const salesProduct = squareTotal;
-      const salesOther = salesTotal - salesMembership - salesPersonal;
+      const salesOther = salesTotal - salesMembership - salesPersonal + manualOther;
 
       // 月会費 (PS001 商品別売上から正確に算出 — 取込時のみ)
       const productSalesMonth = allProductSales.filter(
@@ -285,6 +299,8 @@ export async function GET(request: NextRequest) {
         ma_cancellations: ms.reduce((s, r) => s + r.cancellations, 0),
         ma_suspensions: ms.reduce((s, r) => s + r.suspensions, 0),
         ma_cancel_rate: ms.length > 0 ? ms[0].cancellationRate : "",
+        trial_count: manualTrial,
+        manual_other_sales: manualOther,
         expense_by_category: expenseByCat,
         sales_by_category: salesByCat,
         monthly_fee_ps001: monthlyFeePs001,

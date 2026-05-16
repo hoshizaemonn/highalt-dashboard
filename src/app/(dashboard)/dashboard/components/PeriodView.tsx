@@ -104,6 +104,9 @@ export default function PeriodView({
           消耗品費予算: m.budget_supplies,
           客単価: unitPrice,
           客単価予算: m.budget_unit_price,
+          体験者数: m.trial_count,
+          // 入会率 = 新規入会数 ÷ 体験者数（体験から会員化した割合、坪井さん要望#10）
+          入会率: m.trial_count > 0 ? (m.ma_new_signups / m.trial_count) * 100 : 0,
         };
       }),
     [monthly],
@@ -455,6 +458,50 @@ export default function PeriodView({
       {/* MA002 charts — 桁の違いを見やすくするため新規入会/退会/休会は個別グラフに分割 */}
       <SectionTitle>会員数推移 (MA002)</SectionTitle>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        {/* 体験者数 推移（坪井さん要望#10、店長手動追記#15に依存） */}
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">
+            <span className="inline-flex items-center gap-2">
+              体験者数 推移
+              <span className="text-xs text-gray-400 font-normal">（店長手動入力）</span>
+            </span>
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis fontSize={11} allowDecimals={false} unit="人" />
+              <Tooltip content={<MemberTooltip />} />
+              <Bar dataKey="体験者数" fill={COLORS.teal} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        {/* 入会率 推移（新規入会÷体験者数、坪井さん要望#10） */}
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">
+            <span className="inline-flex items-center gap-2">
+              入会率推移
+              <span className="text-xs text-gray-400 font-normal">（新規入会数 ÷ 体験者数）</span>
+            </span>
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis unit="%" fontSize={11} />
+              <Tooltip
+                formatter={(value) => [`${Number(value).toFixed(1)}%`, "入会率"]}
+              />
+              <Line
+                type="monotone"
+                dataKey="入会率"
+                stroke={COLORS.green}
+                strokeWidth={2}
+                dot={{ r: 4 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">新規入会数 推移</p>
           <ResponsiveContainer width="100%" height={220}>
