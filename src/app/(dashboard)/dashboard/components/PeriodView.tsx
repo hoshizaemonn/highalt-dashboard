@@ -271,8 +271,8 @@ export default function PeriodView({
               <XAxis dataKey="name" fontSize={11} />
               <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
               <Tooltip
-                formatter={(value: number) => [
-                  value > 0 ? formatYen(value) + "/人" : "-",
+                formatter={(value) => [
+                  Number(value) > 0 ? formatYen(Number(value)) + "/人" : "-",
                   "獲得コスト",
                 ]}
               />
