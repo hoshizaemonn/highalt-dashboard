@@ -232,6 +232,21 @@ export interface PlanBreakdownEntry {
 export interface AnnualData {
   store: string | null;
   monthly_data: MonthlyEntry[];
+  /** 前年同期の合計（坪井さん要望: 前年比比較に使用） */
+  previous_period_totals?: {
+    revenue: number;
+    labor: number;
+    expense: number;
+    profit: number;
+    sales_membership: number;
+    sales_personal: number;
+    sales_product: number;
+    sales_other: number;
+    advertising: number;
+    supplies: number;
+    new_signups: number;
+    cancellations: number;
+  };
 }
 
 export interface StoreCompareEntry {
@@ -291,6 +306,8 @@ export function KPICard({
   lowerIsBetter,
   /** 売上比バッジを表示する場合、分子と分母の組（current/revenue）。current だけ渡しても OK */
   salesRatioOf,
+  /** previousYear の delta ラベル。デフォルトは「前年同月比」、期間ビューでは「前年比」を渡す */
+  previousYearLabel = "前年同月比",
 }: {
   title: string;
   value: string;
@@ -304,6 +321,7 @@ export function KPICard({
   previousYear?: number | null;
   lowerIsBetter?: boolean;
   salesRatioOf?: { numerator: number; revenue: number };
+  previousYearLabel?: string;
 }) {
   const showDelta = current !== undefined && (
     (previousMonth !== undefined && previousMonth !== null) ||
@@ -346,7 +364,7 @@ export function KPICard({
           )}
           {previousYear !== undefined && previousYear !== null && (
             <DeltaRow
-              label="前年同月比"
+              label={previousYearLabel}
               current={current!}
               previous={previousYear}
               lowerIsBetter={lowerIsBetter}

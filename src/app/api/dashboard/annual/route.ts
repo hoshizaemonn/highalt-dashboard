@@ -303,10 +303,91 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // ── 前年同期の合計集計 ───────────────────────────────────
+    // 坪井さん要望: 前年比（2025/9期 など）のデータを比較表示したい。
+    // periods の (year, month) をそれぞれ 1 年シフトして集計する。
+    const prevPeriods = periods.map((p) => ({ year: p.year - 1, month: p.month }));
+    const prevYears = [...new Set(prevPeriods.map((p) => p.year))];
+
+    const [
+      prevPayroll,
+      prevExpenses,
+      prevSales,
+      prevRevenue,
+      prevSquare,
+      prevMonthlySummary,
+    ] = await Promise.all([
+      prisma.payrollData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
+      prisma.expenseData.findMany({ where: { year: { in: prevYears }, isRevenue: 0, ...storeWhere } }),
+      prisma.salesDetail.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
+      prisma.revenueData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
+      prisma.squareSales.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
+      prisma.monthlySummary.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
+    ]);
+
+    const isInPeriod = (y: number, m: number) =>
+      prevPeriods.some((p) => p.year === y && p.month === m);
+
+    const prevLabor = prevPayroll
+      .filter((r) => isInPeriod(r.year, r.month))
+      .reduce((s, r) => s + r.grossTotal * (r.ratio / 100), 0);
+
+    const prevExpenseByCat: Record<string, number> = {};
+    let prevExpense = 0;
+    for (const r of prevExpenses) {
+      if (!isInPeriod(r.year, r.month)) continue;
+      prevExpenseByCat[r.category ?? "その他"] =
+        (prevExpenseByCat[r.category ?? "その他"] ?? 0) + r.amount;
+      prevExpense += r.amount;
+    }
+
+    const prevSalesByCat: Record<string, number> = {};
+    let prevSalesTotal = 0;
+    const salesRows = prevSales.length > 0 ? prevSales : prevRevenue;
+    for (const r of salesRows) {
+      if (!isInPeriod(r.year, r.month)) continue;
+      const cat = r.category || "その他";
+      prevSalesByCat[cat] = (prevSalesByCat[cat] ?? 0) + r.amount;
+      prevSalesTotal += r.amount;
+    }
+    const prevSquareTotal = prevSquare
+      .filter((r) => isInPeriod(r.year, r.month))
+      .reduce((s, r) => s + r.grossSales, 0);
+    const prevRevenueTotal = prevSalesTotal + prevSquareTotal;
+
+    const prevMembershipSales =
+      (prevSalesByCat["月会費"] ?? 0) + (prevSalesByCat["入会金"] ?? 0);
+    const prevPersonalSales = prevSalesByCat["パーソナル"] ?? 0;
+    const prevProductSales = prevSquareTotal;
+    const prevOtherSales = prevSalesTotal - prevMembershipSales - prevPersonalSales;
+
+    const prevNewSignups = prevMonthlySummary
+      .filter((r) => isInPeriod(r.year, r.month))
+      .reduce((s, r) => s + r.newPlanSignups, 0);
+    const prevCancellations = prevMonthlySummary
+      .filter((r) => isInPeriod(r.year, r.month))
+      .reduce((s, r) => s + r.cancellations, 0);
+
+    const previousPeriodTotals = {
+      revenue: Math.round(prevRevenueTotal),
+      labor: Math.round(prevLabor),
+      expense: Math.round(prevExpense),
+      profit: Math.round(prevRevenueTotal - prevLabor - prevExpense),
+      sales_membership: Math.round(prevMembershipSales),
+      sales_personal: Math.round(prevPersonalSales),
+      sales_product: Math.round(prevProductSales),
+      sales_other: Math.round(prevOtherSales),
+      advertising: Math.round(prevExpenseByCat["広告宣伝費"] ?? 0),
+      supplies: Math.round(prevExpenseByCat["消耗品費"] ?? 0),
+      new_signups: prevNewSignups,
+      cancellations: prevCancellations,
+    };
+
     return NextResponse.json({
       store: store ?? null,
       periods: periods.map((p) => `${p.year}-${String(p.month).padStart(2, "0")}`),
       monthly_data: monthlyData,
+      previous_period_totals: previousPeriodTotals,
     });
   } catch (error) {
     console.error("Dashboard annual API error:", error);
