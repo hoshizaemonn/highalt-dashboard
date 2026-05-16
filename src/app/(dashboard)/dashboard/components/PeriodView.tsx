@@ -107,26 +107,101 @@ export default function PeriodView({
     <>
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <KPICard title="売上合計" value={formatYen(totals.revenue)} color={COLORS.blue} />
+        <KPICard
+          title="売上合計"
+          value={formatYen(totals.revenue)}
+          color={COLORS.blue}
+          current={totals.revenue}
+          previousYear={annualData.previous_period_totals?.revenue}
+          previousYearLabel="前年比"
+        />
         <KPICard
           title="人件費合計"
           value={formatYen(totals.labor)}
           color={COLORS.red}
           salesRatioOf={{ numerator: totals.labor, revenue: totals.revenue }}
+          current={totals.labor}
+          previousYear={annualData.previous_period_totals?.labor}
+          previousYearLabel="前年比"
+          lowerIsBetter
         />
         <KPICard
           title="経費合計"
           value={formatYen(totals.expense)}
           color={COLORS.orange}
           salesRatioOf={{ numerator: totals.expense, revenue: totals.revenue }}
+          current={totals.expense}
+          previousYear={annualData.previous_period_totals?.expense}
+          previousYearLabel="前年比"
+          lowerIsBetter
         />
         <KPICard
           title="営業利益"
           value={formatYen(totals.profit)}
           color={totals.profit >= 0 ? COLORS.green : COLORS.red}
           salesRatioOf={{ numerator: totals.profit, revenue: totals.revenue }}
+          current={totals.profit}
+          previousYear={annualData.previous_period_totals?.profit}
+          previousYearLabel="前年比"
         />
       </div>
+
+      {/* 前年比比較グラフ（坪井さん要望: 前期 vs 今期 を項目別に並べて見たい） */}
+      {annualData.previous_period_totals && (
+        <>
+          <SectionTitle>前年比比較グラフ</SectionTitle>
+          <div className="bg-white rounded-lg border shadow-sm p-4 mb-6">
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart
+                data={(() => {
+                  const prev = annualData.previous_period_totals!;
+                  const adv = chartData.reduce((s, d) => s + d.広告宣伝費, 0);
+                  const sup = chartData.reduce((s, d) => s + d.消耗品費, 0);
+                  const items = isAllStores
+                    ? [
+                        { 項目: "売上", 前期: prev.revenue, 今期: totals.revenue },
+                        { 項目: "人件費", 前期: prev.labor, 今期: totals.labor },
+                        { 項目: "広告宣伝費", 前期: prev.advertising, 今期: adv },
+                        { 項目: "消耗品費", 前期: prev.supplies, 今期: sup },
+                        { 項目: "営業利益", 前期: prev.profit, 今期: totals.profit },
+                      ]
+                    : [
+                        { 項目: "会費", 前期: prev.sales_membership, 今期: chartData.reduce((s, d) => s + d.会費売上, 0) },
+                        { 項目: "パーソナル", 前期: prev.sales_personal, 今期: chartData.reduce((s, d) => s + d.パーソナル売上, 0) },
+                        { 項目: "物販", 前期: prev.sales_product, 今期: chartData.reduce((s, d) => s + d.物販売上, 0) },
+                        { 項目: "その他", 前期: prev.sales_other, 今期: chartData.reduce((s, d) => s + d.その他売上, 0) },
+                        { 項目: "人件費", 前期: prev.labor, 今期: totals.labor },
+                        { 項目: "広告宣伝費", 前期: prev.advertising, 今期: adv },
+                        { 項目: "消耗品費", 前期: prev.supplies, 今期: sup },
+                        { 項目: "営業利益", 前期: prev.profit, 今期: totals.profit },
+                      ];
+                  return items.map((d) => ({
+                    ...d,
+                    前年比: d.前期 > 0 ? ((d.今期 / d.前期) * 100).toFixed(1) + "%" : "-",
+                  }));
+                })()}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="項目" fontSize={11} />
+                <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+                <Tooltip
+                  formatter={(value, name) => {
+                    if (name === "前年比") return [String(value), "前年比"];
+                    return [formatYen(Number(value)), String(name)];
+                  }}
+                />
+                <Legend />
+                {/* 前期=薄い色、今期=濃い色（坪井さん要望3） */}
+                <Bar dataKey="前期" fill="#BFDBFE" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="今期" fill="#1E40AF" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <p className="text-xs text-gray-400 mt-2">
+              ※ 経費・人件費の前年データが取り込まれていない期間は 0 表示。
+            </p>
+          </div>
+        </>
+      )}
 
       {/* Main charts (2x2) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
