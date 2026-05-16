@@ -65,19 +65,29 @@ export default function PeriodView({
   // Chart data
   const chartData = useMemo(
     () =>
-      monthly.map((m) => ({
-        name: m.month_label,
-        売上: m.revenue,
-        人件費: m.labor_cost,
-        経費: m.expense,
-        営業利益: m.operating_profit,
-        プラン契約者数: m.ma_plan_subscribers,
-        在籍会員数: m.ma_total_members,
-        新規入会数: m.ma_new_signups,
-        退会数: m.ma_cancellations,
-        休会数: m.ma_suspensions,
-        退会率: parseFloat(m.ma_cancel_rate.replace("%", "")) || 0,
-      })),
+      monthly.map((m) => {
+        const advertising = m.expense_by_category["広告宣伝費"] ?? 0;
+        const supplies = m.expense_by_category["消耗品費"] ?? 0;
+        // 月次の獲得コスト = 広告宣伝費 ÷ 新規入会数（入会1名を獲得するためにいくら広告費を使ったか）
+        const acquisitionCost =
+          m.ma_new_signups > 0 ? Math.round(advertising / m.ma_new_signups) : 0;
+        return {
+          name: m.month_label,
+          売上: m.revenue,
+          人件費: m.labor_cost,
+          経費: m.expense,
+          広告宣伝費: advertising,
+          消耗品費: supplies,
+          営業利益: m.operating_profit,
+          獲得コスト: acquisitionCost,
+          プラン契約者数: m.ma_plan_subscribers,
+          在籍会員数: m.ma_total_members,
+          新規入会数: m.ma_new_signups,
+          退会数: m.ma_cancellations,
+          休会数: m.ma_suspensions,
+          退会率: parseFloat(m.ma_cancel_rate.replace("%", "")) || 0,
+        };
+      }),
     [monthly],
   );
 
@@ -189,6 +199,93 @@ export default function PeriodView({
             </ResponsiveContainer>
           </div>
         )}
+      </div>
+
+      {/* コスト・利益推移（全社×月次）
+          坪井さん要望: 人件費だけでなく、広告宣伝費・消耗品費・営業利益も個別に推移を見たい。
+          + 月次の獲得コスト推移（広告宣伝費 ÷ 新規入会数） */}
+      <SectionTitle>コスト・利益推移</SectionTitle>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">人件費推移</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="人件費" fill={COLORS.red} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">広告宣伝費推移</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="広告宣伝費" fill={COLORS.orange} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">消耗品費推移</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="消耗品費" fill={COLORS.teal} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">営業利益推移</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="営業利益" radius={[4, 4, 0, 0]}>
+                {chartData.map((d, i) => (
+                  <Cell key={i} fill={d.営業利益 >= 0 ? COLORS.green : COLORS.red} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="bg-white rounded-lg border shadow-sm p-4 lg:col-span-2">
+          <p className="text-sm font-medium text-gray-600 mb-3">
+            <span className="inline-flex items-center gap-2">
+              月次の獲得コスト推移
+              <span className="text-xs text-gray-400 font-normal">（広告宣伝費 ÷ 新規入会数）</span>
+            </span>
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              <Tooltip
+                formatter={(value: number) => [
+                  value > 0 ? formatYen(value) + "/人" : "-",
+                  "獲得コスト",
+                ]}
+              />
+              <Line
+                type="monotone"
+                dataKey="獲得コスト"
+                stroke={COLORS.orange}
+                strokeWidth={2}
+                dot={{ r: 4 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* MA002 charts — 桁の違いを見やすくするため新規入会/退会/休会は個別グラフに分割 */}
