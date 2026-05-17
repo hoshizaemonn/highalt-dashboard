@@ -325,21 +325,13 @@ export async function GET(request: NextRequest) {
     const prevPeriods = periods.map((p) => ({ year: p.year - 1, month: p.month }));
     const prevYears = [...new Set(prevPeriods.map((p) => p.year))];
 
-    const [
-      prevPayroll,
-      prevExpenses,
-      prevSales,
-      prevRevenue,
-      prevSquare,
-      prevMonthlySummary,
-    ] = await Promise.all([
-      prisma.payrollData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
-      prisma.expenseData.findMany({ where: { year: { in: prevYears }, isRevenue: 0, ...storeWhere } }),
-      prisma.salesDetail.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
-      prisma.revenueData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
-      prisma.squareSales.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
-      prisma.monthlySummary.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
-    ]);
+    // 接続プール枯渇を避けるため逐次取得（Promise.all はやめる）
+    const prevPayroll = await prisma.payrollData.findMany({ where: { year: { in: prevYears }, ...storeWhere } });
+    const prevExpenses = await prisma.expenseData.findMany({ where: { year: { in: prevYears }, isRevenue: 0, ...storeWhere } });
+    const prevSales = await prisma.salesDetail.findMany({ where: { year: { in: prevYears }, ...storeWhere } });
+    const prevRevenue = await prisma.revenueData.findMany({ where: { year: { in: prevYears }, ...storeWhere } });
+    const prevSquare = await prisma.squareSales.findMany({ where: { year: { in: prevYears }, ...storeWhere } });
+    const prevMonthlySummary = await prisma.monthlySummary.findMany({ where: { year: { in: prevYears }, ...storeWhere } });
 
     const isInPeriod = (y: number, m: number) =>
       prevPeriods.some((p) => p.year === y && p.month === m);
