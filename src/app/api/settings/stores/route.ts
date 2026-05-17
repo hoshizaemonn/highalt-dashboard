@@ -16,24 +16,23 @@ export async function GET() {
   const auth = await requireSession();
   if (auth.error) return auth.error;
 
-  const [salesStores, memberStores, payrollStores, summaryStores] = await Promise.all([
-    prisma.salesDetail.findMany({
-      select: { storeName: true },
-      distinct: ["storeName"],
-    }),
-    prisma.memberData.findMany({
-      select: { storeName: true },
-      distinct: ["storeName"],
-    }),
-    prisma.payrollData.findMany({
-      select: { storeName: true },
-      distinct: ["storeName"],
-    }),
-    prisma.monthlySummary.findMany({
-      select: { storeName: true },
-      distinct: ["storeName"],
-    }),
-  ]);
+  // 接続プール枯渇を避けるため逐次取得
+  const salesStores = await prisma.salesDetail.findMany({
+    select: { storeName: true },
+    distinct: ["storeName"],
+  });
+  const memberStores = await prisma.memberData.findMany({
+    select: { storeName: true },
+    distinct: ["storeName"],
+  });
+  const payrollStores = await prisma.payrollData.findMany({
+    select: { storeName: true },
+    distinct: ["storeName"],
+  });
+  const summaryStores = await prisma.monthlySummary.findMany({
+    select: { storeName: true },
+    distinct: ["storeName"],
+  });
 
   const dynamicSet = new Set<string>([...STORES]);
   for (const r of [...salesStores, ...memberStores, ...payrollStores, ...summaryStores]) {
