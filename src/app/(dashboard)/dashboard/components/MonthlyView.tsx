@@ -338,15 +338,19 @@ export default function MonthlyView({
             </ResponsiveContainer>
           </div>
 
-          {/* Sales category breakdown (if revenue data exists) */}
-          {Object.keys(data.revenue.by_category).length > 0 && (
+          {/* 売上カテゴリ内訳: 坪井さん要望#6 で4分類に統合
+              （会費=月会費+入会金 / パーソナル / 物販=Square / その他=スポット+体験+ロッカー他） */}
+          {(data.revenue.membership + data.revenue.personal + data.revenue.product + data.revenue.other) > 0 && (
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">売上カテゴリ内訳</p>
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart
-                  data={Object.entries(data.revenue.by_category)
-                    .sort(([, a], [, b]) => b - a)
-                    .map(([cat, amt]) => ({ name: cat, 金額: amt }))}
+                  data={[
+                    { name: "会費", 金額: data.revenue.membership },
+                    { name: "パーソナル", 金額: data.revenue.personal },
+                    { name: "物販", 金額: data.revenue.product },
+                    { name: "その他", 金額: data.revenue.other },
+                  ]}
                   layout="vertical"
                 >
                   <CartesianGrid strokeDasharray="3 3" />
