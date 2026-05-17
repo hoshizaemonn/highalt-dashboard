@@ -135,33 +135,23 @@ export async function POST(request: NextRequest) {
     // Delete + insert inside a transaction to prevent partial state
     const years = [...new Set(records.map((r) => r.year))];
 
-    const savedCount = await prisma.$transaction(async (tx) => {
+    // 接続プール枯渇を避けるため、upsertループ → createMany バッチに変更。
+    // 削除→一括insert で 1 + 1 + 1 = 3クエリ（旧: 1 + N + 1 = 191クエリ）。
+    await prisma.$transaction(async (tx) => {
       // Preserve manually-entered unit price budget across CSV re-uploads
-      for (const y of years) {
-        await tx.budgetData.deleteMany({
-          where: {
-            storeName: store,
-            year: y,
-            category: { not: BUDGET_CATEGORY_UNIT_PRICE },
-          },
-        });
-      }
+      await tx.budgetData.deleteMany({
+        where: {
+          storeName: store,
+          year: { in: years },
+          category: { not: BUDGET_CATEGORY_UNIT_PRICE },
+        },
+      });
 
-      let count = 0;
-      for (const rec of records) {
-        await tx.budgetData.upsert({
-          where: {
-            storeName_year_month_category: {
-              storeName: rec.storeName,
-              year: rec.year,
-              month: rec.month,
-              category: rec.category,
-            },
-          },
-          update: { amount: rec.amount },
-          create: rec,
+      if (records.length > 0) {
+        await tx.budgetData.createMany({
+          data: records,
+          skipDuplicates: true,
         });
-        count++;
       }
 
       await tx.uploadLog.create({
@@ -172,13 +162,13 @@ export async function POST(request: NextRequest) {
           storeName: store,
           year: fiscalYear,
           fileName: file.name,
-          recordCount: count,
+          recordCount: records.length,
           note: `${fiscalYear}年度 第${period || 9}期`,
         },
       });
 
-      return count;
-    });
+      return records.length;
+    }, { timeout: 30000 });
 
     return NextResponse.json({
       records: records.length,
