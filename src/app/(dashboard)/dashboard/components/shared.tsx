@@ -235,6 +235,10 @@ export interface MonthlyEntry {
   budget_suspensions: number;
   budget_cancellation_rate: number;
   budget_trial_count: number;
+  budget_sales_membership: number;
+  budget_sales_personal: number;
+  budget_sales_product: number;
+  budget_sales_other: number;
 }
 
 export interface PlanBreakdownEntry {
