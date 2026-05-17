@@ -166,39 +166,28 @@ export default function PeriodView({
                   const prev = annualData.previous_period_totals!;
                   const adv = chartData.reduce((s, d) => s + d.広告宣伝費, 0);
                   const sup = chartData.reduce((s, d) => s + d.消耗品費, 0);
-                  // 今期予算（合計）
-                  const budRevenue = monthly.reduce((s, m) => s + m.budget_revenue, 0);
-                  const budLabor = monthly.reduce((s, m) => s + m.budget_labor, 0);
-                  const budAdvertising = monthly.reduce((s, m) => s + m.budget_advertising, 0);
-                  const budSupplies = monthly.reduce((s, m) => s + m.budget_supplies, 0);
-                  const budProfit = monthly.reduce((s, m) => s + m.budget_profit, 0);
-                  const budMembership = monthly.reduce((s, m) => s + m.budget_membership_income, 0);
-                  const budMixed = monthly.reduce((s, m) => s + m.budget_mixed_revenue, 0);
 
                   const items = isAllStores
                     ? [
-                        { 項目: "売上", 前期: prev.revenue, 今期: totals.revenue, 予算: budRevenue },
-                        { 項目: "人件費", 前期: prev.labor, 今期: totals.labor, 予算: budLabor },
-                        { 項目: "広告宣伝費", 前期: prev.advertising, 今期: adv, 予算: budAdvertising },
-                        { 項目: "消耗品費", 前期: prev.supplies, 今期: sup, 予算: budSupplies },
-                        { 項目: "営業利益", 前期: prev.profit, 今期: totals.profit, 予算: budProfit },
+                        { 項目: "売上", 前期: prev.revenue, 今期: totals.revenue },
+                        { 項目: "人件費", 前期: prev.labor, 今期: totals.labor },
+                        { 項目: "広告宣伝費", 前期: prev.advertising, 今期: adv },
+                        { 項目: "消耗品費", 前期: prev.supplies, 今期: sup },
+                        { 項目: "営業利益", 前期: prev.profit, 今期: totals.profit },
                       ]
                     : [
-                        // 売上分類: 予算は「月会費収入」「パーソナル・物販・その他収入」のみ別立てなので
-                        // 会費 = 月会費収入予算、その他 = パーソナル・物販・その他収入予算（パーソナル/物販は予算上分離不可なので 0）
-                        { 項目: "会費", 前期: prev.sales_membership, 今期: chartData.reduce((s, d) => s + d.会費売上, 0), 予算: budMembership },
-                        { 項目: "パーソナル", 前期: prev.sales_personal, 今期: chartData.reduce((s, d) => s + d.パーソナル売上, 0), 予算: 0 },
-                        { 項目: "物販", 前期: prev.sales_product, 今期: chartData.reduce((s, d) => s + d.物販売上, 0), 予算: 0 },
-                        { 項目: "その他", 前期: prev.sales_other, 今期: chartData.reduce((s, d) => s + d.その他売上, 0), 予算: budMixed },
-                        { 項目: "人件費", 前期: prev.labor, 今期: totals.labor, 予算: budLabor },
-                        { 項目: "広告宣伝費", 前期: prev.advertising, 今期: adv, 予算: budAdvertising },
-                        { 項目: "消耗品費", 前期: prev.supplies, 今期: sup, 予算: budSupplies },
-                        { 項目: "営業利益", 前期: prev.profit, 今期: totals.profit, 予算: budProfit },
+                        { 項目: "会費", 前期: prev.sales_membership, 今期: chartData.reduce((s, d) => s + d.会費売上, 0) },
+                        { 項目: "パーソナル", 前期: prev.sales_personal, 今期: chartData.reduce((s, d) => s + d.パーソナル売上, 0) },
+                        { 項目: "物販", 前期: prev.sales_product, 今期: chartData.reduce((s, d) => s + d.物販売上, 0) },
+                        { 項目: "その他", 前期: prev.sales_other, 今期: chartData.reduce((s, d) => s + d.その他売上, 0) },
+                        { 項目: "人件費", 前期: prev.labor, 今期: totals.labor },
+                        { 項目: "広告宣伝費", 前期: prev.advertising, 今期: adv },
+                        { 項目: "消耗品費", 前期: prev.supplies, 今期: sup },
+                        { 項目: "営業利益", 前期: prev.profit, 今期: totals.profit },
                       ];
                   return items.map((d) => ({
                     ...d,
                     前年比: d.前期 > 0 ? ((d.今期 / d.前期) * 100).toFixed(1) + "%" : "-",
-                    予算比: d.予算 > 0 ? ((d.今期 / d.予算) * 100).toFixed(1) + "%" : "-",
                   }));
                 })()}
               >
@@ -207,15 +196,14 @@ export default function PeriodView({
                 <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                 <Tooltip
                   formatter={(value, name) => {
-                    if (name === "前年比" || name === "予算比") return [String(value), String(name)];
+                    if (name === "前年比") return [String(value), "前年比"];
                     return [formatYen(Number(value)), String(name)];
                   }}
                 />
                 <Legend />
-                {/* 前期=薄い色、今期=濃い色、予算=グレー破線風（坪井さん要望3） */}
+                {/* 前期=薄い色、今期=濃い色（坪井さん要望3） */}
                 <Bar dataKey="前期" fill="#BFDBFE" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="今期" fill="#1E40AF" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="予算" fill="#9CA3AF" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
             <p className="text-xs text-gray-400 mt-2">
