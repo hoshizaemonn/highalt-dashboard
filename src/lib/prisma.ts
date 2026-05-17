@@ -20,11 +20,16 @@ function createPrismaClient() {
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set");
   }
+  // Supabase Supavisor pooler port 5432 = session mode（max 15 接続上限）
+  // Vercel サーバーレスは関数インスタンスごとに pg Pool を持つため、
+  // インスタンス × max が Supavisor 上限を超えると EMAXCONNSESSION エラーになる。
+  // max を低めに抑えて、複数インスタンス同時起動でも上限内に収まるようにする。
   const pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    max: 10,
-    idleTimeoutMillis: 10000,
+    max: 3,
+    idleTimeoutMillis: 5000,
+    connectionTimeoutMillis: 10000,
   });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
