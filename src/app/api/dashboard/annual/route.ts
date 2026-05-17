@@ -51,6 +51,9 @@ interface MonthlyEntry {
   /** 経費の項目別予算（坪井さん要望: 各推移グラフに予算折れ線を重ねるため） */
   budget_advertising: number;
   budget_supplies: number;
+  /** 売上カテゴリ別予算（坪井さん要望: 前年比比較グラフに予算も追加） */
+  budget_membership_income: number;
+  budget_mixed_revenue: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -277,6 +280,8 @@ export async function GET(request: NextRequest) {
       const budgetUnitPrice = budgetMap[BUDGET_CATEGORY_UNIT_PRICE] ?? 0;
       const budgetAdvertising = budgetMap["広告宣伝費"] ?? 0;
       const budgetSupplies = budgetMap["消耗品費"] ?? 0;
+      const budgetMembershipIncome = budgetMap["月会費収入"] ?? 0;
+      const budgetMixedRevenue = budgetMap["パーソナル・物販・その他収入"] ?? 0;
 
       return {
         month: m,
@@ -316,6 +321,8 @@ export async function GET(request: NextRequest) {
         budget_unit_price: budgetUnitPrice,
         budget_advertising: budgetAdvertising,
         budget_supplies: budgetSupplies,
+        budget_membership_income: budgetMembershipIncome,
+        budget_mixed_revenue: budgetMixedRevenue,
       };
     });
 

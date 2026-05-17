@@ -228,6 +228,8 @@ export interface MonthlyEntry {
   budget_unit_price: number;
   budget_advertising: number;
   budget_supplies: number;
+  budget_membership_income: number;
+  budget_mixed_revenue: number;
 }
 
 export interface PlanBreakdownEntry {
