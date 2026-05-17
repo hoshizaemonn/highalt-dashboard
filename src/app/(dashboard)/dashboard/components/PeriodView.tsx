@@ -113,6 +113,11 @@ export default function PeriodView({
           休会数予算: m.budget_suspensions,
           退会率予算: m.budget_cancellation_rate,
           体験者数予算: m.budget_trial_count,
+          // 売上4分類の予算
+          会費売上予算: m.budget_sales_membership,
+          パーソナル売上予算: m.budget_sales_personal,
+          物販売上予算: m.budget_sales_product,
+          その他売上予算: m.budget_sales_other,
         };
       }),
     [monthly],
@@ -323,49 +328,57 @@ export default function PeriodView({
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">会費売上推移</p>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={chartData}>
+                <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" fontSize={11} />
                   <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="会費売上" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
-                </BarChart>
+                  <Line type="monotone" dataKey="会費売上予算" name="会費売上予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">パーソナル売上推移</p>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={chartData}>
+                <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" fontSize={11} />
                   <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="パーソナル売上" fill={COLORS.teal} radius={[4, 4, 0, 0]} />
-                </BarChart>
+                  <Line type="monotone" dataKey="パーソナル売上予算" name="パーソナル売上予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">物販売上推移</p>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={chartData}>
+                <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" fontSize={11} />
                   <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="物販売上" fill={COLORS.orange} radius={[4, 4, 0, 0]} />
-                </BarChart>
+                  <Line type="monotone" dataKey="物販売上予算" name="物販売上予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">その他売上推移</p>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={chartData}>
+                <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" fontSize={11} />
                   <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="その他売上" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
-                </BarChart>
+                  <Line type="monotone" dataKey="その他売上予算" name="その他売上予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>

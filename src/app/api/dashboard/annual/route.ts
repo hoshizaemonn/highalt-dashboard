@@ -60,6 +60,11 @@ interface MonthlyEntry {
   budget_suspensions: number;
   budget_cancellation_rate: number;
   budget_trial_count: number;
+  /** 売上4分類の各予算（坪井さん要望: 売上内訳推移にも予算折れ線重ね） */
+  budget_sales_membership: number;
+  budget_sales_personal: number;
+  budget_sales_product: number;
+  budget_sales_other: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -299,6 +304,23 @@ export async function GET(request: NextRequest) {
         budgetMap["退会率"] ?? 0; // 例: 8 = 8%
       const budgetTrialCount =
         budgetMap["体験者数"] ?? budgetMap["新規体験者数"] ?? 0;
+      // 売上4分類の予算（複数キー候補対応。CSV予算カテゴリの呼び方差異を吸収）
+      const budgetSalesMembership =
+        budgetMap["会費売上"] ??
+        budgetMap["会費収入"] ??
+        budgetMap["月会費収入"] ??
+        0;
+      const budgetSalesPersonal =
+        budgetMap["パーソナル売上"] ??
+        budgetMap["パーソナル収入"] ??
+        0;
+      const budgetSalesProduct =
+        budgetMap["物販売上"] ?? budgetMap["物販収入"] ?? 0;
+      const budgetSalesOther =
+        budgetMap["その他売上"] ??
+        budgetMap["その他収入"] ??
+        budgetMap["パーソナル・物販・その他収入"] ??
+        0;
 
       return {
         month: m,
@@ -345,6 +367,10 @@ export async function GET(request: NextRequest) {
         budget_suspensions: budgetSuspensions,
         budget_cancellation_rate: budgetCancellationRate,
         budget_trial_count: budgetTrialCount,
+        budget_sales_membership: budgetSalesMembership,
+        budget_sales_personal: budgetSalesPersonal,
+        budget_sales_product: budgetSalesProduct,
+        budget_sales_other: budgetSalesOther,
       };
     });
 
