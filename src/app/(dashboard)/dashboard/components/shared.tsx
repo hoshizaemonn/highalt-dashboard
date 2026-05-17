@@ -230,6 +230,11 @@ export interface MonthlyEntry {
   budget_supplies: number;
   budget_membership_income: number;
   budget_mixed_revenue: number;
+  budget_new_signups: number;
+  budget_cancellations: number;
+  budget_suspensions: number;
+  budget_cancellation_rate: number;
+  budget_trial_count: number;
 }
 
 export interface PlanBreakdownEntry {

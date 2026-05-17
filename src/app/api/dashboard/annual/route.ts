@@ -54,6 +54,12 @@ interface MonthlyEntry {
   /** 売上カテゴリ別予算（坪井さん要望: 前年比比較グラフに予算も追加） */
   budget_membership_income: number;
   budget_mixed_revenue: number;
+  /** 会員系KPIの予算（坪井さん要望: 推移グラフに予算折れ線重ね） */
+  budget_new_signups: number;
+  budget_cancellations: number;
+  budget_suspensions: number;
+  budget_cancellation_rate: number;
+  budget_trial_count: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -282,6 +288,17 @@ export async function GET(request: NextRequest) {
       const budgetSupplies = budgetMap["消耗品費"] ?? 0;
       const budgetMembershipIncome = budgetMap["月会費収入"] ?? 0;
       const budgetMixedRevenue = budgetMap["パーソナル・物販・その他収入"] ?? 0;
+      // 会員系予算（複数のキー名候補をチェック、CSV提供されたら自動反映）
+      const budgetNewSignups =
+        budgetMap["新規入会数"] ?? budgetMap["新規入会"] ?? 0;
+      const budgetCancellations =
+        budgetMap["退会数"] ?? budgetMap["退会"] ?? 0;
+      const budgetSuspensions =
+        budgetMap["休会数"] ?? budgetMap["休会"] ?? 0;
+      const budgetCancellationRate =
+        budgetMap["退会率"] ?? 0; // 例: 8 = 8%
+      const budgetTrialCount =
+        budgetMap["体験者数"] ?? budgetMap["新規体験者数"] ?? 0;
 
       return {
         month: m,
@@ -323,6 +340,11 @@ export async function GET(request: NextRequest) {
         budget_supplies: budgetSupplies,
         budget_membership_income: budgetMembershipIncome,
         budget_mixed_revenue: budgetMixedRevenue,
+        budget_new_signups: budgetNewSignups,
+        budget_cancellations: budgetCancellations,
+        budget_suspensions: budgetSuspensions,
+        budget_cancellation_rate: budgetCancellationRate,
+        budget_trial_count: budgetTrialCount,
       };
     });
 
