@@ -107,6 +107,12 @@ export default function PeriodView({
           体験者数: m.trial_count,
           // 入会率 = 新規入会数 ÷ 体験者数（体験から会員化した割合、坪井さん要望#10）
           入会率: m.trial_count > 0 ? (m.ma_new_signups / m.trial_count) * 100 : 0,
+          // 会員系予算（坪井さん要望: 推移グラフに予算折れ線重ね）
+          新規入会数予算: m.budget_new_signups,
+          退会数予算: m.budget_cancellations,
+          休会数予算: m.budget_suspensions,
+          退会率予算: m.budget_cancellation_rate,
+          体験者数予算: m.budget_trial_count,
         };
       }),
     [monthly],
@@ -473,13 +479,15 @@ export default function PeriodView({
             </span>
           </p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
               <YAxis fontSize={11} allowDecimals={false} unit="人" />
               <Tooltip content={<MemberTooltip />} />
               <Bar dataKey="体験者数" fill={COLORS.teal} radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Line type="monotone" dataKey="体験者数予算" name="体験者数予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
         {/* 入会率 推移（新規入会÷体験者数、坪井さん要望#10） */}
@@ -496,7 +504,7 @@ export default function PeriodView({
               <XAxis dataKey="name" fontSize={11} />
               <YAxis unit="%" fontSize={11} />
               <Tooltip
-                formatter={(value) => [`${Number(value).toFixed(1)}%`, "入会率"]}
+                formatter={(value, name) => [`${Number(value).toFixed(1)}%`, String(name)]}
               />
               <Line
                 type="monotone"
@@ -515,37 +523,43 @@ export default function PeriodView({
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">新規入会数 推移</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
               <YAxis fontSize={11} allowDecimals={false} unit="人" />
               <Tooltip content={<MemberTooltip />} />
               <Bar dataKey="新規入会数" fill={COLORS.green} radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Line type="monotone" dataKey="新規入会数予算" name="新規入会数予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">休会数 推移</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
               <YAxis fontSize={11} allowDecimals={false} unit="人" />
               <Tooltip content={<MemberTooltip />} />
               <Bar dataKey="休会数" fill={COLORS.gray} radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Line type="monotone" dataKey="休会数予算" name="休会数予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">退会数 推移</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
               <YAxis fontSize={11} allowDecimals={false} unit="人" />
               <Tooltip content={<MemberTooltip />} />
               <Bar dataKey="退会数" fill={COLORS.red} radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Line type="monotone" dataKey="退会数予算" name="退会数予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
         <div className="bg-white rounded-lg border shadow-sm p-4">
@@ -556,7 +570,7 @@ export default function PeriodView({
               <XAxis dataKey="name" fontSize={11} />
               <YAxis unit="%" fontSize={11} />
               <Tooltip
-                formatter={(value) => [`${Number(value).toFixed(1)}%`, "退会率"]}
+                formatter={(value, name) => [`${Number(value).toFixed(1)}%`, String(name)]}
               />
               <Line
                 type="monotone"
@@ -565,7 +579,8 @@ export default function PeriodView({
                 strokeWidth={2}
                 dot={{ r: 4 }}
               />
-            </LineChart>
+              <Line type="monotone" dataKey="退会率予算" name="退会率予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
           </ResponsiveContainer>
         </div>
         {/* 客単価推移（坪井さん要望: 月会費売上÷プラン契約者数、予算折れ線重ね） */}
@@ -576,11 +591,16 @@ export default function PeriodView({
               <span className="text-xs text-gray-400 font-normal">（月会費売上 ÷ プラン契約者数）</span>
             </span>
           </p>
-          <ResponsiveContainer width="100%" height={220}>
-            <ComposedChart data={chartData}>
+          <ResponsiveContainer width="100%" height={260}>
+            <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
-              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              {/* Y軸の上限に余裕を持たせる（坪井さん指摘: ギリギリで見づらかった） */}
+              <YAxis
+                tickFormatter={(v: number) => formatCompact(v)}
+                fontSize={11}
+                domain={[0, (dataMax: number) => Math.ceil((dataMax * 1.2) / 1000) * 1000]}
+              />
               <Tooltip
                 formatter={(value, name) => [formatYen(Number(value)), String(name)]}
               />
