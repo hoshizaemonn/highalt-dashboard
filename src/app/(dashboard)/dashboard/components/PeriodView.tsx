@@ -581,6 +581,7 @@ export default function PeriodView({
               />
               <Line type="monotone" dataKey="退会率予算" name="退会率予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
         {/* 客単価推移（坪井さん要望: 月会費売上÷プラン契約者数、予算折れ線重ね） */}
