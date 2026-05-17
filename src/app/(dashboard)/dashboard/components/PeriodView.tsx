@@ -228,11 +228,12 @@ export default function PeriodView({
                 type="monotone"
                 dataKey="売上予算"
                 name="売上予算"
-                stroke="#9CA3AF"
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={false}
+                stroke="#374151"
+                strokeWidth={2.5}
+                strokeDasharray="6 4"
+                dot={{ r: 3, fill: "#374151" }}
               />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -378,7 +379,8 @@ export default function PeriodView({
               <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="人件費" fill={COLORS.red} radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="人件費予算" name="人件費予算" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="人件費予算" name="人件費予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -391,7 +393,8 @@ export default function PeriodView({
               <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="広告宣伝費" fill={COLORS.orange} radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="広告宣伝費予算" name="広告宣伝費予算" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="広告宣伝費予算" name="広告宣伝費予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -404,7 +407,8 @@ export default function PeriodView({
               <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="消耗品費" fill={COLORS.teal} radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="消耗品費予算" name="消耗品費予算" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="消耗品費予算" name="消耗品費予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -421,7 +425,8 @@ export default function PeriodView({
                   <Cell key={i} fill={d.営業利益 >= 0 ? COLORS.green : COLORS.red} />
                 ))}
               </Bar>
-              <Line type="monotone" dataKey="営業利益予算" name="営業利益予算" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="営業利益予算" name="営業利益予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -579,7 +584,8 @@ export default function PeriodView({
                 formatter={(value, name) => [formatYen(Number(value)), String(name)]}
               />
               <Bar dataKey="客単価" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="客単価予算" name="客単価予算" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="客単価予算" name="客単価予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
