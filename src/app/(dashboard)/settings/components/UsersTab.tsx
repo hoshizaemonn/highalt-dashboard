@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-// ─── Constants (duplicated client-side to avoid server import) ──────
-const STORES = [
+// ─── Constants (fallback; 実際には API から動的取得、坪井さん要望17) ──────
+const FALLBACK_STORES = [
   "東日本橋",
   "春日",
   "船橋",
@@ -13,7 +13,6 @@ const STORES = [
   "中目黒",
 ];
 const HQ_STORE = "本部（除外）";
-const ALL_STORES = [...STORES, HQ_STORE];
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -44,7 +43,21 @@ export default function UsersTab() {
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
-  const [newStoreName, setNewStoreName] = useState(STORES[0]);
+  const [newStoreName, setNewStoreName] = useState(FALLBACK_STORES[0]);
+
+  // 動的店舗リスト（坪井さん要望17）。API失敗時は固定リストにフォールバック
+  const [allStores, setAllStores] = useState<string[]>([
+    ...FALLBACK_STORES,
+    HQ_STORE,
+  ]);
+  useEffect(() => {
+    fetch("/api/settings/stores")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.stores?.length) setAllStores([...d.stores, HQ_STORE]);
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -119,7 +132,7 @@ export default function UsersTab() {
         setNewUsername("");
         setNewPassword("");
         setNewDisplayName("");
-        setNewStoreName(STORES[0]);
+        setNewStoreName(FALLBACK_STORES[0]);
         await fetchData();
         setMessage("ユーザーを作成しました");
       }
@@ -307,7 +320,11 @@ export default function UsersTab() {
           {/* Add store manager */}
           <div className="mt-6 border-t border-gray-200 pt-4">
             <p className="text-sm font-medium text-gray-700 mb-3">
-              店舗マネージャーを追加
+              社員アカウントを追加
+            </p>
+            <p className="text-xs text-gray-500 mb-3">
+              社員ごとに個別のログインアカウントを作成できます。同じ店舗に複数の社員アカウントを紐づけても OK
+              （坪井さん要望: 店舗単位ではなく社員単位の権限管理）。
             </p>
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-3">
@@ -337,7 +354,7 @@ export default function UsersTab() {
                   onChange={(e) => setNewStoreName(e.target.value)}
                   className="border border-gray-300 rounded px-2 py-2 text-sm"
                 >
-                  {ALL_STORES.map((s) => (
+                  {allStores.map((s) => (
                     <option key={s} value={s}>
                       {s}
                     </option>

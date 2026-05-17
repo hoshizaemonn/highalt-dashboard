@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { STORES } from "@/lib/constants";
 import { PERIOD_OPTIONS, HelpHint } from "./shared";
 
-const STORE_OPTIONS = [...STORES, "全体"] as const;
+const FALLBACK_STORE_OPTIONS = [...STORES, "全体"];
 
 // 会計年度（10月始まり）→ 期数（社内では「8期」「9期」と呼んでいる）の換算。
 // ハイアルチの起算年: 2018/10 = 1期。決算年（fiscalYear）に対し
@@ -33,6 +34,20 @@ export default function PeriodSelector({
   onPeriodChange,
   onStoreChange,
 }: PeriodSelectorProps) {
+  // 動的な店舗リストを API から取得（坪井さん要望17: ハコモノ店舗自動追加）。
+  // 失敗時は固定リストにフォールバック。
+  const [storeOptions, setStoreOptions] = useState<string[]>(FALLBACK_STORE_OPTIONS);
+  useEffect(() => {
+    fetch("/api/settings/stores")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.stores?.length) {
+          setStoreOptions([...d.stores, "全体"]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="grid grid-cols-3 gap-4 mb-6">
       <div className="relative">
@@ -76,7 +91,7 @@ export default function PeriodSelector({
           className="w-full border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
           style={{ WebkitAppearance: "menulist" }}
         >
-          {STORE_OPTIONS.map((s) => (
+          {storeOptions.map((s) => (
             <option key={s} value={s}>
               {s}
             </option>
