@@ -342,6 +342,7 @@ const TAB_DATATYPES: Record<string, string[]> = {
   "amazon-expense": ["amazon"],
   "paypay-expense": ["expense"],
   budget: ["budget"],
+  enquete: ["hacomono_enquete_answer"],
 };
 
 export function UploadHistory({ filterTab }: { filterTab?: string }) {

@@ -421,3 +421,32 @@ model ManualOtherSalesItem {
   @@index([year, month, storeName])
   @@map("manual_other_sales_item")
 }
+
+// ─── アンケート回答（hacomono enquete_answer 由来） ─────────
+// 体験・入会アンケートを取り込み、ダッシュボードで認知経路/目的/頻度を集計する。
+// 設問・選択肢は CSV のヘッダから動的に検出し、3カテゴリに正規化して格納する。
+// 退会アンケートは取り込まない（坪井さん要望: 入会・体験のみ）。
+model EnqueteAnswer {
+  id                Int      @id @default(autoincrement())
+  enqueteCode       String   @map("enquete_code")
+  enqueteName       String?  @map("enquete_name")
+  scene             String?
+  storeName         String?  @map("store_name")
+  registeredAt      String?  @map("registered_at")
+  memberId          String   @map("member_id")
+  gender            String?
+  birthdate         String?
+  age               Int?
+  /** 認知経路（複数選択をカンマ区切りで保持） */
+  awarenessChannels String?  @map("awareness_channels")
+  /** 目的・達成したいこと */
+  purposes          String?
+  /** 現在の運動頻度（単一選択） */
+  exerciseFrequency String?  @map("exercise_frequency")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([enqueteCode])
+  @@index([storeName])
+  @@index([memberId])
+  @@map("enquete_answer")
+}
