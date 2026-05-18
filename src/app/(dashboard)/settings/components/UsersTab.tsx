@@ -25,6 +25,13 @@ interface UserRow {
   createdAt: string;
 }
 
+interface Employee {
+  employeeId: string;
+  employeeName: string;
+  storeName: string;
+  contractType: string | null;
+}
+
 // ─── Component ──────────────────────────────────────────────────────
 
 export default function UsersTab() {
@@ -55,6 +62,17 @@ export default function UsersTab() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d?.stores?.length) setAllStores([...d.stores, HQ_STORE]);
+      })
+      .catch(() => {});
+  }, []);
+
+  // 社員マスタ（人件費CSV由来）。ユーザー名プルダウンに使用
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  useEffect(() => {
+    fetch("/api/settings/employees")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.employees) setEmployees(d.employees);
       })
       .catch(() => {});
   }, []);
@@ -323,18 +341,38 @@ export default function UsersTab() {
               社員アカウントを追加
             </p>
             <p className="text-xs text-gray-500 mb-3">
-              社員ごとに個別のログインアカウントを作成できます。同じ店舗に複数の社員アカウントを紐づけても OK
-              （坪井さん要望: 店舗単位ではなく社員単位の権限管理）。
+              社員ごとに個別のログインアカウントを作成できます。ユーザー名は人件費CSV取込済の社員からプルダウンで選択。
+              同じ店舗に複数の社員アカウントを紐づけても OK（坪井さん要望: 店舗単位ではなく社員単位の権限管理）。
             </p>
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-3">
-                <input
-                  type="text"
-                  placeholder="ユーザー名"
+                <select
                   value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                  className="border border-gray-300 rounded px-3 py-2 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
-                />
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewUsername(val);
+                    // 社員選択時、表示名と担当店舗を自動入力
+                    const emp = employees.find((x) => x.employeeId === val);
+                    if (emp) {
+                      setNewDisplayName(emp.employeeName);
+                      if (allStores.includes(emp.storeName)) {
+                        setNewStoreName(emp.storeName);
+                      }
+                    }
+                  }}
+                  className="border border-gray-300 rounded px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+                >
+                  <option value="">
+                    {employees.length === 0
+                      ? "社員データ未取込（人件費CSVを先にアップロード）"
+                      : "ユーザー名（社員）を選択"}
+                  </option>
+                  {employees.map((emp) => (
+                    <option key={emp.employeeId} value={emp.employeeId}>
+                      {emp.storeName} / {emp.employeeName}（{emp.employeeId}）
+                    </option>
+                  ))}
+                </select>
                 <input
                   type="password"
                   placeholder="パスワード"
