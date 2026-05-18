@@ -51,8 +51,8 @@ export default function UsersTab() {
   const [newPassword, setNewPassword] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
   const [newStoreName, setNewStoreName] = useState(FALLBACK_STORES[0]);
-  // 新規作成時、社員選択時にユーザー名へ社員名/社員IDのどちらを使うか
-  const [usernameMode, setUsernameMode] = useState<"name" | "id">("name");
+  // プルダウン表示用の選択中社員ID（newUsername は社員名で保存される）
+  const [selectedEmpId, setSelectedEmpId] = useState("");
 
   // 動的店舗リスト（坪井さん要望17）。API失敗時は固定リストにフォールバック
   const [allStores, setAllStores] = useState<string[]>([
@@ -150,6 +150,7 @@ export default function UsersTab() {
         setMessage(data.error || "作成に失敗しました");
       } else {
         setNewUsername("");
+        setSelectedEmpId("");
         setNewPassword("");
         setNewDisplayName("");
         setNewStoreName(FALLBACK_STORES[0]);
@@ -344,23 +345,20 @@ export default function UsersTab() {
             </p>
             <p className="text-xs text-gray-500 mb-3">
               社員ごとに個別のログインアカウントを作成できます。ユーザー名は人件費CSV取込済の社員からプルダウンで選択。
-              ユーザー名の形式は社員ID / 社員名から選べます（ログインは ID / 社員名 どちらでも可）。
-              同じ店舗に複数の社員アカウントを紐づけても OK（坪井さん要望: 店舗単位ではなく社員単位の権限管理）。
+              ログインは社員名・社員IDのどちらでも可能（坪井さん要望: 店舗単位ではなく社員単位の権限管理）。
             </p>
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-3">
                 <select
-                  value={newUsername}
+                  value={selectedEmpId}
                   onChange={(e) => {
-                    const val = e.target.value;
-                    // 値はカンマ区切りで "employeeId,employeeName" を運び、
-                    // どちらをユーザー名に採用するかは下のトグルで決める
-                    const [empId] = val.split("|");
+                    const empId = e.target.value;
+                    setSelectedEmpId(empId);
                     const emp = employees.find((x) => x.employeeId === empId);
                     if (emp) {
-                      // デフォルトは社員名でユーザー名を作成
-                      const useName = usernameMode !== "id";
-                      setNewUsername(useName ? emp.employeeName : emp.employeeId);
+                      // ユーザー名は社員名で保存。社員IDでのログインは
+                      // ログインAPI側で PayrollData 経由で逆引き対応する。
+                      setNewUsername(emp.employeeName);
                       setNewDisplayName(emp.employeeName);
                       if (allStores.includes(emp.storeName)) {
                         setNewStoreName(emp.storeName);
@@ -382,29 +380,6 @@ export default function UsersTab() {
                     </option>
                   ))}
                 </select>
-                <label className="flex items-center gap-1 text-xs text-gray-600">
-                  <span>ユーザー名形式:</span>
-                  <select
-                    value={usernameMode}
-                    onChange={(e) => {
-                      const mode = e.target.value as "name" | "id";
-                      setUsernameMode(mode);
-                      // 現在選択中の社員を見つけて再設定
-                      const emp = employees.find(
-                        (x) =>
-                          x.employeeId === newUsername ||
-                          x.employeeName === newUsername,
-                      );
-                      if (emp) {
-                        setNewUsername(mode === "name" ? emp.employeeName : emp.employeeId);
-                      }
-                    }}
-                    className="border border-gray-300 rounded px-2 py-1 text-xs"
-                  >
-                    <option value="name">社員名</option>
-                    <option value="id">社員ID</option>
-                  </select>
-                </label>
                 <input
                   type="password"
                   placeholder="パスワード"

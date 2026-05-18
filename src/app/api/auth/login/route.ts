@@ -37,9 +37,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // ① username 一致を優先、② 無ければ displayName 一致を探す
-    //   （坪井さん要望: 社員ID / 社員名 のどちらでもログインできるように）
-    //   displayName 一致が複数ある場合は曖昧なので失敗扱い
+    // 坪井さん要望: 社員ID / 社員名 のどちらでもログインできるように。
+    // ① username 完全一致
+    // ② 無ければ displayName 完全一致
+    // ③ 無ければ 入力を社員ID とみなして PayrollData から社員名を逆引き、
+    //    その社員名で username または displayName 一致を探す
+    // いずれも一意でない場合は安全側で失敗扱い
     let user = await prisma.user.findUnique({
       where: { username },
     });
@@ -49,6 +52,29 @@ export async function POST(request: Request) {
         take: 2,
       });
       if (byDisplay.length === 1) user = byDisplay[0];
+    }
+    if (!user) {
+      // 社員IDとして逆引き
+      const payroll = await prisma.payrollData.findFirst({
+        where: { employeeId: username },
+        select: { employeeName: true },
+        orderBy: [{ year: "desc" }, { month: "desc" }],
+      });
+      const empName = payroll?.employeeName;
+      if (empName) {
+        const byUsername = await prisma.user.findUnique({
+          where: { username: empName },
+        });
+        if (byUsername) {
+          user = byUsername;
+        } else {
+          const byDisp = await prisma.user.findMany({
+            where: { displayName: empName },
+            take: 2,
+          });
+          if (byDisp.length === 1) user = byDisp[0];
+        }
+      }
     }
 
     if (!user) {
