@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
+import { trialDateMonthWhere } from "@/lib/csv-utils";
 
 /**
  * 店長手動追記（坪井さん要望）
@@ -32,9 +33,10 @@ export async function GET(request: NextRequest) {
     where: { year_month_storeName: { year, month, storeName: store } },
   });
 
-  // hacomono 自動算出（had_trial=1）も返して、UIで「自動: N」と表示できるように
+  // hacomono ML001 から自動算出。ML001 は時点スナップショットのため、
+  // trialDate / firstTrialDate が指定年月にマッチする会員数をカウントする。
   const autoTrialCount = await prisma.memberData.count({
-    where: { year, month, storeName: store, hadTrial: 1 },
+    where: { storeName: store, ...trialDateMonthWhere(year, month) },
   });
 
   return NextResponse.json({

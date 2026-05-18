@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE } from "@/lib/constants";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
+import { trialDateMonthWhere } from "@/lib/csv-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -174,10 +175,26 @@ export async function GET(request: NextRequest) {
     const manualOtherSales = manualRows.reduce((s, r) => s + r.otherSalesAmount, 0);
 
     // 体験者数の自動算出（坪井さん要望: hacomono CSV由来で自動、手動で上書き可）
-    // member_data の had_trial=1 をカウント
-    const autoTrialCount = await prisma.memberData.count({
-      where: { ...manualWhere, hadTrial: 1 },
-    });
+    // ML001 は時点スナップショットのため、年月別フィルタは trialDate / firstTrialDate を
+    // 直接照合する（"YYYY/MM/" or "YYYY-MM-" で始まる文字列）。
+    const memberStoreFilter = store && store !== "全体"
+      ? { storeName: store }
+      : { storeName: { not: HQ_STORE } };
+    const autoTrialCount = month !== undefined
+      ? await prisma.memberData.count({
+          where: { ...memberStoreFilter, ...trialDateMonthWhere(year, month) },
+        })
+      : await prisma.memberData.count({
+          where: {
+            ...memberStoreFilter,
+            OR: [
+              { trialDate: { startsWith: `${year}/` } },
+              { trialDate: { startsWith: `${year}-` } },
+              { firstTrialDate: { startsWith: `${year}/` } },
+              { firstTrialDate: { startsWith: `${year}-` } },
+            ],
+          },
+        });
     // 手動入力があればそれを使う、無ければ自動
     const effectiveTrialCount = manualTrial > 0 ? manualTrial : autoTrialCount;
 

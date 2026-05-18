@@ -166,6 +166,41 @@ export function isInMonth(
 }
 
 /**
+ * trialDate / firstTrialDate（"YYYY/MM/DD HH:MM:SS" or "YYYY-MM-DD ..." 形式）
+ * が指定年月にマッチするかを判定する Prisma where 句を返す。
+ * ML001 は時点スナップショットなので、月別の体験者数は trialDate を直接照合する。
+ */
+export function trialDateMonthWhere(year: number, month: number) {
+  const mm = String(month).padStart(2, "0");
+  return {
+    OR: [
+      { trialDate: { startsWith: `${year}/${mm}/` } },
+      { trialDate: { startsWith: `${year}-${mm}-` } },
+      { firstTrialDate: { startsWith: `${year}/${mm}/` } },
+      { firstTrialDate: { startsWith: `${year}-${mm}-` } },
+    ],
+  };
+}
+
+/**
+ * trialDate / firstTrialDate 文字列が指定年月に該当するかをJS側で判定する。
+ * annual ルートなど、findManyで全件取得して年月別に集計する箇所で使う。
+ */
+export function trialDateMatchesMonth(
+  trialDate: string | null,
+  firstTrialDate: string | null,
+  year: number,
+  month: number,
+): boolean {
+  const mm = String(month).padStart(2, "0");
+  const prefixes = [`${year}/${mm}/`, `${year}-${mm}-`];
+  if (trialDate && prefixes.some((p) => trialDate.startsWith(p))) return true;
+  if (firstTrialDate && prefixes.some((p) => firstTrialDate.startsWith(p)))
+    return true;
+  return false;
+}
+
+/**
  * Detect year/month from a filename pattern like "2026年02月" or "202602".
  */
 export function detectYearMonthFromFilename(
