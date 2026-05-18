@@ -37,9 +37,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await prisma.user.findUnique({
+    // ① username 一致を優先、② 無ければ displayName 一致を探す
+    //   （坪井さん要望: 社員ID / 社員名 のどちらでもログインできるように）
+    //   displayName 一致が複数ある場合は曖昧なので失敗扱い
+    let user = await prisma.user.findUnique({
       where: { username },
     });
+    if (!user) {
+      const byDisplay = await prisma.user.findMany({
+        where: { displayName: username },
+        take: 2,
+      });
+      if (byDisplay.length === 1) user = byDisplay[0];
+    }
 
     if (!user) {
       recordFailedAttempt(ip);
