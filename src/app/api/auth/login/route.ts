@@ -38,11 +38,16 @@ export async function POST(request: Request) {
     }
 
     // 坪井さん要望: 社員ID / 社員名 のどちらでもログインできるように。
+    // さらに半角/全角スペースの有無に揺れがあってもログインできるよう、
+    // 名前比較時は全空白を除いて正規化する。
     // ① username 完全一致
     // ② 無ければ displayName 完全一致
-    // ③ 無ければ 入力を社員ID とみなして PayrollData から社員名を逆引き、
-    //    その社員名で username または displayName 一致を探す
-    // いずれも一意でない場合は安全側で失敗扱い
+    // ③ 無ければ 入力を社員IDとみなして PayrollData から社員名を逆引き
+    // ④ 無ければ 全ユーザを正規化比較（スペース揺れ吸収）
+    const normalize = (s: string | null | undefined) =>
+      (s ?? "").replace(/[\s　]+/g, "");
+    const normalizedInput = normalize(username);
+
     let user = await prisma.user.findUnique({
       where: { username },
     });
@@ -54,7 +59,7 @@ export async function POST(request: Request) {
       if (byDisplay.length === 1) user = byDisplay[0];
     }
     if (!user) {
-      // 社員IDとして逆引き
+      // 社員IDとして逆引き（PayrollDataにスペースは入らない想定だが念のため正規化）
       const payroll = await prisma.payrollData.findFirst({
         where: { employeeId: username },
         select: { employeeName: true },
@@ -74,6 +79,58 @@ export async function POST(request: Request) {
           });
           if (byDisp.length === 1) user = byDisp[0];
         }
+      }
+    }
+    if (!user && normalizedInput.length > 0) {
+      // スペース揺れ吸収: 全ユーザを取って正規化比較
+      const candidates = await prisma.user.findMany({
+        select: {
+          id: true,
+          username: true,
+          password: true,
+          role: true,
+          storeName: true,
+          displayName: true,
+        },
+      });
+      const matches = candidates.filter(
+        (u) =>
+          normalize(u.username) === normalizedInput ||
+          normalize(u.displayName) === normalizedInput,
+      );
+      if (matches.length === 1) user = matches[0];
+    }
+    if (!user && normalizedInput.length > 0) {
+      // 社員IDで逆引きした社員名のスペース揺れも吸収
+      const payrolls = await prisma.payrollData.findMany({
+        select: { employeeName: true },
+        distinct: ["employeeName"],
+      });
+      const empMatches = payrolls
+        .map((p) => p.employeeName)
+        .filter(
+          (name): name is string =>
+            !!name && normalize(name) === normalizedInput,
+        );
+      if (empMatches.length === 1) {
+        const empName = empMatches[0];
+        const candidates = await prisma.user.findMany({
+          select: {
+            id: true,
+            username: true,
+            password: true,
+            role: true,
+            storeName: true,
+            displayName: true,
+          },
+        });
+        const norm = normalize(empName);
+        const matches = candidates.filter(
+          (u) =>
+            normalize(u.username) === norm ||
+            normalize(u.displayName) === norm,
+        );
+        if (matches.length === 1) user = matches[0];
       }
     }
 
