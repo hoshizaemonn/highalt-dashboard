@@ -16,7 +16,13 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────
 
-type DetectedType = "ml001" | "pl001" | "ma002" | "ps001" | "unknown";
+type DetectedType =
+  | "ml001"
+  | "pl001"
+  | "ma002"
+  | "ps001"
+  | "enquete_answer"
+  | "unknown";
 
 interface DetectedFile {
   file: File;
@@ -34,12 +40,15 @@ const TYPE_LABEL: Record<DetectedType, string> = {
   pl001: "売上明細 (PL001)",
   ma002: "月次サマリ (MA002)",
   ps001: "商品別売上 (PS001)",
+  enquete_answer: "アンケート回答",
   unknown: "不明",
 };
 
 // 1) ファイル名のパターンから種別を推測（hacomono 出力のデフォルトファイル名は
 //    `*_ML001_*.csv` 等の規則性があるため、まずここで判定する）
 function detectFromFilename(name: string): DetectedType {
+  const lower = name.toLowerCase();
+  if (lower.includes("enquete_answer")) return "enquete_answer";
   const upper = name.toUpperCase();
   if (upper.includes("PS001")) return "ps001";
   if (upper.includes("ML001")) return "ml001";
@@ -72,6 +81,12 @@ async function detectFromHeader(file: File): Promise<DetectedType> {
   const firstLine = text.split(/\r?\n/, 1)[0] || "";
 
   if (firstLine.includes("商品コード") && firstLine.includes("商品名")) return "ps001";
+  // アンケート回答 CSV: 「コード」「利用シーン」「メンバー_ID」 が同居する
+  if (
+    firstLine.includes("利用シーン") &&
+    firstLine.includes("メンバー_ID")
+  )
+    return "enquete_answer";
   if (firstLine.includes("メンバーID")) return "ml001";
   if (firstLine.includes("対象年月") && firstLine.includes("プラン契約者数")) return "ma002";
   if (firstLine.includes("売上ID") || firstLine.includes("精算日時")) return "pl001";
@@ -140,6 +155,27 @@ export function HacomonoTab({
     for (const df of files) {
       if (df.type === "unknown") {
         updated.push(df);
+        continue;
+      }
+      // アンケート回答は dryRun での既存件数チェック（同一enqueteCode）を別エンドポイントへ
+      if (df.type === "enquete_answer") {
+        try {
+          const formData = new FormData();
+          formData.append("file", df.file);
+          formData.append("dryRun", "true");
+          const res = await fetch("/api/upload/enquete", {
+            method: "POST",
+            body: formData,
+          });
+          if (!res.ok) {
+            updated.push({ ...df, existingCount: 0 });
+            continue;
+          }
+          const data = await res.json();
+          updated.push({ ...df, existingCount: data.existingCount ?? 0 });
+        } catch {
+          updated.push({ ...df, existingCount: 0 });
+        }
         continue;
       }
       try {
@@ -211,6 +247,24 @@ export function HacomonoTab({
       try {
         const formData = new FormData();
         formData.append("file", df.file);
+        // アンケート回答は別エンドポイントへ（hacomono タブ内で受けるが、
+        // 取込先テーブルとパース処理が異なるため）
+        if (df.type === "enquete_answer") {
+          const res = await fetch("/api/upload/enquete", {
+            method: "POST",
+            body: formData,
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            msgs.push(`${df.file.name}: ${data.error || "エラー"}`);
+            continue;
+          }
+          msgs.push(
+            `アンケート回答 ${data.records}件取込（${df.file.name} / 対象アンケート: ${(data.codes ?? []).join(", ")}）`,
+          );
+          processed++;
+          continue;
+        }
         formData.append("type", df.type);
         formData.append("store", store);
         formData.append("year", String(year));
@@ -274,7 +328,7 @@ export function HacomonoTab({
       <p className="text-sm text-gray-500">
         hacomono の CSV
         を複数まとめてドロップできます。ファイル種別（会員 / 売上明細 / 月次サマリ /
-        商品別売上）は自動で判別されます。
+        商品別売上 / アンケート回答）は自動で判別されます。
       </p>
 
       {/* Store + Year/Month selector */}
