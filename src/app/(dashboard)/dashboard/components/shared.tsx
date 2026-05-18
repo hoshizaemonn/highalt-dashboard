@@ -460,12 +460,13 @@ export function HelpHint({ text }: { text: string }) {
       >
         ?
       </button>
-      {/* ツールチップ本体。group-hover/group-focus で即時表示 */}
+      {/* ツールチップ本体。group-hover/group-focus で即時表示
+          坪井さん指摘: 左サイドバーに被るのを防ぐため、左端起点で右に伸びる配置に変更 */}
       <span
         role="tooltip"
         className="
           pointer-events-none
-          absolute left-1/2 -translate-x-1/2 bottom-full mb-2
+          absolute left-0 bottom-full mb-2
           whitespace-normal w-64
           bg-gray-900 text-white text-xs leading-relaxed font-normal
           rounded-md px-3 py-2 shadow-lg
@@ -477,9 +478,9 @@ export function HelpHint({ text }: { text: string }) {
         "
       >
         {text}
-        {/* 三角形の矢印 */}
+        {/* 三角形の矢印（？マークの上端に配置） */}
         <span
-          className="absolute top-full left-1/2 -translate-x-1/2 -mt-px
+          className="absolute top-full left-2 -mt-px
                      border-4 border-transparent border-t-gray-900"
           aria-hidden="true"
         />
