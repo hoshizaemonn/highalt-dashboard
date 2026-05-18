@@ -32,11 +32,17 @@ export async function GET(request: NextRequest) {
     where: { year_month_storeName: { year, month, storeName: store } },
   });
 
+  // hacomono 自動算出（had_trial=1）も返して、UIで「自動: N」と表示できるように
+  const autoTrialCount = await prisma.memberData.count({
+    where: { year, month, storeName: store, hadTrial: 1 },
+  });
+
   return NextResponse.json({
     year,
     month,
     store,
     trial_count: entry?.trialCount ?? 0,
+    auto_trial_count: autoTrialCount,
     other_sales_amount: entry?.otherSalesAmount ?? 0,
     other_sales_note: entry?.otherSalesNote ?? null,
     updated_by_name: entry?.updatedByName ?? null,

@@ -154,6 +154,11 @@ export async function GET(request: NextRequest) {
     const allManual = await prisma.manualEntry.findMany({
       where: { year: { in: years }, ...storeWhere },
     });
+    // 体験者数の自動算出に使用（hacomono had_trial=1 のカウント）
+    const allMember = await prisma.memberData.findMany({
+      where: { year: { in: years }, hadTrial: 1, ...storeWhere },
+      select: { year: true, month: true, hadTrial: true },
+    });
 
     const allBudget = store
       ? await prisma.budgetData.findMany({
@@ -242,6 +247,13 @@ export async function GET(request: NextRequest) {
       const manualMonth = allManual.filter((r) => r.year === y && r.month === m);
       const manualTrial = manualMonth.reduce((s, r) => s + r.trialCount, 0);
       const manualOther = manualMonth.reduce((s, r) => s + r.otherSalesAmount, 0);
+
+      // 体験者数自動算出（hacomono had_trial=1 のカウント）。
+      // 手動入力があればそれで上書き、無ければ自動値を使う。
+      const autoTrialCount = allMember.filter(
+        (r) => r.year === y && r.month === m,
+      ).length;
+      const effectiveTrial = manualTrial > 0 ? manualTrial : autoTrialCount;
 
       const totalRevenue = salesTotal + squareTotal + manualOther;
 
@@ -343,7 +355,7 @@ export async function GET(request: NextRequest) {
         ma_cancellations: ms.reduce((s, r) => s + r.cancellations, 0),
         ma_suspensions: ms.reduce((s, r) => s + r.suspensions, 0),
         ma_cancel_rate: ms.length > 0 ? ms[0].cancellationRate : "",
-        trial_count: manualTrial,
+        trial_count: effectiveTrial,
         manual_other_sales: manualOther,
         expense_by_category: expenseByCat,
         sales_by_category: salesByCat,
