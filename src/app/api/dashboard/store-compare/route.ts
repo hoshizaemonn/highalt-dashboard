@@ -86,6 +86,14 @@ export async function GET(request: NextRequest) {
     const allBudget = await prisma.budgetData.findMany({
       where: { year: { in: years } },
     });
+    // 体験者数: ManualEntry の trial_count（店長手動入力） or
+    //          MemberData の trialDate / firstTrialDate を期間内マッチでカウント
+    const allManual = await prisma.manualEntry.findMany({
+      where: { year: { in: years } },
+    });
+    const allMember = await prisma.memberData.findMany({
+      select: { storeName: true, trialDate: true, firstTrialDate: true },
+    });
 
     const isInPeriod = (y: number, m: number) =>
       periods.some((p) => p.year === y && p.month === m);
@@ -166,16 +174,67 @@ export async function GET(request: NextRequest) {
       let budgetRevenue = 0;
       let budgetLabor = 0;
       let budgetExpense = 0;
+      let budgetTrialCount = 0;
+      let budgetNewSignups = 0;
+      let budgetCancellations = 0;
       for (const b of budgetRows) {
         if (REVENUE_BUDGET_CATEGORIES.has(b.category)) {
           budgetRevenue += b.amount;
         } else if (LABOR_BUDGET_CATEGORIES.has(b.category)) {
           budgetLabor += b.amount;
-        } else if (b.category !== "客単価") {
+        } else if (b.category === "体験者数") {
+          budgetTrialCount += b.amount;
+        } else if (b.category === "新規入会数") {
+          budgetNewSignups += b.amount;
+        } else if (b.category === "退会数") {
+          budgetCancellations += b.amount;
+        } else if (b.category !== "客単価" && b.category !== "退会率") {
           budgetExpense += b.amount;
         }
       }
       const budgetProfit = budgetRevenue - budgetLabor - budgetExpense;
+
+      // 期間内の新規入会数 / 退会数 / 休会数 / 体験者数（MA002 + ManualEntry/MemberData）
+      const msList = allMonthlySummary.filter(
+        (r) => r.storeName === storeName && isInPeriod(r.year, r.month),
+      );
+      const newSignups = msList.reduce((s, r) => s + r.newPlanSignups, 0);
+      const cancellations = msList.reduce((s, r) => s + r.cancellations, 0);
+
+      // 体験者数: 期間内の各月で manualEntry.trialCount > 0 なら採用、
+      // 無ければ MemberData の trialDate/firstTrialDate を月マッチで自動カウント
+      let trialCount = 0;
+      for (const p of periods) {
+        const me = allManual.find(
+          (m) =>
+            m.storeName === storeName && m.year === p.year && m.month === p.month,
+        );
+        if (me && me.trialCount > 0) {
+          trialCount += me.trialCount;
+        } else {
+          const mm = String(p.month).padStart(2, "0");
+          const prefixes = [`${p.year}/${mm}/`, `${p.year}-${mm}-`];
+          for (const r of allMember) {
+            if (r.storeName !== storeName) continue;
+            if (
+              (r.trialDate &&
+                prefixes.some((pref) => r.trialDate!.startsWith(pref))) ||
+              (r.firstTrialDate &&
+                prefixes.some((pref) => r.firstTrialDate!.startsWith(pref)))
+            ) {
+              trialCount++;
+            }
+          }
+        }
+      }
+
+      // 入会率 = 新規入会数 / 体験者数（パーセント）
+      const signupRate =
+        trialCount > 0 ? (newSignups / trialCount) * 100 : 0;
+      const budgetSignupRate =
+        budgetTrialCount > 0
+          ? (budgetNewSignups / budgetTrialCount) * 100
+          : 0;
 
       return {
         store: storeName,
@@ -185,10 +244,18 @@ export async function GET(request: NextRequest) {
         profit: Math.round(totalRevenue - totalLabor - totalExpense),
         plan_subscribers: ms?.planSubscribers ?? 0,
         cancellation_rate: ms?.cancellationRate ?? "",
+        trial_count: trialCount,
+        new_signups: newSignups,
+        cancellations,
+        signup_rate: Number(signupRate.toFixed(1)),
         budget_revenue: Math.round(budgetRevenue),
         budget_labor: Math.round(budgetLabor),
         budget_expense: Math.round(budgetExpense),
         budget_profit: Math.round(budgetProfit),
+        budget_trial_count: budgetTrialCount,
+        budget_new_signups: budgetNewSignups,
+        budget_cancellations: budgetCancellations,
+        budget_signup_rate: Number(budgetSignupRate.toFixed(1)),
       };
     });
 

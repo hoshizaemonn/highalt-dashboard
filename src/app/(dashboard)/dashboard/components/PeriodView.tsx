@@ -770,6 +770,121 @@ export default function PeriodView({
                 </BarChart>
               </ResponsiveContainer>
             </div>
+
+            {/* 店舗別新規体験者数 + 体験者数予算ライン（仕様書） */}
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">店舗別新規体験者数</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={storeCompareData.stores}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="store" fontSize={10} />
+                  <YAxis fontSize={11} allowDecimals={false} unit="人" />
+                  <Tooltip
+                    formatter={(value) => [`${Number(value)}人`, "新規体験者数"]}
+                  />
+                  <Bar
+                    dataKey="trial_count"
+                    name="新規体験者数"
+                    fill={COLORS.purple}
+                    radius={[4, 4, 0, 0]}
+                  />
+                  {(() => {
+                    const budgets = storeCompareData.stores
+                      .map((s) => s.budget_trial_count ?? 0)
+                      .filter((b) => b > 0);
+                    if (budgets.length === 0) return null;
+                    const avg = Math.round(
+                      budgets.reduce((s, v) => s + v, 0) / budgets.length,
+                    );
+                    return (
+                      <ReferenceLine
+                        y={avg}
+                        stroke="#374151"
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        label={{ value: `平均予算 ${avg}人`, position: "insideTopRight", fontSize: 10, fill: "#374151" }}
+                      />
+                    );
+                  })()}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* 店舗別入会率 + 入会率予算ライン（仕様書） */}
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">店舗別入会率</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={storeCompareData.stores}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="store" fontSize={10} />
+                  <YAxis unit="%" fontSize={11} />
+                  <Tooltip
+                    formatter={(value) => [`${Number(value).toFixed(1)}%`, "入会率"]}
+                  />
+                  <Bar
+                    dataKey="signup_rate"
+                    name="入会率"
+                    fill={COLORS.orange}
+                    radius={[4, 4, 0, 0]}
+                  />
+                  {(() => {
+                    const budgets = storeCompareData.stores
+                      .map((s) => s.budget_signup_rate ?? 0)
+                      .filter((b) => b > 0);
+                    if (budgets.length === 0) return null;
+                    const avg = budgets.reduce((s, v) => s + v, 0) / budgets.length;
+                    return (
+                      <ReferenceLine
+                        y={avg}
+                        stroke="#374151"
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        label={{ value: `平均予算 ${avg.toFixed(1)}%`, position: "insideTopRight", fontSize: 10, fill: "#374151" }}
+                      />
+                    );
+                  })()}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* 店舗別退会数（仕様書「退会数は下段へ」） */}
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">店舗別退会数</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={storeCompareData.stores}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="store" fontSize={10} />
+                  <YAxis fontSize={11} allowDecimals={false} unit="人" />
+                  <Tooltip
+                    formatter={(value) => [`${Number(value)}人`, "退会数"]}
+                  />
+                  <Bar
+                    dataKey="cancellations"
+                    name="退会数"
+                    fill={COLORS.red}
+                    radius={[4, 4, 0, 0]}
+                  />
+                  {(() => {
+                    const budgets = storeCompareData.stores
+                      .map((s) => s.budget_cancellations ?? 0)
+                      .filter((b) => b > 0);
+                    if (budgets.length === 0) return null;
+                    const avg = Math.round(
+                      budgets.reduce((s, v) => s + v, 0) / budgets.length,
+                    );
+                    return (
+                      <ReferenceLine
+                        y={avg}
+                        stroke="#374151"
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        label={{ value: `平均予算 ${avg}人`, position: "insideTopRight", fontSize: 10, fill: "#374151" }}
+                      />
+                    );
+                  })()}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </>
       )}
