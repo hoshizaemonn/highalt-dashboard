@@ -282,11 +282,23 @@ export interface StoreCompareEntry {
   profit: number;
   plan_subscribers: number;
   cancellation_rate: string;
+  /** 期間内の体験者数（手動 or MemberData由来） */
+  trial_count?: number;
+  /** 期間内の新規入会数（MA002由来） */
+  new_signups?: number;
+  /** 期間内の退会数（MA002由来） */
+  cancellations?: number;
+  /** 入会率% = new_signups / trial_count × 100 */
+  signup_rate?: number;
   /** 店舗別期間予算（API側で算出） */
   budget_revenue?: number;
   budget_labor?: number;
   budget_expense?: number;
   budget_profit?: number;
+  budget_trial_count?: number;
+  budget_new_signups?: number;
+  budget_cancellations?: number;
+  budget_signup_rate?: number;
 }
 
 export interface StoreCompareData {
