@@ -390,6 +390,10 @@ model ManualEntry {
   trialCount      Int      @default(0) @map("trial_count")
   /** 体験者のうち紹介経由の人数（店長手動入力。残りはそれ以外として扱う） */
   trialReferralCount Int   @default(0) @map("trial_referral_count")
+  /**
+   * その他売上（請求書ベース）の単一金額・メモ。
+   * 複数件の内訳は ManualOtherSalesItem に記録する（互換のため本フィールドは残す）。
+   */
   otherSalesAmount Int     @default(0) @map("other_sales_amount")
   otherSalesNote  String?  @map("other_sales_note")
   updatedByName   String?  @map("updated_by_name")
@@ -397,4 +401,23 @@ model ManualEntry {
 
   @@unique([year, month, storeName])
   @@map("manual_entry")
+}
+
+// ─── その他売上 内訳行（複数請求書対応） ───────────────────
+// 1月に複数件の請求書がある場合に各行を分けて記録する。
+// 集計時は (year, month, storeName) で sum(amount) を ManualEntry.otherSalesAmount
+// より優先して使う。
+model ManualOtherSalesItem {
+  id          Int      @id @default(autoincrement())
+  year        Int
+  month       Int
+  storeName   String   @map("store_name")
+  amount      Int      @default(0)
+  note        String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  updatedByName String? @map("updated_by_name")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([year, month, storeName])
+  @@map("manual_other_sales_item")
 }
