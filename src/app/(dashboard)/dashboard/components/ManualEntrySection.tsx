@@ -17,6 +17,11 @@ interface Props {
   onSaved?: () => void;
 }
 
+type OtherSalesItem = {
+  amount: number;
+  note: string;
+};
+
 export function ManualEntrySection({
   year,
   month,
@@ -31,7 +36,7 @@ export function ManualEntrySection({
   const [autoTrial, setAutoTrial] = useState<number>(0);
   const [trialReferral, setTrialReferral] = useState<number>(0);
   const [otherSales, setOtherSales] = useState<number>(initialOtherSales ?? 0);
-  const [otherNote, setOtherNote] = useState<string>("");
+  const [otherItems, setOtherItems] = useState<OtherSalesItem[]>([]);
   const [updatedBy, setUpdatedBy] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -39,6 +44,7 @@ export function ManualEntrySection({
   // 表示する体験者数 = 手動入力 > 0 なら手動、それ以外は自動
   const effectiveTrial = trial > 0 ? trial : autoTrial;
   const nonReferral = Math.max(0, effectiveTrial - trialReferral);
+  const itemsTotal = otherItems.reduce((s, r) => s + (r.amount || 0), 0);
 
   useEffect(() => {
     // 全体ビューは API 取得しない（合算値はparentから受け取る）
@@ -57,7 +63,23 @@ export function ManualEntrySection({
         setAutoTrial(d.auto_trial_count ?? 0);
         setTrialReferral(d.trial_referral_count ?? 0);
         setOtherSales(d.other_sales_amount ?? 0);
-        setOtherNote(d.other_sales_note ?? "");
+        const items: { amount: number; note: string | null }[] =
+          d.other_sales_items ?? [];
+        if (items.length > 0) {
+          setOtherItems(
+            items.map((r) => ({ amount: r.amount, note: r.note ?? "" })),
+          );
+        } else if (d.other_sales_amount > 0 || d.other_sales_note) {
+          // 旧データ互換: 単一値を1行のitemに変換して表示
+          setOtherItems([
+            {
+              amount: d.other_sales_amount ?? 0,
+              note: d.other_sales_note ?? "",
+            },
+          ]);
+        } else {
+          setOtherItems([]);
+        }
         setUpdatedBy(d.updated_by_name ?? null);
         setLoaded(true);
       })
@@ -70,6 +92,9 @@ export function ManualEntrySection({
   const handleSave = async () => {
     setSaving(true);
     try {
+      const itemsPayload = otherItems
+        .filter((r) => r.amount > 0 || r.note.trim().length > 0)
+        .map((r) => ({ amount: r.amount, note: r.note.trim() || null }));
       const res = await fetch("/api/dashboard/manual-entry", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -79,13 +104,20 @@ export function ManualEntrySection({
           store,
           trial_count: trial,
           trial_referral_count: trialReferral,
-          other_sales_amount: otherSales,
-          other_sales_note: otherNote || null,
+          other_sales_items: itemsPayload,
+          // 互換のため合計値も送る（items が空の時のみ使われる）
+          other_sales_amount: itemsPayload.length === 0 ? 0 : itemsTotal,
         }),
       });
       if (res.ok) {
         const d = await res.json();
         setUpdatedBy(d.updated_by_name ?? null);
+        setOtherSales(d.other_sales_amount ?? 0);
+        const items: { amount: number; note: string | null }[] =
+          d.other_sales_items ?? [];
+        setOtherItems(
+          items.map((r) => ({ amount: r.amount, note: r.note ?? "" })),
+        );
         setEditing(false);
         onSaved?.();
       } else {
@@ -94,6 +126,15 @@ export function ManualEntrySection({
     } finally {
       setSaving(false);
     }
+  };
+
+  const addItem = () => setOtherItems([...otherItems, { amount: 0, note: "" }]);
+  const removeItem = (i: number) =>
+    setOtherItems(otherItems.filter((_, idx) => idx !== i));
+  const updateItem = (i: number, patch: Partial<OtherSalesItem>) => {
+    setOtherItems(
+      otherItems.map((r, idx) => (idx === i ? { ...r, ...patch } : r)),
+    );
   };
 
   return (
@@ -133,7 +174,7 @@ export function ManualEntrySection({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 体験者数: hacomono had_trial=1 から自動算出。手動入力があればそれで上書き */}
+        {/* 体験者数 */}
         {!editing ? (
           <KPICard
             title="体験者数"
@@ -171,7 +212,6 @@ export function ManualEntrySection({
               />
               <span className="text-sm text-gray-500">人</span>
             </div>
-            {/* 紹介経由の手動入力（坪井さん要望: 体験者の内訳） */}
             <div className="mt-3 pt-3 border-t border-gray-100">
               <p className="text-xs text-gray-500 font-medium">
                 うち紹介経由
@@ -202,37 +242,95 @@ export function ManualEntrySection({
           </div>
         )}
 
-        {/* その他売上 */}
+        {/* その他売上（複数請求書対応） */}
         {!editing ? (
-          <KPICard
-            title="その他売上（請求書ベース）"
-            value={formatYen(otherSales)}
-            color={COLORS.orange}
-            help="hacomono / Square に乗らない請求書ベースの売上を店長が手動入力。売上合計に加算される。"
-            sub={otherNote || undefined}
-          />
+          <div className="bg-white rounded-lg border shadow-sm p-4">
+            <div className="flex items-baseline justify-between">
+              <p className="text-xs text-gray-500 font-medium">
+                その他売上（請求書ベース）
+              </p>
+              <span
+                className="text-xl font-bold"
+                style={{ color: COLORS.orange }}
+              >
+                {formatYen(otherSales)}
+              </span>
+            </div>
+            {otherItems.length > 0 ? (
+              <ul className="mt-3 space-y-1 text-xs text-gray-600">
+                {otherItems.map((r, i) => (
+                  <li key={i} className="flex justify-between gap-2 border-b border-gray-50 pb-1">
+                    <span className="truncate">{r.note || "（メモなし）"}</span>
+                    <span className="font-medium tabular-nums whitespace-nowrap">
+                      {formatYen(r.amount)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-gray-400 mt-2">未入力</p>
+            )}
+            <p className="text-[10px] text-gray-400 mt-2">
+              hacomono / Square に乗らない請求書ベースの売上。売上合計に加算されます。
+            </p>
+          </div>
         ) : (
           <div className="bg-white rounded-lg border shadow-sm p-4 ring-2 ring-blue-200">
-            <p className="text-xs text-gray-500 font-medium">その他売上（請求書ベース）</p>
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                min={0}
-                value={String(otherSales)}
-                onChange={(e) => setOtherSales(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                className="text-xl font-bold mt-1 w-full border-b-2 border-blue-300 outline-none bg-transparent"
+            <div className="flex items-baseline justify-between mb-2">
+              <p className="text-xs text-gray-500 font-medium">
+                その他売上（請求書ベース）
+              </p>
+              <span
+                className="text-lg font-bold tabular-nums"
                 style={{ color: COLORS.orange }}
-              />
-              <span className="text-sm text-gray-500">円</span>
+              >
+                合計 {formatYen(itemsTotal)}
+              </span>
             </div>
-            <input
-              type="text"
-              value={otherNote}
-              maxLength={500}
-              placeholder="メモ（任意、例: ◯◯社請求 30,000円）"
-              onChange={(e) => setOtherNote(e.target.value)}
-              className="mt-2 w-full text-xs border rounded px-2 py-1 outline-none focus:border-blue-300"
-            />
+            <div className="space-y-2">
+              {otherItems.map((r, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <input
+                    type="text"
+                    value={r.note}
+                    maxLength={200}
+                    placeholder="メモ（例: ◯◯社 ロッカー利用料）"
+                    onChange={(e) => updateItem(i, { note: e.target.value })}
+                    className="flex-1 text-xs border rounded px-2 py-1 outline-none focus:border-blue-300"
+                  />
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      value={String(r.amount)}
+                      onChange={(e) =>
+                        updateItem(i, {
+                          amount: Math.max(0, parseInt(e.target.value, 10) || 0),
+                        })
+                      }
+                      className="w-28 text-sm text-right border rounded px-2 py-1 outline-none focus:border-blue-300 tabular-nums"
+                    />
+                    <span className="text-xs text-gray-500">円</span>
+                  </div>
+                  <button
+                    onClick={() => removeItem(i)}
+                    className="text-xs text-red-500 hover:text-red-700 px-1"
+                    title="この行を削除"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={addItem}
+              className="mt-2 text-xs text-blue-600 hover:text-blue-800 border border-dashed border-blue-300 rounded w-full py-1 hover:bg-blue-50"
+            >
+              + 行を追加
+            </button>
+            <p className="text-[10px] text-gray-400 mt-2">
+              複数件ある場合は1件ずつ行を追加。空行は保存時に除外されます。
+            </p>
           </div>
         )}
       </div>
