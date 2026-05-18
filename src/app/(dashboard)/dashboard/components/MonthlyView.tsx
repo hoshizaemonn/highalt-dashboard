@@ -30,6 +30,7 @@ import ExpenseDetailSection from "./ExpenseDetailSection";
 import { RecalculateButton, PayrollDetailSection } from "./PayrollSection";
 import { ManualEntrySection } from "./ManualEntrySection";
 import { AttributesSection } from "./AttributesSection";
+import { EnqueteSection } from "./EnqueteSection";
 
 export interface MonthlyViewProps {
   data: DashboardData;
@@ -450,6 +451,9 @@ export default function MonthlyView({
         title="新規体験者属性"
         helpText="当月体験を受講した会員の男女構成比と年代別構成比（hacomono CSV 由来）"
       />
+
+      {/* アンケート（認知経路・目的・頻度） */}
+      <EnqueteSection store={store} />
 
       {/* Plan Breakdown Pie Chart */}
       {!isAllStores && (

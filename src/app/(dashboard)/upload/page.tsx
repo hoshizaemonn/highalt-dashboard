@@ -6,6 +6,7 @@ import { PayrollTab } from "./components/PayrollTab";
 import { AmazonExpenseTab, PayPayExpenseTab } from "./components/ExpenseTab";
 import { HacomonoTab } from "./components/HacomonoTab";
 import { BudgetTab, UploadHistory } from "./components/BudgetTab";
+import { EnqueteTab } from "./components/EnqueteTab";
 
 // ─── Types ──────────────────────────────────────────────────
 //   amazon-expense: Amazon 注文履歴（店長/admin両対応）
@@ -16,7 +17,8 @@ type TabId =
   | "amazon-expense"
   | "paypay-expense"
   | "hacomono"
-  | "budget";
+  | "budget"
+  | "enquete";
 
 // ─── Main Upload Page ───────────────────────────────────────
 
@@ -55,10 +57,11 @@ export default function UploadPage() {
     { id: "amazon-expense", label: "Amazon（経費）" },
     { id: "paypay-expense", label: "PayPay銀行（経費）" },
     { id: "budget", label: "予算" },
+    { id: "enquete", label: "アンケート" },
   ];
-  // 店長は PayPay銀行 タブを非表示
+  // 店長は PayPay銀行 タブとアンケート（admin専用）を非表示
   const tabs = lockedStore
-    ? allTabs.filter((t) => t.id !== "paypay-expense")
+    ? allTabs.filter((t) => t.id !== "paypay-expense" && t.id !== "enquete")
     : allTabs;
 
   return (
@@ -107,6 +110,9 @@ export default function UploadPage() {
         )}
         {activeTab === "budget" && (
           <BudgetTab onSuccess={refreshHistory} lockedStore={lockedStore} />
+        )}
+        {activeTab === "enquete" && (
+          <EnqueteTab onSuccess={refreshHistory} />
         )}
       </div>
 
