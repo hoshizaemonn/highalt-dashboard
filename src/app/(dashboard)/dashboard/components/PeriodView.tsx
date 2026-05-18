@@ -748,6 +748,7 @@ export default function PeriodView({
           bold?: boolean;
           color?: string;
           isHours?: boolean;
+          isPerHour?: boolean;
         };
 
         const nMonths = monthly.filter(
@@ -855,8 +856,41 @@ export default function PeriodView({
           color: "text-green-700",
         });
 
-        const fmtCell = (v: string | number, isHours?: boolean) => {
+        // タイムバリュー（営業利益 ÷ 総勤務時間。1時間あたりの稼ぎ）
+        // 総勤務時間が記録されている月のみ計算（無い月は "-"）
+        if (hasPayroll) {
+          const tvValues: (number | string)[] = monthly.map((m) =>
+            (m.total_hours ?? 0) > 0
+              ? Math.round(m.operating_profit / m.total_hours)
+              : "-",
+          );
+          const hoursSum = monthly.reduce((s, m) => s + (m.total_hours || 0), 0);
+          const tvTotal: number | string =
+            hoursSum > 0 ? Math.round(totals.profit / hoursSum) : "-";
+          // 月平均は時間あり月のみで平均する
+          const tvNumeric = tvValues.filter(
+            (v): v is number => typeof v === "number",
+          );
+          const tvAvg: number | string =
+            tvNumeric.length > 0
+              ? Math.round(tvNumeric.reduce((s, v) => s + v, 0) / tvNumeric.length)
+              : "-";
+          rows.push({
+            label: "  タイムバリュー",
+            values: tvValues,
+            total: tvTotal,
+            avg: tvAvg,
+            isPerHour: true,
+          });
+        }
+
+        const fmtCell = (
+          v: string | number,
+          isHours?: boolean,
+          isPerHour?: boolean,
+        ) => {
           if (isHours) return typeof v === "number" ? (v > 0 ? `${v.toFixed(1)}h` : "-") : "-";
+          if (isPerHour) return typeof v === "number" ? `${formatYen(v)}/h` : "-";
           return typeof v === "number" ? formatYen(v) : v;
         };
 
@@ -897,14 +931,14 @@ export default function PeriodView({
                     </td>
                     {row.values.map((v, j) => (
                       <td key={j} className="px-3 py-1.5 text-right whitespace-nowrap">
-                        {fmtCell(v, row.isHours)}
+                        {fmtCell(v, row.isHours, row.isPerHour)}
                       </td>
                     ))}
                     <td className="px-3 py-1.5 text-right bg-gray-50 whitespace-nowrap">
-                      {fmtCell(row.total, row.isHours)}
+                      {fmtCell(row.total, row.isHours, row.isPerHour)}
                     </td>
                     <td className="px-3 py-1.5 text-right bg-gray-50 whitespace-nowrap">
-                      {fmtCell(row.avg, row.isHours)}
+                      {fmtCell(row.avg, row.isHours, row.isPerHour)}
                     </td>
                   </tr>
                 ))}
