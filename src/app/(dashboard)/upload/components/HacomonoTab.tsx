@@ -95,22 +95,27 @@ async function detectFromHeader(file: File): Promise<DetectedType> {
   // 先頭 8KB だけ読めばヘッダー行は十分カバーできる
   const slice = file.slice(0, 8192);
   const buffer = await slice.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
 
-  // TextDecoder のラベル指定はブラウザ実装で揺れる（"shift_jis" が標準だが
-  // "shift-jis" / "sjis" を受け付ける処理系もある）。順に試す。
-  const labels = ["shift_jis", "shift-jis", "sjis", "utf-8"];
+  // BOM 判定: 0xEF 0xBB 0xBF があれば UTF-8 確定
+  const hasBom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
   let text = "";
-  for (const label of labels) {
+  if (hasBom) {
+    text = new TextDecoder("utf-8").decode(buffer);
+  } else {
+    // UTF-8 strict検証 → 失敗したら shift_jis
     try {
-      text = new TextDecoder(label, { fatal: false }).decode(buffer);
-      // 文字化けでない（'�' 連発でない）かつ日本語1文字以上を含むかをざっくり確認
-      if (text && /[ぁ-んァ-ヶ一-龥]/.test(text)) break;
+      text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
     } catch {
-      // 次のラベルを試す
+      try {
+        text = new TextDecoder("shift_jis", { fatal: false }).decode(buffer);
+      } catch {
+        text = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+      }
     }
   }
   // BOM 除去
-  text = text.replace(/^﻿/, "").replace(/^﻿/, "");
+  text = text.replace(/^﻿/, "");
   const firstLine = text.split(/\r?\n/, 1)[0] || "";
 
   if (firstLine.includes("商品コード") && firstLine.includes("商品名")) return "ps001";
