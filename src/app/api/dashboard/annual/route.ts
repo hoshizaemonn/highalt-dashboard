@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
+import { trialDateMatchesMonth } from "@/lib/csv-utils";
 
 interface MonthlyEntry {
   month: number;
@@ -158,10 +159,12 @@ export async function GET(request: NextRequest) {
     const allManual = await prisma.manualEntry.findMany({
       where: { year: { in: years }, ...storeWhere },
     });
-    // 体験者数の自動算出に使用（hacomono had_trial=1 のカウント）
+    // 体験者数の自動算出（ML001 時点スナップショット）
+    // trialDate / firstTrialDate を直接照合するため、年フィルタは外して
+    // 店舗スコープのみで取得し、月別集計はJS側で行う。
     const allMember = await prisma.memberData.findMany({
-      where: { year: { in: years }, hadTrial: 1, ...storeWhere },
-      select: { year: true, month: true, hadTrial: true },
+      where: { ...storeWhere },
+      select: { trialDate: true, firstTrialDate: true },
     });
 
     const allBudget = store
@@ -252,10 +255,10 @@ export async function GET(request: NextRequest) {
       const manualTrial = manualMonth.reduce((s, r) => s + r.trialCount, 0);
       const manualOther = manualMonth.reduce((s, r) => s + r.otherSalesAmount, 0);
 
-      // 体験者数自動算出（hacomono had_trial=1 のカウント）。
+      // 体験者数自動算出（trialDate / firstTrialDate が当月にマッチする会員数）。
       // 手動入力があればそれで上書き、無ければ自動値を使う。
-      const autoTrialCount = allMember.filter(
-        (r) => r.year === y && r.month === m,
+      const autoTrialCount = allMember.filter((r) =>
+        trialDateMatchesMonth(r.trialDate, r.firstTrialDate, y, m),
       ).length;
       const effectiveTrial = manualTrial > 0 ? manualTrial : autoTrialCount;
       // 紹介経由は店長手動入力（全店舗合算）

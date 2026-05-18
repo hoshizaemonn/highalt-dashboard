@@ -39,12 +39,26 @@ export async function GET(request: NextRequest) {
       ? { storeName: scopedStore }
       : { storeName: { not: HQ_STORE } };
 
+  // ML001 は時点スナップショット。年月別ではなく「現在の会員/体験者」を集計する。
+  // - 会員属性: isActive=1 の全会員（年月フィルタなし）
+  // - 新規体験者属性: trialDate or firstTrialDate が指定年月にマッチする会員
+  //   trialDate は "YYYY/MM/DD HH:MM:SS" or "YYYY-MM-DD ..." 形式の文字列なので
+  //   startsWith で月マッチ判定する
+  const mm = String(month).padStart(2, "0");
+  const trialFilter = trialOnly
+    ? {
+        OR: [
+          { trialDate: { startsWith: `${year}/${mm}/` } },
+          { trialDate: { startsWith: `${year}-${mm}-` } },
+          { firstTrialDate: { startsWith: `${year}/${mm}/` } },
+          { firstTrialDate: { startsWith: `${year}-${mm}-` } },
+        ],
+      }
+    : { isActive: 1 };
+
   const rows = await prisma.memberData.findMany({
     where: {
-      year,
-      month,
-      isActive: 1,
-      ...(trialOnly && { hadTrial: 1 }),
+      ...trialFilter,
       ...storeFilter,
     },
     select: { gender: true, ageBucket: true },
