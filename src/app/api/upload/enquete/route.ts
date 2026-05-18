@@ -12,13 +12,12 @@ import {
 /**
  * hacomono アンケート回答 (enquete_answer) CSV を取り込む。
  *
- * - 入会・体験アンケートを想定（退会アンケートは取り込まない）
  * - CSV ヘッダから「認知経路」「目的」「頻度」3カテゴリを動的検出して正規化
  *   - 認知経路: 「知ったきっかけ」を含む列
  *   - 目的:     「達成したい」「来店の目的」を含む列
  *   - 頻度:     「体を動かす頻度」を含む列
  * - 各カテゴリは複数選択をカンマ区切りで保持
- * - 同じ enqueteCode + memberId のレコードは最新で上書き（複数CSVを順に上げてもOK）
+ * - enqueteCode 単位で既存全置換（複数CSVを順に上げてもOK）
  *
  * 権限: admin のみ
  */
@@ -44,12 +43,6 @@ function detectStoreFromText(text: string | null | undefined): string | null {
     if (text.includes(k)) return STORE_KEYWORDS[k];
   }
   return null;
-}
-
-// 退会アンケート判定（取り込みスキップ）
-function isWithdrawEnquete(code: string, name: string, scene: string): boolean {
-  const merged = `${code} ${name} ${scene}`;
-  return /退会|WITHDRAW/i.test(merged);
 }
 
 interface Header {
@@ -273,7 +266,6 @@ export async function POST(request: NextRequest) {
     }
 
     const records: Record[] = [];
-    let skippedWithdraw = 0;
     let skippedNoMember = 0;
 
     for (const row of dataRows) {
@@ -281,10 +273,6 @@ export async function POST(request: NextRequest) {
       const name = idxName >= 0 ? getCell(row, idxName) : "";
       const scene = idxScene >= 0 ? getCell(row, idxScene) : "";
       if (!code) continue;
-      if (isWithdrawEnquete(code, name, scene)) {
-        skippedWithdraw++;
-        continue;
-      }
       const memberId = getCell(row, idxMemberId);
       if (!memberId) {
         skippedNoMember++;
@@ -391,7 +379,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       records: records.length,
       codes: Array.from(codesInFile),
-      skippedWithdraw,
       skippedNoMember,
     });
   } catch (e) {

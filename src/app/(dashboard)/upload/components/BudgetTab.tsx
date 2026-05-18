@@ -335,14 +335,19 @@ function UnitPriceBudgetForm({
  * filterTab を渡さなければ全件表示。
  */
 const TAB_DATATYPES: Record<string, string[]> = {
-  hacomono: ["hacomono_ml001", "hacomono_pl001", "hacomono_ma002", "hacomono_ps001"],
+  hacomono: [
+    "hacomono_ml001",
+    "hacomono_pl001",
+    "hacomono_ma002",
+    "hacomono_ps001",
+    "hacomono_enquete_answer",
+  ],
   payroll: ["payroll"],
   // 旧 expense タブ向けの互換マッピング（amazon-expense / paypay-expense に分割後も両方を見せる）
   expense: ["expense", "amazon"],
   "amazon-expense": ["amazon"],
   "paypay-expense": ["expense"],
   budget: ["budget"],
-  enquete: ["hacomono_enquete_answer"],
 };
 
 export function UploadHistory({ filterTab }: { filterTab?: string }) {
