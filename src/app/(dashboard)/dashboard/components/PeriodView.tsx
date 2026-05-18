@@ -26,6 +26,7 @@ import {
   Tooltip,
   Legend,
   CartesianGrid,
+  LabelList,
 } from "./shared";
 import { PromotionPeriodSection } from "./PromotionSection";
 
@@ -216,7 +217,17 @@ export default function PeriodView({
                 <Legend />
                 {/* 前期=薄い色、今期=濃い色（坪井さん要望3） */}
                 <Bar dataKey="前期" fill="#BFDBFE" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="今期" fill="#1E40AF" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="今期" fill="#1E40AF" radius={[4, 4, 0, 0]}>
+                  {/* 今期バーの上に「前年比 ◯%」を常時表示（仕様書通り） */}
+                  <LabelList
+                    dataKey="前年比"
+                    position="top"
+                    formatter={(v: unknown) =>
+                      typeof v === "string" && v !== "-" ? `前年比 ${v}` : ""
+                    }
+                    style={{ fontSize: 10, fill: "#1E40AF", fontWeight: 600 }}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
             <p className="text-xs text-gray-400 mt-2">

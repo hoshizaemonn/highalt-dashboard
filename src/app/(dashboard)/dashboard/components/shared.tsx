@@ -15,6 +15,7 @@ import {
   Tooltip,
   Legend,
   CartesianGrid,
+  LabelList,
 } from "recharts";
 
 // ─── Re-export recharts for use in components ──────────────
@@ -33,6 +34,7 @@ export {
   Tooltip,
   Legend,
   CartesianGrid,
+  LabelList,
 };
 
 // ─── Constants ──────────────────────────────────────────────
