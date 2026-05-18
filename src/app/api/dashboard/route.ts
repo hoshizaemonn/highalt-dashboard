@@ -173,6 +173,14 @@ export async function GET(request: NextRequest) {
     const manualTrial = manualRows.reduce((s, r) => s + r.trialCount, 0);
     const manualOtherSales = manualRows.reduce((s, r) => s + r.otherSalesAmount, 0);
 
+    // 体験者数の自動算出（坪井さん要望: hacomono CSV由来で自動、手動で上書き可）
+    // member_data の had_trial=1 をカウント
+    const autoTrialCount = await prisma.memberData.count({
+      where: { ...manualWhere, hadTrial: 1 },
+    });
+    // 手動入力があればそれを使う、無ければ自動
+    const effectiveTrialCount = manualTrial > 0 ? manualTrial : autoTrialCount;
+
     let salesTotal = 0;
     const salesByCategory: Record<string, number> = {};
 
@@ -252,9 +260,9 @@ export async function GET(request: NextRequest) {
             plan_changes: memberRows.reduce((s, r) => s + r.planChanges, 0),
             total_members: memberRows.reduce((s, r) => s + r.totalMembers, 0),
             // 体験者数（坪井さん要望: 店長手動追記）。入会率 = 新規入会÷体験者数 の分母。
-            trial_count: manualTrial,
+            trial_count: effectiveTrialCount,
           }
-        : manualTrial > 0
+        : effectiveTrialCount > 0
         ? {
             plan_subscribers: 0,
             new_plan_signups: 0,
@@ -263,7 +271,7 @@ export async function GET(request: NextRequest) {
             cancellation_rate: "",
             plan_changes: 0,
             total_members: 0,
-            trial_count: manualTrial,
+            trial_count: effectiveTrialCount,
           }
         : null;
 

@@ -28,12 +28,15 @@ export function ManualEntrySection({
 }: Props) {
   const isAll = store === "全体" || !store;
   const [trial, setTrial] = useState<number>(initialTrialCount ?? 0);
+  const [autoTrial, setAutoTrial] = useState<number>(0);
   const [otherSales, setOtherSales] = useState<number>(initialOtherSales ?? 0);
   const [otherNote, setOtherNote] = useState<string>("");
   const [updatedBy, setUpdatedBy] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // 表示する体験者数 = 手動入力 > 0 なら手動、それ以外は自動
+  const effectiveTrial = trial > 0 ? trial : autoTrial;
 
   useEffect(() => {
     // 全体ビューは API 取得しない（合算値はparentから受け取る）
@@ -49,6 +52,7 @@ export function ManualEntrySection({
       .then((d) => {
         if (cancelled || !d) return;
         setTrial(d.trial_count ?? 0);
+        setAutoTrial(d.auto_trial_count ?? 0);
         setOtherSales(d.other_sales_amount ?? 0);
         setOtherNote(d.other_sales_note ?? "");
         setUpdatedBy(d.updated_by_name ?? null);
@@ -125,17 +129,29 @@ export function ManualEntrySection({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 体験者数 */}
+        {/* 体験者数: hacomono had_trial=1 から自動算出。手動入力があればそれで上書き */}
         {!editing ? (
           <KPICard
             title="体験者数"
-            value={`${numFormat.format(trial)}人`}
+            value={`${numFormat.format(effectiveTrial)}人`}
             color={COLORS.teal}
-            help="店長が手動で入力。入会率 = 新規入会数 ÷ 体験者数 の分母になる。"
+            help="hacomono の体験経由フラグ(had_trial=1)から自動算出。修正ボタンから手動で上書き可能。0 のままなら自動値が使われる。"
+            sub={
+              trial > 0
+                ? `手動上書き中（自動値: ${autoTrial}人）`
+                : autoTrial > 0
+                  ? "自動算出（hacomono由来）"
+                  : undefined
+            }
           />
         ) : (
           <div className="bg-white rounded-lg border shadow-sm p-4 ring-2 ring-blue-200">
-            <p className="text-xs text-gray-500 font-medium">体験者数</p>
+            <p className="text-xs text-gray-500 font-medium">
+              体験者数
+              <span className="ml-2 text-[10px] text-gray-400">
+                自動: {autoTrial}人（0のままなら自動値を使用）
+              </span>
+            </p>
             <div className="flex items-center gap-1">
               <input
                 type="number"
