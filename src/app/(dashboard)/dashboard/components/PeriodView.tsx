@@ -725,52 +725,6 @@ export default function PeriodView({
               </ResponsiveContainer>
             </div>
 
-            {/* Plan subscribers */}
-            <div className="bg-white rounded-lg border shadow-sm p-4">
-              <p className="text-sm font-medium text-gray-600 mb-3">店舗別プラン契約者数</p>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={storeCompareData.stores}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="store" fontSize={10} />
-                  <YAxis fontSize={11} />
-                  <Tooltip content={<MemberTooltip />} />
-                  <Bar
-                    dataKey="plan_subscribers"
-                    name="プラン契約者数"
-                    fill={COLORS.teal}
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Cancellation rate */}
-            <div className="bg-white rounded-lg border shadow-sm p-4">
-              <p className="text-sm font-medium text-gray-600 mb-3">店舗別退会率</p>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart
-                  data={storeCompareData.stores.map((s) => ({
-                    ...s,
-                    cancel_rate_num:
-                      parseFloat(s.cancellation_rate.replace("%", "")) || 0,
-                  }))}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="store" fontSize={10} />
-                  <YAxis unit="%" fontSize={11} />
-                  <Tooltip
-                    formatter={(value) => [`${Number(value).toFixed(1)}%`, "退会率"]}
-                  />
-                  <Bar
-                    dataKey="cancel_rate_num"
-                    name="退会率"
-                    fill={COLORS.red}
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
             {/* 店舗別新規体験者数 + 体験者数予算ライン（仕様書） */}
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別新規体験者数</p>
@@ -847,41 +801,48 @@ export default function PeriodView({
               </ResponsiveContainer>
             </div>
 
-            {/* 店舗別退会数（仕様書「退会数は下段へ」） */}
+            {/* Plan subscribers */}
             <div className="bg-white rounded-lg border shadow-sm p-4">
-              <p className="text-sm font-medium text-gray-600 mb-3">店舗別退会数</p>
+              <p className="text-sm font-medium text-gray-600 mb-3">店舗別プラン契約者数</p>
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={storeCompareData.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="store" fontSize={10} />
-                  <YAxis fontSize={11} allowDecimals={false} unit="人" />
+                  <YAxis fontSize={11} />
+                  <Tooltip content={<MemberTooltip />} />
+                  <Bar
+                    dataKey="plan_subscribers"
+                    name="プラン契約者数"
+                    fill={COLORS.teal}
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Cancellation rate */}
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">店舗別退会率</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart
+                  data={storeCompareData.stores.map((s) => ({
+                    ...s,
+                    cancel_rate_num:
+                      parseFloat(s.cancellation_rate.replace("%", "")) || 0,
+                  }))}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="store" fontSize={10} />
+                  <YAxis unit="%" fontSize={11} />
                   <Tooltip
-                    formatter={(value) => [`${Number(value)}人`, "退会数"]}
+                    formatter={(value) => [`${Number(value).toFixed(1)}%`, "退会率"]}
                   />
                   <Bar
-                    dataKey="cancellations"
-                    name="退会数"
+                    dataKey="cancel_rate_num"
+                    name="退会率"
                     fill={COLORS.red}
                     radius={[4, 4, 0, 0]}
                   />
-                  {(() => {
-                    const budgets = storeCompareData.stores
-                      .map((s) => s.budget_cancellations ?? 0)
-                      .filter((b) => b > 0);
-                    if (budgets.length === 0) return null;
-                    const avg = Math.round(
-                      budgets.reduce((s, v) => s + v, 0) / budgets.length,
-                    );
-                    return (
-                      <ReferenceLine
-                        y={avg}
-                        stroke="#374151"
-                        strokeWidth={2}
-                        strokeDasharray="6 4"
-                        label={{ value: `平均予算 ${avg}人`, position: "insideTopRight", fontSize: 10, fill: "#374151" }}
-                      />
-                    );
-                  })()}
                 </BarChart>
               </ResponsiveContainer>
             </div>
