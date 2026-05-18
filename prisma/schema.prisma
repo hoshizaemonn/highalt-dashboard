@@ -388,6 +388,8 @@ model ManualEntry {
   month           Int
   storeName       String   @map("store_name")
   trialCount      Int      @default(0) @map("trial_count")
+  /** 体験者のうち紹介経由の人数（店長手動入力。残りはそれ以外として扱う） */
+  trialReferralCount Int   @default(0) @map("trial_referral_count")
   otherSalesAmount Int     @default(0) @map("other_sales_amount")
   otherSalesNote  String?  @map("other_sales_note")
   updatedByName   String?  @map("updated_by_name")

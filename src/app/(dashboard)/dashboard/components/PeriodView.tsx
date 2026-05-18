@@ -105,6 +105,8 @@ export default function PeriodView({
           客単価: unitPrice,
           客単価予算: m.budget_unit_price,
           体験者数: m.trial_count,
+          紹介経由: m.trial_referral_count,
+          紹介以外: m.trial_non_referral_count,
           // 入会率 = 新規入会数 ÷ 体験者数（体験から会員化した割合、坪井さん要望#10）
           入会率: m.trial_count > 0 ? (m.ma_new_signups / m.trial_count) * 100 : 0,
           // 会員系予算（坪井さん要望: 推移グラフに予算折れ線重ね）
@@ -483,12 +485,14 @@ export default function PeriodView({
       {/* MA002 charts — 桁の違いを見やすくするため新規入会/退会/休会は個別グラフに分割 */}
       <SectionTitle>会員数推移 (MA002)</SectionTitle>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        {/* 体験者数 推移（坪井さん要望#10、店長手動追記#15に依存） */}
+        {/* 体験者数 推移（hacomono自動 + 手動上書き）+ 内訳スタック表示 */}
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">
             <span className="inline-flex items-center gap-2">
               体験者数 推移
-              <span className="text-xs text-gray-400 font-normal">（店長手動入力）</span>
+              <span className="text-xs text-gray-400 font-normal">
+                （内訳: 紹介経由 / 紹介以外）
+              </span>
             </span>
           </p>
           <ResponsiveContainer width="100%" height={220}>
@@ -497,7 +501,9 @@ export default function PeriodView({
               <XAxis dataKey="name" fontSize={11} />
               <YAxis fontSize={11} allowDecimals={false} unit="人" />
               <Tooltip content={<MemberTooltip />} />
-              <Bar dataKey="体験者数" fill={COLORS.teal} radius={[4, 4, 0, 0]} />
+              {/* スタックで紹介経由＋紹介以外を積み上げ、合計=体験者数 */}
+              <Bar dataKey="紹介経由" stackId="trial" fill={COLORS.blue} radius={[0, 0, 0, 0]} />
+              <Bar dataKey="紹介以外" stackId="trial" fill={COLORS.teal} radius={[4, 4, 0, 0]} />
               <Line type="monotone" dataKey="体験者数予算" name="体験者数予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
             </ComposedChart>
