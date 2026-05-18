@@ -29,6 +29,7 @@ export function ManualEntrySection({
   const isAll = store === "全体" || !store;
   const [trial, setTrial] = useState<number>(initialTrialCount ?? 0);
   const [autoTrial, setAutoTrial] = useState<number>(0);
+  const [trialReferral, setTrialReferral] = useState<number>(0);
   const [otherSales, setOtherSales] = useState<number>(initialOtherSales ?? 0);
   const [otherNote, setOtherNote] = useState<string>("");
   const [updatedBy, setUpdatedBy] = useState<string | null>(null);
@@ -37,6 +38,7 @@ export function ManualEntrySection({
   const [loaded, setLoaded] = useState(false);
   // 表示する体験者数 = 手動入力 > 0 なら手動、それ以外は自動
   const effectiveTrial = trial > 0 ? trial : autoTrial;
+  const nonReferral = Math.max(0, effectiveTrial - trialReferral);
 
   useEffect(() => {
     // 全体ビューは API 取得しない（合算値はparentから受け取る）
@@ -53,6 +55,7 @@ export function ManualEntrySection({
         if (cancelled || !d) return;
         setTrial(d.trial_count ?? 0);
         setAutoTrial(d.auto_trial_count ?? 0);
+        setTrialReferral(d.trial_referral_count ?? 0);
         setOtherSales(d.other_sales_amount ?? 0);
         setOtherNote(d.other_sales_note ?? "");
         setUpdatedBy(d.updated_by_name ?? null);
@@ -75,6 +78,7 @@ export function ManualEntrySection({
           month,
           store,
           trial_count: trial,
+          trial_referral_count: trialReferral,
           other_sales_amount: otherSales,
           other_sales_note: otherNote || null,
         }),
@@ -135,13 +139,17 @@ export function ManualEntrySection({
             title="体験者数"
             value={`${numFormat.format(effectiveTrial)}人`}
             color={COLORS.teal}
-            help="hacomono の体験経由フラグ(had_trial=1)から自動算出。修正ボタンから手動で上書き可能。0 のままなら自動値が使われる。"
+            help="hacomono の体験経由フラグ(had_trial=1)から自動算出。修正ボタンから手動で上書き可能。紹介経由は店長手動入力、紹介以外は自動計算（体験者数 − 紹介経由）。"
             sub={
-              trial > 0
-                ? `手動上書き中（自動値: ${autoTrial}人）`
-                : autoTrial > 0
-                  ? "自動算出（hacomono由来）"
-                  : undefined
+              effectiveTrial > 0
+                ? `紹介経由: ${trialReferral}人 / 紹介以外: ${nonReferral}人${
+                    trial > 0 ? "（手動上書き中）" : "（自動算出）"
+                  }`
+                : trial > 0
+                  ? "手動上書き中"
+                  : autoTrial > 0
+                    ? "自動算出（hacomono由来）"
+                    : undefined
             }
           />
         ) : (
@@ -162,6 +170,34 @@ export function ManualEntrySection({
                 style={{ color: COLORS.teal }}
               />
               <span className="text-sm text-gray-500">人</span>
+            </div>
+            {/* 紹介経由の手動入力（坪井さん要望: 体験者の内訳） */}
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <p className="text-xs text-gray-500 font-medium">
+                うち紹介経由
+                <span className="ml-2 text-[10px] text-gray-400">
+                  紹介以外は自動計算: {nonReferral}人
+                </span>
+              </p>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={0}
+                  max={effectiveTrial}
+                  value={String(trialReferral)}
+                  onChange={(e) =>
+                    setTrialReferral(
+                      Math.max(
+                        0,
+                        Math.min(effectiveTrial, parseInt(e.target.value, 10) || 0),
+                      ),
+                    )
+                  }
+                  className="text-lg font-bold mt-1 w-full border-b-2 border-blue-300 outline-none bg-transparent"
+                  style={{ color: COLORS.blue }}
+                />
+                <span className="text-sm text-gray-500">人</span>
+              </div>
             </div>
           </div>
         )}

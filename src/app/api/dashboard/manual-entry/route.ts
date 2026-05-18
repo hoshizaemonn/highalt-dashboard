@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
     store,
     trial_count: entry?.trialCount ?? 0,
     auto_trial_count: autoTrialCount,
+    trial_referral_count: entry?.trialReferralCount ?? 0,
     other_sales_amount: entry?.otherSalesAmount ?? 0,
     other_sales_note: entry?.otherSalesNote ?? null,
     updated_by_name: entry?.updatedByName ?? null,
@@ -68,6 +69,10 @@ export async function PUT(request: NextRequest) {
   }
 
   const trialCount = Math.max(0, parseInt(String(body.trial_count ?? 0), 10) || 0);
+  const trialReferralCount = Math.max(
+    0,
+    parseInt(String(body.trial_referral_count ?? 0), 10) || 0,
+  );
   const otherSalesAmount = Math.max(
     0,
     parseInt(String(body.other_sales_amount ?? 0), 10) || 0,
@@ -87,12 +92,14 @@ export async function PUT(request: NextRequest) {
       month,
       storeName: store,
       trialCount,
+      trialReferralCount,
       otherSalesAmount,
       otherSalesNote,
       updatedByName,
     },
     update: {
       trialCount,
+      trialReferralCount,
       otherSalesAmount,
       otherSalesNote,
       updatedByName,
@@ -102,6 +109,7 @@ export async function PUT(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     trial_count: saved.trialCount,
+    trial_referral_count: saved.trialReferralCount,
     other_sales_amount: saved.otherSalesAmount,
     other_sales_note: saved.otherSalesNote,
     updated_by_name: saved.updatedByName,

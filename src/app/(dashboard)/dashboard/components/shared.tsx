@@ -207,8 +207,12 @@ export interface MonthlyEntry {
   ma_cancellations: number;
   ma_suspensions: number;
   ma_cancel_rate: string;
-  /** 体験者数（店長手動追記） */
+  /** 体験者数（hacomono自動 or 店長手動上書き） */
   trial_count: number;
+  /** 体験者のうち紹介経由（店長手動） */
+  trial_referral_count: number;
+  /** 体験者のうち紹介以外（自動計算） */
+  trial_non_referral_count: number;
   /** 請求書ベースの「その他」売上（店長手動追記） */
   manual_other_sales: number;
   expense_by_category: Record<string, number>;

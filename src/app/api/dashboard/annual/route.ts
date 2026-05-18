@@ -24,8 +24,12 @@ interface MonthlyEntry {
   ma_cancellations: number;
   ma_suspensions: number;
   ma_cancel_rate: string;
-  /** 体験者数（店長手動追記） */
+  /** 体験者数（hacomono自動算出または店長手動上書き） */
   trial_count: number;
+  /** 体験者のうち紹介経由（店長手動入力） */
+  trial_referral_count: number;
+  /** 体験者のうち紹介以外（=trial_count - trial_referral_count、0以上にクランプ） */
+  trial_non_referral_count: number;
   /** 請求書ベースの「その他」売上（店長手動追記） */
   manual_other_sales: number;
   expense_by_category: Record<string, number>;
@@ -254,6 +258,9 @@ export async function GET(request: NextRequest) {
         (r) => r.year === y && r.month === m,
       ).length;
       const effectiveTrial = manualTrial > 0 ? manualTrial : autoTrialCount;
+      // 紹介経由は店長手動入力（全店舗合算）
+      const manualReferral = manualMonth.reduce((s, r) => s + r.trialReferralCount, 0);
+      const trialNonReferral = Math.max(0, effectiveTrial - manualReferral);
 
       const totalRevenue = salesTotal + squareTotal + manualOther;
 
@@ -356,6 +363,8 @@ export async function GET(request: NextRequest) {
         ma_suspensions: ms.reduce((s, r) => s + r.suspensions, 0),
         ma_cancel_rate: ms.length > 0 ? ms[0].cancellationRate : "",
         trial_count: effectiveTrial,
+        trial_referral_count: manualReferral,
+        trial_non_referral_count: trialNonReferral,
         manual_other_sales: manualOther,
         expense_by_category: expenseByCat,
         sales_by_category: salesByCat,
