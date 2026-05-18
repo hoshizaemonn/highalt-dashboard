@@ -22,6 +22,7 @@ type DetectedType =
   | "ma002"
   | "ps001"
   | "enquete_answer"
+  | "pa002_skip"
   | "unknown";
 
 interface DetectedFile {
@@ -41,8 +42,38 @@ const TYPE_LABEL: Record<DetectedType, string> = {
   ma002: "月次サマリ (MA002)",
   ps001: "商品別売上 (PS001)",
   enquete_answer: "アンケート回答",
+  pa002_skip: "支払方法別 (PA002) ※取込不要",
   unknown: "不明",
 };
+
+/**
+ * ファイル名から年月（YYYY-MM or YYYYMM）を抽出する。
+ * PS001 はCSV内に年月情報がないため、ファイル名でリネームしてもらう運用。
+ * 例:
+ *   PS001_2024-10.csv     → {year: 2024, month: 10}
+ *   PS001_202410_東日本橋.csv → {year: 2024, month: 10}
+ *   high-alti-1_query_PS001_2024-10.csv → {year: 2024, month: 10}
+ * 未検出時は null（UI の年月セレクタが使われる）
+ */
+function detectYearMonthFromFilename(
+  name: string,
+): { year: number; month: number } | null {
+  // 1) YYYY-MM パターン（2024-10 / 2024_10 / 2024年10月）
+  let m = name.match(/(20\d{2})[-_年](0?[1-9]|1[0-2])(?!\d)/);
+  if (m) {
+    const y = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10);
+    if (y >= 2020 && y <= 2030 && mo >= 1 && mo <= 12) return { year: y, month: mo };
+  }
+  // 2) YYYYMM パターン（202410 など6桁連続。但しタイムスタンプ「20241023」など8桁になる場合は除外）
+  m = name.match(/(?<!\d)(20\d{2})(0[1-9]|1[0-2])(?!\d)/);
+  if (m) {
+    const y = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10);
+    if (y >= 2020 && y <= 2030 && mo >= 1 && mo <= 12) return { year: y, month: mo };
+  }
+  return null;
+}
 
 // 1) ファイル名のパターンから種別を推測（hacomono 出力のデフォルトファイル名は
 //    `*_ML001_*.csv` 等の規則性があるため、まずここで判定する）
@@ -50,6 +81,8 @@ function detectFromFilename(name: string): DetectedType {
   const lower = name.toLowerCase();
   if (lower.includes("enquete_answer")) return "enquete_answer";
   const upper = name.toUpperCase();
+  // PA002 は支払方法別売上集計だが PL001 で代替できるため取込不要
+  if (upper.includes("PA002")) return "pa002_skip";
   if (upper.includes("PS001")) return "ps001";
   if (upper.includes("ML001")) return "ml001";
   if (upper.includes("MA002")) return "ma002";
@@ -89,6 +122,12 @@ async function detectFromHeader(file: File): Promise<DetectedType> {
     return "enquete_answer";
   if (firstLine.includes("メンバーID")) return "ml001";
   if (firstLine.includes("対象年月") && firstLine.includes("プラン契約者数")) return "ma002";
+  // PA002 は対象年月+支払方法別集計（[現金決済] / [カード決済] 等）。PL001 で代替可なので取込しない
+  if (
+    firstLine.includes("対象年月") &&
+    (firstLine.includes("カード決済") || firstLine.includes("口座振替"))
+  )
+    return "pa002_skip";
   if (firstLine.includes("売上ID") || firstLine.includes("精算日時")) return "pl001";
   return "unknown";
 }
@@ -135,10 +174,19 @@ export function HacomonoTab({
     setConfirmStage("idle");
 
     const detected: DetectedFile[] = await Promise.all(
-      added.map(async (file) => ({
-        file,
-        type: await detectFileType(file),
-      })),
+      added.map(async (file) => {
+        const type = await detectFileType(file);
+        // PS001 はファイル名に年月が入っていれば検出して保持
+        // それ以外（PL001/MA002）は CSV 内に年月情報があるのでサーバー側で抽出
+        const ym =
+          type === "ps001" ? detectYearMonthFromFilename(file.name) : null;
+        return {
+          file,
+          type,
+          detectedYear: ym?.year ?? undefined,
+          detectedMonth: ym?.month ?? undefined,
+        } as DetectedFile;
+      }),
     );
     setFiles((prev) => [...prev, ...detected]);
   };
@@ -155,6 +203,11 @@ export function HacomonoTab({
     for (const df of files) {
       if (df.type === "unknown") {
         updated.push(df);
+        continue;
+      }
+      // PA002 はサーバーに送らない（チェック不要）
+      if (df.type === "pa002_skip") {
+        updated.push({ ...df, existingCount: 0 });
         continue;
       }
       // アンケート回答は dryRun での既存件数チェック（同一enqueteCode）を別エンドポイントへ
@@ -183,8 +236,13 @@ export function HacomonoTab({
         formData.append("file", df.file);
         formData.append("type", df.type);
         formData.append("store", store);
-        formData.append("year", String(year));
-        formData.append("month", String(month));
+        // PS001 はファイル名から検出した年月を優先
+        const dryYear =
+          df.type === "ps001" && df.detectedYear ? df.detectedYear : year;
+        const dryMonth =
+          df.type === "ps001" && df.detectedMonth ? df.detectedMonth : month;
+        formData.append("year", String(dryYear));
+        formData.append("month", String(dryMonth));
         formData.append("dryRun", "true");
         const res = await fetch("/api/upload/hacomono", {
           method: "POST",
@@ -244,6 +302,13 @@ export function HacomonoTab({
         msgs.push(`${df.file.name}: スキップ（既存データを保持）`);
         continue;
       }
+      // PA002 はサーバー取込対象外（PL001 で代替可能）
+      if (df.type === "pa002_skip") {
+        msgs.push(
+          `${df.file.name}: 支払方法別(PA002)は取込対象外（PL001の合計と一致するため）`,
+        );
+        continue;
+      }
       try {
         const formData = new FormData();
         formData.append("file", df.file);
@@ -267,8 +332,13 @@ export function HacomonoTab({
         }
         formData.append("type", df.type);
         formData.append("store", store);
-        formData.append("year", String(year));
-        formData.append("month", String(month));
+        // PS001 はファイル名から検出した年月を優先（無ければUIの年月）
+        const useYear =
+          df.type === "ps001" && df.detectedYear ? df.detectedYear : year;
+        const useMonth =
+          df.type === "ps001" && df.detectedMonth ? df.detectedMonth : month;
+        formData.append("year", String(useYear));
+        formData.append("month", String(useMonth));
         const res = await fetch("/api/upload/hacomono", {
           method: "POST",
           body: formData,
@@ -347,7 +417,9 @@ export function HacomonoTab({
       </div>
       {showYearMonth && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-          ⚠️ 商品別売上 (PS001) には年月情報が含まれていないため、上記の対象年月に紐付けて保存します。
+          ⚠️ 商品別売上 (PS001) には年月情報が含まれていないため、
+          ファイル名に「2024-10」「202410」等を入れると自動で年月判定されます。
+          検出できなかったファイルは上記の対象年月に紐付けて保存します。
         </p>
       )}
 
@@ -373,12 +445,27 @@ export function HacomonoTab({
                   className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${
                     df.type === "unknown"
                       ? "bg-red-100 text-red-700"
-                      : "bg-blue-100 text-blue-700"
+                      : df.type === "pa002_skip"
+                        ? "bg-gray-200 text-gray-600"
+                        : "bg-blue-100 text-blue-700"
                   }`}
                 >
                   {TYPE_LABEL[df.type]}
                 </span>
                 <span className="text-gray-700 truncate">{df.file.name}</span>
+                {df.type === "ps001" &&
+                  df.detectedYear &&
+                  df.detectedMonth && (
+                    <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5">
+                      {df.detectedYear}/{String(df.detectedMonth).padStart(2, "0")} 自動検出
+                    </span>
+                  )}
+                {df.type === "ps001" &&
+                  !df.detectedYear && (
+                    <span className="text-[10px] text-gray-500 bg-gray-100 rounded px-1.5">
+                      対象年月: {year}/{String(month).padStart(2, "0")}
+                    </span>
+                  )}
               </div>
               {df.existingCount !== undefined && df.existingCount > 0 && (
                 <span className="text-amber-700 text-[11px]">
