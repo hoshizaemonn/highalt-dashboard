@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { STORES } from "@/lib/constants";
+import { STORES, HQ_STORE } from "@/lib/constants";
 import { requireSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
@@ -70,7 +70,31 @@ export async function GET(request: NextRequest) {
     const isInPeriod = (y: number, m: number) =>
       periods.some((p) => p.year === y && p.month === m);
 
-    const storeData = STORES.map((storeName) => {
+    // 動的店舗リスト: 既定 STORES に加え、各テーブルでデータがある店舗を全て拾う。
+    // ハコモノCSVで新店舗が追加されれば自動的に比較対象に含まれる（坪井さん要望17）。
+    // 本部（除外）はPL対象外なので除く。
+    const dynamicStoreSet = new Set<string>(STORES);
+    for (const r of allPayroll) dynamicStoreSet.add(r.storeName);
+    for (const r of allExpenses) dynamicStoreSet.add(r.storeName);
+    for (const r of allSalesDetail) dynamicStoreSet.add(r.storeName);
+    for (const r of allRevenue) dynamicStoreSet.add(r.storeName);
+    for (const r of allSquare) dynamicStoreSet.add(r.storeName);
+    for (const r of allMonthlySummary) dynamicStoreSet.add(r.storeName);
+    dynamicStoreSet.delete(HQ_STORE);
+    // STORES の順を尊重し、その後に自動検出された新店舗を追加
+    const orderedStores: string[] = [];
+    const seen = new Set<string>();
+    for (const s of STORES) {
+      if (dynamicStoreSet.has(s)) {
+        orderedStores.push(s);
+        seen.add(s);
+      }
+    }
+    for (const s of Array.from(dynamicStoreSet).sort()) {
+      if (!seen.has(s)) orderedStores.push(s);
+    }
+
+    const storeData = orderedStores.map((storeName) => {
       // Revenue
       const sales = allSalesDetail.filter(
         (r) => r.storeName === storeName && isInPeriod(r.year, r.month),
