@@ -27,6 +27,7 @@ import {
   Legend,
   CartesianGrid,
   LabelList,
+  ReferenceLine,
 } from "./shared";
 import { PromotionPeriodSection } from "./PromotionSection";
 
@@ -665,6 +666,25 @@ export default function PeriodView({
                   <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="revenue" name="売上" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
+                  {(() => {
+                    // 全店平均の売上予算ライン（仕様書「予算を折れ線で入れる」）
+                    const budgets = storeCompareData.stores
+                      .map((s) => s.budget_revenue ?? 0)
+                      .filter((b) => b > 0);
+                    if (budgets.length === 0) return null;
+                    const avg = Math.round(
+                      budgets.reduce((s, v) => s + v, 0) / budgets.length,
+                    );
+                    return (
+                      <ReferenceLine
+                        y={avg}
+                        stroke="#374151"
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        label={{ value: `平均予算 ${formatCompact(avg)}`, position: "insideTopRight", fontSize: 10, fill: "#374151" }}
+                      />
+                    );
+                  })()}
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -683,6 +703,24 @@ export default function PeriodView({
                       <Cell key={i} fill={s.profit >= 0 ? COLORS.green : COLORS.red} />
                     ))}
                   </Bar>
+                  {(() => {
+                    const budgets = storeCompareData.stores
+                      .map((s) => s.budget_profit ?? 0)
+                      .filter((b) => b !== 0);
+                    if (budgets.length === 0) return null;
+                    const avg = Math.round(
+                      budgets.reduce((s, v) => s + v, 0) / budgets.length,
+                    );
+                    return (
+                      <ReferenceLine
+                        y={avg}
+                        stroke="#374151"
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        label={{ value: `平均予算 ${formatCompact(avg)}`, position: "insideTopRight", fontSize: 10, fill: "#374151" }}
+                      />
+                    );
+                  })()}
                 </BarChart>
               </ResponsiveContainer>
             </div>

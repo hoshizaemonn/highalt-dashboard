@@ -16,6 +16,7 @@ import {
   Legend,
   CartesianGrid,
   LabelList,
+  ReferenceLine,
 } from "recharts";
 
 // ─── Re-export recharts for use in components ──────────────
@@ -35,6 +36,7 @@ export {
   Legend,
   CartesianGrid,
   LabelList,
+  ReferenceLine,
 };
 
 // ─── Constants ──────────────────────────────────────────────
@@ -280,6 +282,11 @@ export interface StoreCompareEntry {
   profit: number;
   plan_subscribers: number;
   cancellation_rate: string;
+  /** 店舗別期間予算（API側で算出） */
+  budget_revenue?: number;
+  budget_labor?: number;
+  budget_expense?: number;
+  budget_profit?: number;
 }
 
 export interface StoreCompareData {

@@ -66,6 +66,26 @@ export async function GET(request: NextRequest) {
       where: { year: { in: years } },
       orderBy: [{ year: "desc" }, { month: "desc" }],
     });
+    // 予算: 店舗別に売上系/人件費/経費を集計する。
+    // 売上予算 = 月会費収入 + パーソナル・物販・その他収入 + サービス収入 + 自販機手数料収入
+    // 人件費予算 = 正社員・契約社員給与 + 賞与 + 通勤手当 + 法定福利費 + 福利厚生費
+    // 経費予算 = それ以外（広告宣伝費・消耗品費等の合計）
+    const REVENUE_BUDGET_CATEGORIES = new Set([
+      "月会費収入",
+      "パーソナル・物販・その他収入",
+      "サービス収入",
+      "自販機手数料収入",
+    ]);
+    const LABOR_BUDGET_CATEGORIES = new Set([
+      "正社員・契約社員給与",
+      "賞与",
+      "通勤手当",
+      "法定福利費",
+      "福利厚生費",
+    ]);
+    const allBudget = await prisma.budgetData.findMany({
+      where: { year: { in: years } },
+    });
 
     const isInPeriod = (y: number, m: number) =>
       periods.some((p) => p.year === y && p.month === m);
@@ -139,6 +159,24 @@ export async function GET(request: NextRequest) {
         (r) => r.storeName === storeName && isInPeriod(r.year, r.month),
       );
 
+      // 予算集計: 期間内 (years×months) で各カテゴリの予算合計
+      const budgetRows = allBudget.filter(
+        (b) => b.storeName === storeName && isInPeriod(b.year, b.month),
+      );
+      let budgetRevenue = 0;
+      let budgetLabor = 0;
+      let budgetExpense = 0;
+      for (const b of budgetRows) {
+        if (REVENUE_BUDGET_CATEGORIES.has(b.category)) {
+          budgetRevenue += b.amount;
+        } else if (LABOR_BUDGET_CATEGORIES.has(b.category)) {
+          budgetLabor += b.amount;
+        } else if (b.category !== "客単価") {
+          budgetExpense += b.amount;
+        }
+      }
+      const budgetProfit = budgetRevenue - budgetLabor - budgetExpense;
+
       return {
         store: storeName,
         revenue: Math.round(totalRevenue),
@@ -147,6 +185,10 @@ export async function GET(request: NextRequest) {
         profit: Math.round(totalRevenue - totalLabor - totalExpense),
         plan_subscribers: ms?.planSubscribers ?? 0,
         cancellation_rate: ms?.cancellationRate ?? "",
+        budget_revenue: Math.round(budgetRevenue),
+        budget_labor: Math.round(budgetLabor),
+        budget_expense: Math.round(budgetExpense),
+        budget_profit: Math.round(budgetProfit),
       };
     });
 
