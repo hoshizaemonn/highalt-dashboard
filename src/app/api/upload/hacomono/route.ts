@@ -204,21 +204,6 @@ export async function POST(request: NextRequest) {
       const effectiveMonth = isNaN(month) ? now.getMonth() + 1 : month;
       const today = new Date();
 
-      if (dryRun) {
-        const existingCount = await prisma.memberData.count({
-          where: { storeName: store },
-        });
-        return NextResponse.json({
-          dryRun: true,
-          type: "ml001",
-          exists: existingCount > 0,
-          existingCount,
-          store,
-          year: effectiveYear,
-          month: effectiveMonth,
-        });
-      }
-
       interface MemberRecord {
         year: number;
         month: number;
@@ -338,11 +323,43 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Delete existing member data for this store, then insert
-      await prisma.$transaction(async (tx) => {
-        await tx.memberData.deleteMany({
-          where: { storeName: store },
+      // データ消失バグ修正: deleteMany のスコープは
+      // 「CSVに実在する店舗」を対象にする（formData の store ではない）。
+      // 例: ユーザがUIで「東日本橋」を選んだまま、原宿のML001をアップしても、
+      // 東日本橋のデータは絶対に消さない。
+      const affectedStores = Array.from(
+        new Set(records.map((r) => r.storeName).filter((s): s is string => !!s)),
+      );
+
+      // dryRun: CSVの実在店舗ごとの既存件数を返す
+      if (dryRun) {
+        let existingCount = 0;
+        const perStore: Record<string, number> = {};
+        for (const s of affectedStores) {
+          const c = await prisma.memberData.count({ where: { storeName: s } });
+          perStore[s] = c;
+          existingCount += c;
+        }
+        return NextResponse.json({
+          dryRun: true,
+          type: "ml001",
+          exists: existingCount > 0,
+          existingCount,
+          per_store: perStore,
+          affected_stores: affectedStores,
+          store,
+          year: effectiveYear,
+          month: effectiveMonth,
         });
+      }
+      // CSV内に該当行が無い極小ケース（records.length===0）でも、
+      // ユーザの意図しないデータ消失を避けるため、empty なら何も消さない。
+      await prisma.$transaction(async (tx) => {
+        for (const s of affectedStores) {
+          await tx.memberData.deleteMany({
+            where: { storeName: s },
+          });
+        }
 
         if (records.length > 0) {
           await tx.memberData.createMany({ data: records });
@@ -354,7 +371,9 @@ export async function POST(request: NextRequest) {
             userName:
               session.displayName || session.storeName || "ユーザー",
             dataType: "hacomono_ml001",
-            storeName: store,
+            // ログは代表店舗1つを記録（複数あればカンマ区切り）
+            storeName:
+              affectedStores.length > 0 ? affectedStores.join(",") : store,
             year: effectiveYear,
             month: effectiveMonth,
             fileName: file.name,
@@ -366,6 +385,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         records: records.length,
         type: "ml001",
+        affected_stores: affectedStores,
       });
     }
 
@@ -400,33 +420,44 @@ export async function POST(request: NextRequest) {
         discount: number;
       }
 
-      // dryRun: 先頭データ行から年月を検知して既存件数を返すだけ
+      // dryRun: 先頭データ行から年月を検知し、CSV内の実在店舗ごとに既存件数を返す
       if (dryRun) {
         let detYear: number | null = null;
         let detMonth: number | null = null;
+        const detectedStoreSet = new Set<string>();
         for (const row of dataRows) {
           const saleDate = getVal(row, "精算日時");
-          if (!saleDate) continue;
-          const dt = parseDateLoose(saleDate);
-          if (dt) {
-            detYear = dt.getFullYear();
-            detMonth = dt.getMonth() + 1;
-            break;
+          const storeFull = getVal(row, "購入店舗");
+          if (storeFull) detectedStoreSet.add(mapHacomonoStore(storeFull));
+          if (detYear === null && saleDate) {
+            const dt = parseDateLoose(saleDate);
+            if (dt) {
+              detYear = dt.getFullYear();
+              detMonth = dt.getMonth() + 1;
+            }
           }
         }
+        if (detectedStoreSet.size === 0) detectedStoreSet.add(store);
         const y = detYear ?? (isNaN(year) ? null : year);
         const m = detMonth ?? (isNaN(month) ? null : month);
         let existingCount = 0;
+        const perStore: Record<string, number> = {};
         if (y !== null && m !== null) {
-          existingCount = await prisma.salesDetail.count({
-            where: { year: y, month: m, storeName: store },
-          });
+          for (const s of detectedStoreSet) {
+            const c = await prisma.salesDetail.count({
+              where: { year: y, month: m, storeName: s },
+            });
+            perStore[s] = c;
+            existingCount += c;
+          }
         }
         return NextResponse.json({
           dryRun: true,
           type: "pl001",
           exists: existingCount > 0,
           existingCount,
+          per_store: perStore,
+          affected_stores: Array.from(detectedStoreSet),
           store,
           year: y,
           month: m,
@@ -506,10 +537,16 @@ export async function POST(request: NextRequest) {
         r.month = saveMonth;
       }
 
+      // データ消失バグ修正: deleteMany は CSV 実在店舗ベース
+      const affectedStores = Array.from(
+        new Set(records.map((r) => r.storeName).filter((s): s is string => !!s)),
+      );
       await prisma.$transaction(async (tx) => {
-        await tx.salesDetail.deleteMany({
-          where: { year: saveYear, month: saveMonth, storeName: store },
-        });
+        for (const s of affectedStores) {
+          await tx.salesDetail.deleteMany({
+            where: { year: saveYear, month: saveMonth, storeName: s },
+          });
+        }
 
         if (records.length > 0) {
           await tx.salesDetail.createMany({ data: records });
@@ -521,7 +558,8 @@ export async function POST(request: NextRequest) {
             userName:
               session.displayName || session.storeName || "ユーザー",
             dataType: "hacomono_pl001",
-            storeName: store,
+            storeName:
+              affectedStores.length > 0 ? affectedStores.join(",") : store,
             year: saveYear,
             month: saveMonth,
             fileName: file.name,
