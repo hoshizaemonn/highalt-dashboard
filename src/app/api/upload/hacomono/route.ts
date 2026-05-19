@@ -159,12 +159,9 @@ export async function POST(request: NextRequest) {
 
     // ─── ML001: Member Data ───────────────────────────────────
     if (type === "ml001") {
-      if (!store) {
-        return NextResponse.json(
-          { error: "store is required for ML001" },
-          { status: 400 },
-        );
-      }
+      // store は formData が空でも、CSV の「所属店舗名」/「メンバー所属店舗名」から
+      // 行ごとに取得できるため必須にしない。formData store は CSV側が空の行のみ
+      // フォールバックとして使う。
 
       const colIdx = (name: string, fallback: number) =>
         hmap[name] !== undefined ? hmap[name] : fallback;
@@ -331,6 +328,17 @@ export async function POST(request: NextRequest) {
         new Set(records.map((r) => r.storeName).filter((s): s is string => !!s)),
       );
 
+      // 防御: storeName が空のレコードがあれば取込中断（誤データ混入防止）
+      const emptyStoreCount = records.filter((r) => !r.storeName).length;
+      if (emptyStoreCount > 0) {
+        return NextResponse.json(
+          {
+            error: `店舗名が特定できないレコードが ${emptyStoreCount} 件あります。CSVの「所属店舗名」列を確認するか、画面上部の「対象店舗」を指定してください。`,
+          },
+          { status: 400 },
+        );
+      }
+
       // dryRun: CSVの実在店舗ごとの既存件数を返す
       if (dryRun) {
         let existingCount = 0;
@@ -391,12 +399,8 @@ export async function POST(request: NextRequest) {
 
     // ─── PL001: Sales Detail ──────────────────────────────────
     if (type === "pl001") {
-      if (!store || isNaN(year) || isNaN(month)) {
-        return NextResponse.json(
-          { error: "store, year, month are required for PL001" },
-          { status: 400 },
-        );
-      }
+      // PL001 は CSV の「精算日時」から年月を、「購入店舗」から店舗名を取得できる。
+      // formData の store/year/month は CSV側が空の場合のフォールバックなので必須にしない。
 
       const getVal = (row: string[], colName: string): string => {
         const idx = hmap[colName];
@@ -531,10 +535,31 @@ export async function POST(request: NextRequest) {
       const saveYear = detectedYear || year;
       const saveMonth = detectedMonth || month;
 
+      if (isNaN(saveYear) || isNaN(saveMonth)) {
+        return NextResponse.json(
+          {
+            error:
+              "年月が特定できません。CSVに「精算日時」列があるか、画面上部の対象年月を指定してください。",
+          },
+          { status: 400 },
+        );
+      }
+
       // Override year/month on all records
       for (const r of records) {
         r.year = saveYear;
         r.month = saveMonth;
+      }
+
+      // 防御: storeName 空のレコードがあれば中断
+      const emptyStoreCount = records.filter((r) => !r.storeName).length;
+      if (emptyStoreCount > 0) {
+        return NextResponse.json(
+          {
+            error: `店舗名が特定できないレコードが ${emptyStoreCount} 件あります。CSVの「購入店舗」列を確認するか、画面上部の「対象店舗」を指定してください。`,
+          },
+          { status: 400 },
+        );
       }
 
       // データ消失バグ修正: deleteMany は CSV 実在店舗ベース
