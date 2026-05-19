@@ -30,6 +30,7 @@ import {
   ReferenceLine,
 } from "./shared";
 import { PromotionPeriodSection } from "./PromotionSection";
+import { useStoreDisplayName } from "../useStoreDisplayName";
 
 export interface PeriodViewProps {
   annualData: AnnualData;
@@ -51,6 +52,20 @@ export default function PeriodView({
   fiscalYear,
 }: PeriodViewProps) {
   const monthly = annualData.monthly_data;
+  const { display: displayStore } = useStoreDisplayName();
+
+  // 店舗比較データの XAxis 表示用に、displayName を埋め込んだコピーを作る。
+  // データ紐付けは store フィールドのまま、表示は store_display を使う。
+  const storeCompareDisplayed = useMemo(() => {
+    if (!storeCompareData) return null;
+    return {
+      ...storeCompareData,
+      stores: storeCompareData.stores.map((s) => ({
+        ...s,
+        store_display: displayStore(s.store),
+      })),
+    };
+  }, [storeCompareData, displayStore]);
 
   // Period totals
   const totals = useMemo(() => {
@@ -287,19 +302,19 @@ export default function PeriodView({
         </div>
 
         {/* Expense breakdown or store comparison */}
-        {isAllStores && storeCompareData ? (
+        {isAllStores && storeCompareDisplayed ? (
           <div className="bg-white rounded-lg border shadow-sm p-4">
             {/* 「店舗別営業利益」→「店舗別営業損益」: 赤字店舗の可能性があるため "損益" 表記。
                 個別バーは利益マイナスなら赤色で警告（Cell で個別塗り） */}
             <p className="text-sm font-medium text-gray-600 mb-3">店舗別営業損益</p>
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={storeCompareData.stores}>
+              <BarChart data={storeCompareDisplayed.stores}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="store" fontSize={10} />
+                <XAxis dataKey="store_display" fontSize={10} />
                 <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="profit" name="営業損益" radius={[4, 4, 0, 0]}>
-                  {storeCompareData.stores.map((s, i) => (
+                  {storeCompareDisplayed.stores.map((s, i) => (
                     <Cell key={i} fill={s.profit >= 0 ? COLORS.green : COLORS.red} />
                   ))}
                 </Bar>
@@ -652,7 +667,7 @@ export default function PeriodView({
       />
 
       {/* Store comparison (全体 only) */}
-      {isAllStores && storeCompareData && (
+      {isAllStores && storeCompareDisplayed && (
         <>
           <SectionTitle>店舗比較</SectionTitle>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
@@ -660,15 +675,15 @@ export default function PeriodView({
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別売上</p>
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={storeCompareData.stores}>
+                <BarChart data={storeCompareDisplayed.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="store" fontSize={10} />
+                  <XAxis dataKey="store_display" fontSize={10} />
                   <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="revenue" name="売上" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
                   {(() => {
                     // 全店平均の売上予算ライン（仕様書「予算を折れ線で入れる」）
-                    const budgets = storeCompareData.stores
+                    const budgets = storeCompareDisplayed.stores
                       .map((s) => s.budget_revenue ?? 0)
                       .filter((b) => b > 0);
                     if (budgets.length === 0) return null;
@@ -693,18 +708,18 @@ export default function PeriodView({
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別営業損益</p>
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={storeCompareData.stores}>
+                <BarChart data={storeCompareDisplayed.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="store" fontSize={10} />
+                  <XAxis dataKey="store_display" fontSize={10} />
                   <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="profit" name="営業損益" radius={[4, 4, 0, 0]}>
-                    {storeCompareData.stores.map((s, i) => (
+                    {storeCompareDisplayed.stores.map((s, i) => (
                       <Cell key={i} fill={s.profit >= 0 ? COLORS.green : COLORS.red} />
                     ))}
                   </Bar>
                   {(() => {
-                    const budgets = storeCompareData.stores
+                    const budgets = storeCompareDisplayed.stores
                       .map((s) => s.budget_profit ?? 0)
                       .filter((b) => b !== 0);
                     if (budgets.length === 0) return null;
@@ -729,9 +744,9 @@ export default function PeriodView({
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別新規体験者数</p>
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={storeCompareData.stores}>
+                <BarChart data={storeCompareDisplayed.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="store" fontSize={10} />
+                  <XAxis dataKey="store_display" fontSize={10} />
                   <YAxis fontSize={11} allowDecimals={false} unit="人" />
                   <Tooltip
                     formatter={(value) => [`${Number(value)}人`, "新規体験者数"]}
@@ -743,7 +758,7 @@ export default function PeriodView({
                     radius={[4, 4, 0, 0]}
                   />
                   {(() => {
-                    const budgets = storeCompareData.stores
+                    const budgets = storeCompareDisplayed.stores
                       .map((s) => s.budget_trial_count ?? 0)
                       .filter((b) => b > 0);
                     if (budgets.length === 0) return null;
@@ -768,9 +783,9 @@ export default function PeriodView({
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別入会率</p>
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={storeCompareData.stores}>
+                <BarChart data={storeCompareDisplayed.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="store" fontSize={10} />
+                  <XAxis dataKey="store_display" fontSize={10} />
                   <YAxis unit="%" fontSize={11} />
                   <Tooltip
                     formatter={(value) => [`${Number(value).toFixed(1)}%`, "入会率"]}
@@ -782,7 +797,7 @@ export default function PeriodView({
                     radius={[4, 4, 0, 0]}
                   />
                   {(() => {
-                    const budgets = storeCompareData.stores
+                    const budgets = storeCompareDisplayed.stores
                       .map((s) => s.budget_signup_rate ?? 0)
                       .filter((b) => b > 0);
                     if (budgets.length === 0) return null;
@@ -805,9 +820,9 @@ export default function PeriodView({
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別プラン契約者数</p>
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={storeCompareData.stores}>
+                <BarChart data={storeCompareDisplayed.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="store" fontSize={10} />
+                  <XAxis dataKey="store_display" fontSize={10} />
                   <YAxis fontSize={11} />
                   <Tooltip content={<MemberTooltip />} />
                   <Bar
@@ -825,14 +840,14 @@ export default function PeriodView({
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別退会率</p>
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart
-                  data={storeCompareData.stores.map((s) => ({
+                  data={storeCompareDisplayed.stores.map((s) => ({
                     ...s,
                     cancel_rate_num:
                       parseFloat(s.cancellation_rate.replace("%", "")) || 0,
                   }))}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="store" fontSize={10} />
+                  <XAxis dataKey="store_display" fontSize={10} />
                   <YAxis unit="%" fontSize={11} />
                   <Tooltip
                     formatter={(value) => [`${Number(value).toFixed(1)}%`, "退会率"]}

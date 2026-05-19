@@ -55,10 +55,19 @@ export async function GET() {
   newOnes.sort();
   for (const s of newOnes) result.push(s);
 
+  // 表示名マッピングを取得（坪井さん要望: 店舗名を変更できるように）
+  const displayRows = await prisma.storeDisplayName.findMany({
+    select: { storeName: true, displayName: true },
+  });
+  const displayMap: Record<string, string> = {};
+  for (const r of displayRows) displayMap[r.storeName] = r.displayName;
+
   return NextResponse.json({
     stores: result,
     hq_store: HQ_STORE,
     /** 既定 STORES に含まれず、データから自動検出された店舗 */
     auto_detected: newOnes,
+    /** 表示名マッピング { storeName: displayName } */
+    display_names: displayMap,
   });
 }

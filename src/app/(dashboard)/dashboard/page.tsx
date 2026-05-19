@@ -16,6 +16,7 @@ import {
 import PeriodSelector from "./components/PeriodSelector";
 import MonthlyView from "./components/MonthlyView";
 import PeriodView from "./components/PeriodView";
+import { useStoreDisplayName } from "./useStoreDisplayName";
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ export default function DashboardPage() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [period, setPeriod] = useState("通期");
   const [store, setStore] = useState("全体");
+  const { display: displayStore } = useStoreDisplayName();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -297,7 +299,7 @@ export default function DashboardPage() {
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-gray-800">ダッシュボード</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            {store} ／ {year}年度
+            {store === "全体" ? store : displayStore(store)} ／ {year}年度
             {(() => {
               const periodLabel = isMonthly ? `${period}月` : period;
               return ` ／ ${periodLabel}`;
