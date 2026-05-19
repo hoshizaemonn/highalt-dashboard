@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { STORES } from "@/lib/constants";
 import { PERIOD_OPTIONS, HelpHint } from "./shared";
+import { useStoreDisplayName } from "../useStoreDisplayName";
 
 const FALLBACK_STORE_OPTIONS = [...STORES, "全体"];
 
@@ -84,20 +85,39 @@ export default function PeriodSelector({
       </div>
       <div className="relative">
         <label className="block text-xs font-medium text-gray-500 mb-1">店舗</label>
-        <select
-          value={store}
-          onChange={(e) => onStoreChange(e.target.value)}
-          size={1}
-          className="w-full border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-          style={{ WebkitAppearance: "menulist" }}
-        >
-          {storeOptions.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <StoreSelect
+          store={store}
+          storeOptions={storeOptions}
+          onStoreChange={onStoreChange}
+        />
       </div>
     </div>
+  );
+}
+
+function StoreSelect({
+  store,
+  storeOptions,
+  onStoreChange,
+}: {
+  store: string;
+  storeOptions: string[];
+  onStoreChange: (s: string) => void;
+}) {
+  const { display } = useStoreDisplayName();
+  return (
+    <select
+      value={store}
+      onChange={(e) => onStoreChange(e.target.value)}
+      size={1}
+      className="w-full border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+      style={{ WebkitAppearance: "menulist" }}
+    >
+      {storeOptions.map((s) => (
+        <option key={s} value={s}>
+          {s === "全体" ? s : display(s)}
+        </option>
+      ))}
+    </select>
   );
 }

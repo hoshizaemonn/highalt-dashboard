@@ -450,3 +450,19 @@ model EnqueteAnswer {
   @@index([memberId])
   @@map("enquete_answer")
 }
+
+// ─── 店舗表示名（坪井さん要望） ─────────────────────────────
+// 内部 storeName（DBの紐付けキー）はそのままに、画面表示名のみを変更できるよう
+// マッピングテーブルとして持つ。マッピングが無い店舗はそのまま storeName を表示。
+//
+// 例:
+//   storeName="東日本橋" → displayName="東日本橋スタジオ"
+//   ハコモノCSVは引き続き "東日本橋" で取り込まれ、データ整合性は保たれる。
+model StoreDisplayName {
+  id          Int      @id @default(autoincrement())
+  storeName   String   @unique @map("store_name")
+  displayName String   @map("display_name")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("store_display_name")
+}
