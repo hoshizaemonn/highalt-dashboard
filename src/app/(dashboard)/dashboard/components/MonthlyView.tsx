@@ -6,8 +6,6 @@ import {
   COLORS,
   formatYen,
   formatCompact,
-  formatPercent,
-  signedYen,
   KPICard,
   HelpHint,
   SectionTitle,
@@ -21,7 +19,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   CartesianGrid,
 } from "./shared";
 import { EditableMemberSection, PlanBreakdownPie } from "./MemberSection";
@@ -66,19 +63,9 @@ export default function MonthlyView({
     );
   }, [data, isAllStores]);
 
-  // Budget bar chart data
-  const budgetChartData = useMemo(() => {
-    if (budgetRows.length === 0) return [];
-    return budgetRows
-      .filter((r) =>
-        ["売上合計", "人件費合計", "経費合計", "営業利益"].includes(r.category),
-      )
-      .map((r) => ({
-        name: r.category,
-        予算: r.budget,
-        実績: r.actual,
-      }));
-  }, [budgetRows]);
+  // 予算 vs 実績セクション削除済み（坪井さん指示）。
+  // budgetRows は予算データのフェッチを残してあるが、UI 表示は無し。
+  void budgetRows;
 
   return (
     <>
@@ -481,138 +468,8 @@ export default function MonthlyView({
         );
       })()}
 
-      {/* Budget vs Actual */}
-      {!isAllStores && budgetRows.length > 0 && (
-        <>
-          <SectionTitle>予算 vs 実績</SectionTitle>
-
-          {/* Budget KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            {(() => {
-              const revRow = budgetRows.find((r) => r.category === "売上合計");
-              const laborRow = budgetRows.find((r) => r.category === "人件費合計");
-              const expRow = budgetRows.find((r) => r.category === "経費合計");
-              const profitRow = budgetRows.find((r) => r.category === "営業利益");
-              return (
-                <>
-                  <KPICard
-                    title="売上達成率"
-                    value={revRow ? formatPercent(revRow.ratio) : "-"}
-                    color={revRow?.isGood ? COLORS.green : COLORS.red}
-                    sub={revRow ? `予算差: ${signedYen(revRow.diff)}` : undefined}
-                    help="売上の達成率（実績÷予算）。100%以上で予算達成。予算差は「実績−予算」で、プラスなら予算超過達成。"
-                  />
-                  <KPICard
-                    title="人件費予算比"
-                    value={laborRow ? formatPercent(laborRow.ratio) : "-"}
-                    color={laborRow?.isGood ? COLORS.green : COLORS.red}
-                    sub={laborRow ? `予算差: ${signedYen(laborRow.diff)}` : undefined}
-                    help="人件費の予算比（実績÷予算）。100%以下が望ましい（予算内に収まっている）。予算差はマイナスだと予算節約。"
-                  />
-                  <KPICard
-                    title="経費予算比"
-                    value={expRow ? formatPercent(expRow.ratio) : "-"}
-                    color={expRow?.isGood ? COLORS.green : COLORS.red}
-                    sub={expRow ? `予算差: ${signedYen(expRow.diff)}` : undefined}
-                    help="経費の予算比（実績÷予算）。100%以下が望ましい（予算内に収まっている）。予算差はマイナスだと予算節約。"
-                  />
-                  <KPICard
-                    title="営業利益予算差"
-                    value={profitRow ? signedYen(profitRow.diff) : "-"}
-                    color={profitRow?.isGood ? COLORS.green : COLORS.red}
-                    sub={
-                      profitRow ? `達成率: ${formatPercent(profitRow.ratio)}` : undefined
-                    }
-                    help="営業利益の予算差（実績−予算）。プラスなら予算超過達成、マイナスなら予算未達。達成率は実績÷予算。"
-                  />
-                </>
-              );
-            })()}
-          </div>
-
-          {/* Budget bar chart */}
-          {budgetChartData.length > 0 && (
-            <div className="bg-white rounded-lg border shadow-sm p-4 mb-4">
-              <p className="text-sm font-medium text-gray-600 mb-3">
-                予算 vs 実績（主要科目）
-              </p>
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={budgetChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    type="number"
-                    tickFormatter={(v: number) => formatCompact(v)}
-                    fontSize={11}
-                  />
-                  <YAxis type="category" dataKey="name" width={80} fontSize={11} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Legend />
-                  <Bar dataKey="予算" fill={COLORS.gray} radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="実績" fill={COLORS.blue} radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Budget detail table */}
-          <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left px-4 py-2 font-medium text-gray-600">
-                    カテゴリ
-                  </th>
-                  <th className="text-left px-4 py-2 font-medium text-gray-600">科目</th>
-                  <th className="text-right px-4 py-2 font-medium text-gray-600">予算</th>
-                  <th className="text-right px-4 py-2 font-medium text-gray-600">実績</th>
-                  <th className="text-right px-4 py-2 font-medium text-gray-600">
-                    <span className="inline-flex items-center gap-1">
-                      予算差
-                      <HelpHint text="実績 − 予算。売上・利益はプラスが良い、人件費・経費はマイナスが良い。" />
-                    </span>
-                  </th>
-                  <th className="text-right px-4 py-2 font-medium text-gray-600">
-                    <span className="inline-flex items-center gap-1">
-                      予算比
-                      <HelpHint text="実績 ÷ 予算 × 100%。売上・利益は100%以上が達成、人件費・経費は100%以下が予算内。" />
-                    </span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {budgetRows.map((row, i) => {
-                  const isSummary = ["売上合計", "経費合計", "営業利益", "人件費"].includes(
-                    row.category,
-                  );
-                  return (
-                    <tr
-                      key={i}
-                      className={`border-b ${isSummary ? "font-bold bg-gray-50" : ""}`}
-                    >
-                      <td className="px-4 py-1.5 text-gray-500">{row.group}</td>
-                      <td className="px-4 py-1.5">{row.category}</td>
-                      <td className="px-4 py-1.5 text-right">{formatYen(row.budget)}</td>
-                      <td className="px-4 py-1.5 text-right">{formatYen(row.actual)}</td>
-                      <td
-                        className="px-4 py-1.5 text-right tabular-nums"
-                        style={{ color: row.isGood ? COLORS.green : COLORS.red }}
-                      >
-                        {signedYen(row.diff)}
-                      </td>
-                      <td
-                        className="px-4 py-1.5 text-right"
-                        style={{ color: row.isGood ? COLORS.green : COLORS.red }}
-                      >
-                        {row.budget !== 0 ? formatPercent(row.ratio) : "-"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+      {/* 「予算 vs 実績」セクションは削除（坪井さん指示）。
+          予算情報は各推移グラフの折れ線オーバーレイで確認する運用。 */}
 
       {/* Recalculate store assignments (admin only) */}
       {isAdmin && (
