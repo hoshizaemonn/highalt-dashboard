@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Upload,
   FileUp,
@@ -237,23 +237,79 @@ export function StoreSelect({
   onChange: (v: string) => void;
   includeAll?: boolean;
 }) {
+  // 動的な店舗リスト（坪井さん要望17: ハコモノ新店舗自動追加）+ 「新規店舗（入力）」
+  const NEW_STORE_KEY = "__NEW__";
+  const [dynamicStores, setDynamicStores] = useState<string[]>([...STORES]);
+  const [newStoreInput, setNewStoreInput] = useState("");
+  const [isNewMode, setIsNewMode] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings/stores")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.stores?.length) setDynamicStores(d.stores);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSelectChange = (v: string) => {
+    if (v === NEW_STORE_KEY) {
+      setIsNewMode(true);
+      setNewStoreInput("");
+      onChange("");
+    } else {
+      setIsNewMode(false);
+      onChange(v);
+    }
+  };
+
+  const handleNewInputChange = (v: string) => {
+    setNewStoreInput(v);
+    onChange(v.trim());
+  };
+
   return (
     <div>
       <label className="block text-xs font-medium text-gray-600 mb-1">
         対象店舗
       </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
-      >
-        {includeAll && <option value="">全店舗</option>}
-        {STORES.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+      {isNewMode ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={newStoreInput}
+            onChange={(e) => handleNewInputChange(e.target.value)}
+            placeholder="新店舗名（例: 原宿）"
+            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setIsNewMode(false);
+              setNewStoreInput("");
+              onChange(STORES[0]);
+            }}
+            className="text-xs text-gray-500 hover:text-gray-700 px-2"
+            title="既存店舗から選び直す"
+          >
+            ↩
+          </button>
+        </div>
+      ) : (
+        <select
+          value={value}
+          onChange={(e) => handleSelectChange(e.target.value)}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+        >
+          {includeAll && <option value="">全店舗</option>}
+          {dynamicStores.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+          <option value={NEW_STORE_KEY}>＋ 新規店舗（入力）...</option>
+        </select>
+      )}
     </div>
   );
 }
