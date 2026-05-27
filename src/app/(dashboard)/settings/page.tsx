@@ -7,6 +7,7 @@ import ExpenseRulesTab from "./components/ExpenseRulesTab";
 import AmazonMasterTab from "./components/AmazonMasterTab";
 import UsersTab from "./components/UsersTab";
 import StoreNamesTab from "./components/StoreNamesTab";
+import ManualExpenseTab from "./components/ManualExpenseTab";
 
 // ─── Helper: get session role from cookie (lightweight) ─────────────
 
@@ -36,6 +37,7 @@ function useSessionRole() {
 const TABS = [
   { key: "expense-rules", label: "経費分類ルール" },
   { key: "amazon-master", label: "Amazon商品マスタ" },
+  { key: "manual-expense", label: "本部一括経費" },
   { key: "users", label: "ユーザー管理" },
   { key: "store-names", label: "店舗名管理" },
   { key: "overrides", label: "従業員→店舗マッピング" },
@@ -51,11 +53,16 @@ export default function SettingsPage() {
   // 旧仕様は overrides（人件費の店舗判定マスタ）が初期表示で、誤操作リスクが高かった。
   const [activeTab, setActiveTab] = useState<TabKey>("expense-rules");
 
-  // 店舗名管理は admin のみ表示
+  // 店舗名管理 / 本部一括経費 / ユーザー管理は admin のみ表示
   const visibleTabs =
     role === "admin"
       ? TABS
-      : TABS.filter((t) => t.key !== "users" && t.key !== "store-names");
+      : TABS.filter(
+          (t) =>
+            t.key !== "users" &&
+            t.key !== "store-names" &&
+            t.key !== "manual-expense",
+        );
 
   return (
     <div>
@@ -88,6 +95,9 @@ export default function SettingsPage() {
         {activeTab === "overrides" && <OverridesTab />}
         {activeTab === "expense-rules" && <ExpenseRulesTab />}
         {activeTab === "amazon-master" && <AmazonMasterTab />}
+        {activeTab === "manual-expense" && role === "admin" && (
+          <ManualExpenseTab />
+        )}
         {activeTab === "users" && role === "admin" && <UsersTab />}
         {activeTab === "store-names" && role === "admin" && <StoreNamesTab />}
       </div>

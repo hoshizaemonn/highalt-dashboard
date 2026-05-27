@@ -262,6 +262,31 @@ model SquareItemSales {
   @@map("square_item_sales")
 }
 
+// ─── Manual Expense Entry (本部一括経費の手動入力) ──────────
+//
+// 電気代・水道代・家賃など、本部で一括契約・支払いされ各店の PayPay 銀行 CSV
+// には現れない経費を、admin（松尾さん）が月次で入力する。
+// 集計時は totalAmount / 営業店舗数 で各店に均等按分する（坪井さん要望）。
+//
+// 重要: PayPay 銀行 CSV にも該当カテゴリの支払いがある場合は二重計上になるため、
+// クライアント運用ルールとして「本部一括分のみ」をここに入れる前提。
+model ManualExpenseEntry {
+  id              Int      @id @default(autoincrement())
+  year            Int
+  month           Int
+  /** 経費カテゴリ名（BUDGET_ITEMS / EXPENSE_CATEGORIES と整合させる。例: 電気料, 上下水道料, 賃借料） */
+  category        String
+  /** 本部一括の総額（全店合算前の元金額） */
+  totalAmount     Int      @default(0) @map("total_amount")
+  note            String?
+  updatedByName   String?  @map("updated_by_name")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([year, month, category])
+  @@index([year, month])
+  @@map("manual_expense_entry")
+}
+
 // ─── Budget Data ────────────────────────────────────────────
 
 model BudgetData {
