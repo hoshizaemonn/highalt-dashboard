@@ -232,11 +232,35 @@ export async function GET(request: NextRequest) {
         .reduce((s, r) => s + r.totalAmount, 0);
     }
 
+    // ── Square アイテム別売上（あれば パーソナル/物販/サービス を分離） ──
+    // クライアントが商品名にキーワード（パーソナル/物販/サービス）を入れて
+    // 運用してくれた場合、SquareItemSales.classification ベースで集計する。
+    // 取り込みがない月は従来通り SquareSales 合計＝物販扱いにフォールバック。
+    const squareItemRows = await prisma.squareItemSales.findMany({
+      where: commonWhere,
+    });
+    const squareItemByClass: Record<string, number> = {};
+    for (const row of squareItemRows) {
+      const key = row.classification || "その他";
+      squareItemByClass[key] =
+        (squareItemByClass[key] || 0) + row.grossSales;
+    }
+    const hasSquareItem = squareItemRows.length > 0;
+
     // 売上4分類（坪井さん要望: 会費/パーソナル/物販/その他）
     const salesMembership =
       (salesByCategory["月会費"] ?? 0) + (salesByCategory["入会金"] ?? 0);
-    const salesPersonal = salesByCategory["パーソナル"] ?? 0;
-    const salesProduct = squareTotal; // Square=物販
+    // パーソナル/物販は Square アイテム別売上が取り込まれていれば classification 由来、
+    // 無ければ従来ロジック（PL001 摘要由来のパーソナル + SquareSales 全額=物販）。
+    const salesPersonal = hasSquareItem
+      ? squareItemByClass["パーソナル"] ?? 0
+      : salesByCategory["パーソナル"] ?? 0;
+    const salesProduct = hasSquareItem
+      ? squareItemByClass["物販"] ?? 0
+      : squareTotal;
+    const salesService = hasSquareItem
+      ? squareItemByClass["サービス"] ?? 0
+      : 0;
     // その他 = hacomonoのスポット等 + 手動追記の請求書「その他」
     const salesOther =
       salesTotal - salesMembership - salesPersonal + manualOtherSales;
@@ -250,7 +274,10 @@ export async function GET(request: NextRequest) {
       membership: Math.round(salesMembership),
       personal: Math.round(salesPersonal),
       product: Math.round(salesProduct),
+      service: Math.round(salesService),
       other: Math.round(salesOther),
+      square_item_loaded: hasSquareItem,
+      square_item_by_class: squareItemByClass,
     };
 
     // ── Member Summary (MA002) ───────────────────────────────
