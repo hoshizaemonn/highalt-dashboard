@@ -22,6 +22,7 @@ type DetectedType =
   | "ma002"
   | "ps001"
   | "enquete_answer"
+  | "square_item"
   | "pa002_skip"
   | "unknown";
 
@@ -42,6 +43,7 @@ const TYPE_LABEL: Record<DetectedType, string> = {
   ma002: "月次サマリ (MA002)",
   ps001: "商品別売上 (PS001)",
   enquete_answer: "アンケート回答",
+  square_item: "Square アイテム別売上",
   pa002_skip: "支払方法別 (PA002) ※取込不要",
   unknown: "不明",
 };
@@ -80,6 +82,17 @@ function detectYearMonthFromFilename(
 function detectFromFilename(name: string): DetectedType {
   const lower = name.toLowerCase();
   if (lower.includes("enquete_answer")) return "enquete_answer";
+  // Square のアイテム別売上 CSV（"items-...csv" / "item_sales..." / "square..." 等）
+  if (
+    lower.includes("square") ||
+    lower.includes("items-") ||
+    lower.includes("item-sales") ||
+    lower.includes("item_sales") ||
+    lower.includes("アイテム別") ||
+    lower.includes("商品別売上_square")
+  ) {
+    return "square_item";
+  }
   const upper = name.toUpperCase();
   // PA002 は支払方法別売上集計だが PL001 で代替できるため取込不要
   if (upper.includes("PA002")) return "pa002_skip";
@@ -118,6 +131,16 @@ async function detectFromHeader(file: File): Promise<DetectedType> {
   text = text.replace(/^﻿/, "");
   const firstLine = text.split(/\r?\n/, 1)[0] || "";
 
+  // Square アイテム別売上: 「アイテム」or「Item」列 + 「総売上」「Gross Sales」「純売上」「Net Sales」のいずれか
+  if (
+    (firstLine.includes("アイテム") || /\bItem\b/.test(firstLine)) &&
+    (firstLine.includes("総売上") ||
+      firstLine.includes("純売上") ||
+      firstLine.includes("ネット売上") ||
+      /Gross Sales|Net Sales/i.test(firstLine))
+  ) {
+    return "square_item";
+  }
   if (firstLine.includes("商品コード") && firstLine.includes("商品名")) return "ps001";
   // アンケート回答 CSV: 「コード」「利用シーン」「メンバー_ID」 が同居する
   if (
@@ -169,6 +192,7 @@ export function HacomonoTab({
   const [confirmStage, setConfirmStage] = useState<"idle" | "review">("idle");
 
   const hasPS001 = files.some((f) => f.type === "ps001");
+  const hasSquareItem = files.some((f) => f.type === "square_item");
   const hasUnknown = files.some((f) => f.type === "unknown");
   const overwriteFiles = files.filter((f) => (f.existingCount ?? 0) > 0);
 
@@ -181,10 +205,12 @@ export function HacomonoTab({
     const detected: DetectedFile[] = await Promise.all(
       added.map(async (file) => {
         const type = await detectFileType(file);
-        // PS001 はファイル名に年月が入っていれば検出して保持
+        // PS001 / Square アイテム別売上はファイル名に年月が入っていれば検出して保持
         // それ以外（PL001/MA002）は CSV 内に年月情報があるのでサーバー側で抽出
         const ym =
-          type === "ps001" ? detectYearMonthFromFilename(file.name) : null;
+          type === "ps001" || type === "square_item"
+            ? detectYearMonthFromFilename(file.name)
+            : null;
         return {
           file,
           type,
@@ -241,11 +267,12 @@ export function HacomonoTab({
         formData.append("file", df.file);
         formData.append("type", df.type);
         formData.append("store", store);
-        // PS001 はファイル名から検出した年月を優先
+        // PS001 / Square アイテム別売上はファイル名から検出した年月を優先
+        const useFileYm = df.type === "ps001" || df.type === "square_item";
         const dryYear =
-          df.type === "ps001" && df.detectedYear ? df.detectedYear : year;
+          useFileYm && df.detectedYear ? df.detectedYear : year;
         const dryMonth =
-          df.type === "ps001" && df.detectedMonth ? df.detectedMonth : month;
+          useFileYm && df.detectedMonth ? df.detectedMonth : month;
         formData.append("year", String(dryYear));
         formData.append("month", String(dryMonth));
         formData.append("dryRun", "true");
@@ -337,11 +364,12 @@ export function HacomonoTab({
         }
         formData.append("type", df.type);
         formData.append("store", store);
-        // PS001 はファイル名から検出した年月を優先（無ければUIの年月）
+        // PS001 / Square アイテム別売上はファイル名から検出した年月を優先（無ければUIの年月）
+        const useFileYm = df.type === "ps001" || df.type === "square_item";
         const useYear =
-          df.type === "ps001" && df.detectedYear ? df.detectedYear : year;
+          useFileYm && df.detectedYear ? df.detectedYear : year;
         const useMonth =
-          df.type === "ps001" && df.detectedMonth ? df.detectedMonth : month;
+          useFileYm && df.detectedMonth ? df.detectedMonth : month;
         formData.append("year", String(useYear));
         formData.append("month", String(useMonth));
         const res = await fetch("/api/upload/hacomono", {
@@ -394,16 +422,16 @@ export function HacomonoTab({
     setStatus(null);
   };
 
-  // 年月セレクタは PS001 が含まれる場合に必須として表示
+  // 年月セレクタは PS001 / Square アイテム別売上が含まれる場合に必須として表示
   // （ML001/PL001/MA002 は CSV 内の日付から自動検出）
-  const showYearMonth = hasPS001;
+  const showYearMonth = hasPS001 || hasSquareItem;
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        hacomono の CSV
+        hacomono / Square の CSV
         を複数まとめてドロップできます。ファイル種別（会員 / 売上明細 / 月次サマリ /
-        商品別売上 / アンケート回答）は自動で判別されます。
+        商品別売上 / アンケート回答 / Square アイテム別売上）は自動で判別されます。
       </p>
 
       {/* Store + Year/Month selector */}
@@ -422,7 +450,7 @@ export function HacomonoTab({
       </div>
       {showYearMonth && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-          ⚠️ 商品別売上 (PS001) には年月情報が含まれていないため、
+          ⚠️ 商品別売上 (PS001) / Square アイテム別売上 には年月情報が含まれていないため、
           ファイル名に「2024-10」「202410」等を入れると自動で年月判定されます。
           検出できなかったファイルは上記の対象年月に紐付けて保存します。
         </p>
@@ -458,14 +486,14 @@ export function HacomonoTab({
                   {TYPE_LABEL[df.type]}
                 </span>
                 <span className="text-gray-700 truncate">{df.file.name}</span>
-                {df.type === "ps001" &&
+                {(df.type === "ps001" || df.type === "square_item") &&
                   df.detectedYear &&
                   df.detectedMonth && (
                     <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5">
                       {df.detectedYear}/{String(df.detectedMonth).padStart(2, "0")} 自動検出
                     </span>
                   )}
-                {df.type === "ps001" &&
+                {(df.type === "ps001" || df.type === "square_item") &&
                   !df.detectedYear && (
                     <span className="text-[10px] text-gray-500 bg-gray-100 rounded px-1.5">
                       対象年月: {year}/{String(month).padStart(2, "0")}

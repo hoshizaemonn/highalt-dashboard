@@ -10,6 +10,7 @@ import {
   parseDateLoose,
   isInMonth,
 } from "@/lib/csv-utils";
+import { classifySquareItem } from "@/lib/square-classify";
 
 const HACOMONO_STORE_MAP: Record<string, string> = {
   "ハイアルチ東日本橋スタジオ": "東日本橋",
@@ -90,9 +91,19 @@ export async function GET(request: NextRequest) {
       count = await prisma.productSales.count({
         where: { year, month, storeName: store },
       });
+    } else if (type === "square_item") {
+      if (!store || isNaN(year) || isNaN(month)) {
+        return NextResponse.json(
+          { error: "store, year, month are required for square_item" },
+          { status: 400 },
+        );
+      }
+      count = await prisma.squareItemSales.count({
+        where: { year, month, storeName: store },
+      });
     } else {
       return NextResponse.json(
-        { error: "Invalid type. Use ml001, pl001, ma002, or ps001." },
+        { error: "Invalid type. Use ml001, pl001, ma002, ps001, or square_item." },
         { status: 400 },
       );
     }
@@ -849,8 +860,157 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // ─── Square Item Sales (Square POS アイテム別売上) ───────
+    if (type === "square_item") {
+      if (!store || isNaN(year) || isNaN(month)) {
+        return NextResponse.json(
+          { error: "store, year, month are required for square_item" },
+          { status: 400 },
+        );
+      }
+
+      const getVal = (row: string[], colName: string): string => {
+        const idx = hmap[colName];
+        return idx !== undefined && idx < row.length ? row[idx].trim() : "";
+      };
+      const getIntVal = (row: string[], colName: string): number => {
+        return safeInt(getVal(row, colName));
+      };
+      // 列名は Square CSV の言語/書式揺れに対応するため候補から最初に見つかったものを使う
+      const pickCol = (row: string[], candidates: string[]): string => {
+        for (const c of candidates) {
+          const v = getVal(row, c);
+          if (v) return v;
+        }
+        return "";
+      };
+      const pickIntCol = (row: string[], candidates: string[]): number => {
+        for (const c of candidates) {
+          const idx = hmap[c];
+          if (idx !== undefined) return safeInt(getCell(row, idx));
+        }
+        return 0;
+      };
+
+      const ITEM_COLS = ["アイテム", "アイテム名", "商品名", "Item", "Item Name"];
+      const VARIATION_COLS = ["バリエーション", "Variation", "オプション"];
+      const CATEGORY_COLS = ["カテゴリ", "カテゴリー", "Category"];
+      const QTY_COLS = ["数量", "販売数", "Qty", "Quantity", "件数"];
+      const GROSS_COLS = ["総売上", "売上", "Gross Sales", "Gross Sales (¥)"];
+      const NET_COLS = ["純売上", "ネット売上", "Net Sales", "Net Sales (¥)"];
+      const DISCOUNT_COLS = ["割引", "割引額", "Discounts"];
+      const REFUND_COLS = ["払戻し", "払い戻し", "返金", "Refunds"];
+
+      if (dryRun) {
+        const existingCount = await prisma.squareItemSales.count({
+          where: { year, month, storeName: store },
+        });
+        return NextResponse.json({
+          dryRun: true,
+          type: "square_item",
+          exists: existingCount > 0,
+          existingCount,
+          store,
+          year,
+          month,
+        });
+      }
+
+      interface SquareItemRecord {
+        year: number;
+        month: number;
+        storeName: string;
+        itemName: string;
+        variation: string;
+        categoryRaw: string;
+        classification: string;
+        quantity: number;
+        grossSales: number;
+        netSales: number;
+        discounts: number;
+        refunds: number;
+      }
+
+      // 同一 (item, variation) で複数行ある場合は集約する
+      const aggregated = new Map<string, SquareItemRecord>();
+      for (const row of dataRows) {
+        if (row.length < 2) continue;
+        const itemName = pickCol(row, ITEM_COLS);
+        if (!itemName) continue;
+        const variation = pickCol(row, VARIATION_COLS);
+        const categoryRaw = pickCol(row, CATEGORY_COLS);
+        const quantity = pickIntCol(row, QTY_COLS);
+        const grossSales = pickIntCol(row, GROSS_COLS);
+        const netSales = pickIntCol(row, NET_COLS) || grossSales;
+        const discounts = pickIntCol(row, DISCOUNT_COLS);
+        const refunds = pickIntCol(row, REFUND_COLS);
+        const classification = classifySquareItem(itemName, categoryRaw);
+
+        const key = `${itemName}__${variation}`;
+        const existing = aggregated.get(key);
+        if (existing) {
+          existing.quantity += quantity;
+          existing.grossSales += grossSales;
+          existing.netSales += netSales;
+          existing.discounts += discounts;
+          existing.refunds += refunds;
+          // カテゴリは初出のものを優先しつつ、空なら更新
+          if (!existing.categoryRaw && categoryRaw) {
+            existing.categoryRaw = categoryRaw;
+            existing.classification = classifySquareItem(itemName, categoryRaw);
+          }
+        } else {
+          aggregated.set(key, {
+            year,
+            month,
+            storeName: store,
+            itemName,
+            variation,
+            categoryRaw,
+            classification,
+            quantity,
+            grossSales,
+            netSales,
+            discounts,
+            refunds,
+          });
+        }
+      }
+
+      const records = Array.from(aggregated.values());
+
+      await prisma.$transaction(async (tx) => {
+        await tx.squareItemSales.deleteMany({
+          where: { year, month, storeName: store },
+        });
+        if (records.length > 0) {
+          await tx.squareItemSales.createMany({ data: records });
+        }
+        await tx.uploadLog.create({
+          data: {
+            userId: session.userId,
+            userName:
+              session.displayName || session.storeName || "ユーザー",
+            dataType: "square_item",
+            storeName: store,
+            year,
+            month,
+            fileName: file.name,
+            recordCount: records.length,
+          },
+        });
+      });
+
+      return NextResponse.json({
+        records: records.length,
+        type: "square_item",
+        year,
+        month,
+      });
+    }
+
     return NextResponse.json(
-      { error: "Invalid type. Use ml001, pl001, ma002, or ps001." },
+      { error: "Invalid type. Use ml001, pl001, ma002, ps001, or square_item." },
       { status: 400 },
     );
   } catch (error) {

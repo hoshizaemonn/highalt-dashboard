@@ -234,6 +234,34 @@ model SquareSales {
   @@map("square_sales")
 }
 
+// ─── Square Item Sales (商品別売上 / Square POS) ───────────
+//
+// Square POS の「アイテム別売上」CSV を取り込む。
+// クライアント側で商品名に「パーソナル」「物販」等のキーワードを
+// 入れて運用してもらい、取り込み時に classification に振り分ける。
+//   パーソナル / 物販 / サービス / その他
+// ダッシュボードの売上分類（パーソナル売上・物販売上）の優先ソースとなる。
+model SquareItemSales {
+  id             Int    @id @default(autoincrement())
+  year           Int
+  month          Int
+  storeName      String @map("store_name")
+  itemName       String @map("item_name")
+  variation      String @default("") @map("variation")
+  categoryRaw    String @default("") @map("category_raw")
+  classification String @default("その他") // パーソナル / 物販 / サービス / その他
+  quantity       Int    @default(0)
+  grossSales     Int    @default(0) @map("gross_sales")
+  netSales       Int    @default(0) @map("net_sales")
+  discounts      Int    @default(0)
+  refunds        Int    @default(0)
+
+  @@unique([year, month, storeName, itemName, variation])
+  @@index([year, month, storeName])
+  @@index([year, month, storeName, classification])
+  @@map("square_item_sales")
+}
+
 // ─── Budget Data ────────────────────────────────────────────
 
 model BudgetData {
