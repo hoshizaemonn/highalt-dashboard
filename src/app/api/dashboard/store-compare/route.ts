@@ -95,8 +95,36 @@ export async function GET(request: NextRequest) {
       select: { storeName: true, trialDate: true, firstTrialDate: true },
     });
 
+    // 「実績データが入っている最終月」までに periods を自動キャップする（坪井さん要望）。
+    // 例: 通期12ヶ月のうち1〜4月までしか売上/人件費が入っていない場合、
+    // 予算・前期比も 1〜4月（つまり「入っている分」）に揃える。
+    // 8ヶ月分入ってれば 8ヶ月分で比較できる。
+    const periodKey = (y: number, m: number) => y * 100 + m;
+    const dataKeys = new Set<number>();
+    for (const r of allSalesDetail) dataKeys.add(periodKey(r.year, r.month));
+    for (const r of allRevenue) dataKeys.add(periodKey(r.year, r.month));
+    for (const r of allSquare) dataKeys.add(periodKey(r.year, r.month));
+    for (const r of allPayroll) dataKeys.add(periodKey(r.year, r.month));
+    for (const r of allExpenses) dataKeys.add(periodKey(r.year, r.month));
+    for (const r of allMonthlySummary) dataKeys.add(periodKey(r.year, r.month));
+
+    let cappedPeriods = periods;
+    if (dataKeys.size > 0) {
+      // periods の中で実績データのある最大キー
+      let maxDataKey = 0;
+      for (const p of periods) {
+        const k = periodKey(p.year, p.month);
+        if (dataKeys.has(k) && k > maxDataKey) maxDataKey = k;
+      }
+      if (maxDataKey > 0) {
+        cappedPeriods = periods.filter(
+          (p) => periodKey(p.year, p.month) <= maxDataKey,
+        );
+      }
+    }
+
     const isInPeriod = (y: number, m: number) =>
-      periods.some((p) => p.year === y && p.month === m);
+      cappedPeriods.some((p) => p.year === y && p.month === m);
 
     // 動的店舗リスト: 既定 STORES に加え、各テーブルでデータがある店舗を全て拾う。
     // ハコモノCSVで新店舗が追加されれば自動的に比較対象に含まれる（坪井さん要望17）。
@@ -261,6 +289,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       periods: periods.map((p) => `${p.year}-${String(p.month).padStart(2, "0")}`),
+      effective_periods: cappedPeriods.map(
+        (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
+      ),
       stores: storeData,
     });
   } catch (error) {

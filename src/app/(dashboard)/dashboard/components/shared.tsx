@@ -256,6 +256,10 @@ export interface PlanBreakdownEntry {
 
 export interface AnnualData {
   store: string | null;
+  /** リクエストした全期間（例: 通期=12ヶ月分の "YYYY-MM"） */
+  periods?: string[];
+  /** 実績データが入っている最終月までキャップした範囲（前期/予算と揃えるための実効期間） */
+  effective_periods?: string[];
   monthly_data: MonthlyEntry[];
   /** 前年同期の合計（坪井さん要望: 前年比比較に使用） */
   previous_period_totals?: {

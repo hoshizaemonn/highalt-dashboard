@@ -401,7 +401,32 @@ export async function GET(request: NextRequest) {
     // ── 前年同期の合計集計 ───────────────────────────────────
     // 坪井さん要望: 前年比（2025/9期 など）のデータを比較表示したい。
     // periods の (year, month) をそれぞれ 1 年シフトして集計する。
-    const prevPeriods = periods.map((p) => ({ year: p.year - 1, month: p.month }));
+    //
+    // 自動YTDキャップ（坪井さん要望）:
+    // 現年度のデータが入っている月までに前期も揃える。
+    // 例: 今期に1〜4月分しか入っていなければ、前期も同年度の1〜4月だけを集計し、
+    // 「1〜4月実績 vs 前期1〜4月実績」が並ぶようにする（8ヶ月分なら8ヶ月比較）。
+    const periodKey = (y: number, m: number) => y * 100 + m;
+    const currentDataKeys = new Set<number>();
+    for (const r of allSalesDetail) currentDataKeys.add(periodKey(r.year, r.month));
+    for (const r of allRevenue) currentDataKeys.add(periodKey(r.year, r.month));
+    for (const r of allSquare) currentDataKeys.add(periodKey(r.year, r.month));
+    for (const r of allPayroll) currentDataKeys.add(periodKey(r.year, r.month));
+    for (const r of allExpenses) currentDataKeys.add(periodKey(r.year, r.month));
+    let cappedPeriods = periods;
+    if (currentDataKeys.size > 0) {
+      let maxDataKey = 0;
+      for (const p of periods) {
+        const k = periodKey(p.year, p.month);
+        if (currentDataKeys.has(k) && k > maxDataKey) maxDataKey = k;
+      }
+      if (maxDataKey > 0) {
+        cappedPeriods = periods.filter(
+          (p) => periodKey(p.year, p.month) <= maxDataKey,
+        );
+      }
+    }
+    const prevPeriods = cappedPeriods.map((p) => ({ year: p.year - 1, month: p.month }));
     const prevYears = [...new Set(prevPeriods.map((p) => p.year))];
 
     // 接続プール枯渇を避けるため逐次取得（Promise.all はやめる）
@@ -473,6 +498,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       store: store ?? null,
       periods: periods.map((p) => `${p.year}-${String(p.month).padStart(2, "0")}`),
+      // 前期/予算と揃えるため「実績データのある最終月」までキャップした範囲。
+      // フロント側で「Oct-Apr 累計（実績投入分のみ）」のように説明表示する用途。
+      effective_periods: cappedPeriods.map(
+        (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
+      ),
       monthly_data: monthlyData,
       previous_period_totals: previousPeriodTotals,
     });
