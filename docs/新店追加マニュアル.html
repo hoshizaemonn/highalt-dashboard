@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ハイアルチ PLダッシュボード｜新店追加マニュアル</title>
+<style>
+  :root {
+    --brand: #567FC0;
+    --brand-dark: #3E5F9A;
+    --brand-light: #E8EFF8;
+    --text: #1a1a2e;
+    --text-light: #555;
+    --text-lighter: #888;
+    --border: #d8e0ec;
+    --bg: #f7f9fc;
+    --orange: #f39c12;
+    --red: #e74c3c;
+    --green: #27ae60;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+      "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+    color: var(--text);
+    background: #eaeef5;
+    line-height: 1.55;
+    font-size: 11.5px;
+  }
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 16px auto;
+    padding: 12mm 14mm 10mm;
+    background: #fff;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  }
+  header.title {
+    border-bottom: 3px solid var(--brand);
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  header.title h1 {
+    font-size: 18px;
+    color: var(--brand-dark);
+    letter-spacing: 0.5px;
+  }
+  header.title .meta {
+    font-size: 9.5px;
+    color: var(--text-lighter);
+  }
+  .lead {
+    background: var(--brand-light);
+    border-left: 4px solid var(--brand);
+    padding: 8px 12px;
+    border-radius: 0 6px 6px 0;
+    margin-bottom: 14px;
+    font-size: 11px;
+  }
+  .lead strong { color: var(--brand-dark); }
+  h2.step {
+    font-size: 13px;
+    color: var(--brand-dark);
+    margin: 14px 0 6px;
+    padding-left: 28px;
+    position: relative;
+    line-height: 1.4;
+  }
+  h2.step::before {
+    content: attr(data-step);
+    position: absolute;
+    left: 0; top: -1px;
+    width: 22px; height: 22px;
+    background: var(--brand);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step-body {
+    padding-left: 28px;
+  }
+  .step-body p {
+    margin-bottom: 4px;
+  }
+  ul.compact, ol.compact {
+    padding-left: 18px;
+    margin: 4px 0 6px;
+  }
+  ul.compact li, ol.compact li {
+    margin-bottom: 2px;
+  }
+  .csv-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 6px 0 4px;
+    font-size: 10.5px;
+  }
+  .csv-table th, .csv-table td {
+    border: 1px solid var(--border);
+    padding: 4px 6px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .csv-table th {
+    background: var(--brand-light);
+    color: var(--brand-dark);
+    font-weight: 600;
+  }
+  .csv-table td.center { text-align: center; }
+  .tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9.5px;
+    font-weight: 600;
+    margin-right: 3px;
+  }
+  .tag.required { background: var(--red); color: #fff; }
+  .tag.optional { background: var(--text-lighter); color: #fff; }
+  .tag.admin { background: var(--orange); color: #fff; }
+  .callout {
+    background: #fff8e7;
+    border: 1px solid #f0d68a;
+    border-radius: 6px;
+    padding: 7px 10px;
+    margin: 6px 0 0;
+    font-size: 10.5px;
+  }
+  .callout strong { color: #a86b00; }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 6px;
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: #fafbfd;
+  }
+  .card h3 {
+    font-size: 11px;
+    color: var(--brand-dark);
+    margin-bottom: 4px;
+  }
+  .card ul { padding-left: 16px; font-size: 10.5px; }
+  footer.foot {
+    margin-top: 14px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--text-lighter);
+  }
+  .footer-help {
+    background: var(--brand-light);
+    padding: 6px 10px;
+    border-radius: 4px;
+    margin-top: 10px;
+    font-size: 10.5px;
+  }
+  .footer-help strong { color: var(--brand-dark); }
+  code {
+    background: #f1f3f7;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px;
+  }
+
+  @media print {
+    body { background: #fff; }
+    .page { margin: 0; box-shadow: none; }
+    @page { size: A4; margin: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="title">
+    <h1>ハイアルチ PLダッシュボード｜新店追加マニュアル</h1>
+    <div class="meta">2026-05 版 / A4 1枚 / 配布用</div>
+  </header>
+
+  <div class="lead">
+    新しい店舗のオープン・店長交代時の<strong>初回セットアップ手順</strong>と、
+    <strong>毎月の月次データアップロード手順</strong>をまとめています。
+    迷ったら<strong>松尾さん（admin）</strong>に連絡してください。
+  </div>
+
+  <!-- STEP 1 -->
+  <h2 class="step" data-step="1">ログインアカウントの発行（初回のみ）</h2>
+  <div class="step-body">
+    <ol class="compact">
+      <li>松尾さんに以下を伝える: <strong>店舗名 / 店長氏名 / メールアドレス</strong></li>
+      <li>松尾さんが「設定 → ユーザー管理」でアカウントを作成 <span class="tag admin">admin作業</span></li>
+      <li>発行されたユーザー名 / パスワードでログイン → 自店舗のみ操作可能</li>
+    </ol>
+  </div>
+
+  <!-- STEP 2 -->
+  <h2 class="step" data-step="2">ハコモノから月次CSVをダウンロード（毎月1日〜）</h2>
+  <div class="step-body">
+    <p>ハコモノにログイン → レポート出力画面から下記4種類をダウンロードします。</p>
+    <table class="csv-table">
+      <thead>
+        <tr>
+          <th>CSV種別</th>
+          <th>ハコモノ画面</th>
+          <th>ファイル名例</th>
+          <th>必須</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>ML001</strong> 会員一覧</td>
+          <td>会員管理 → 会員エクスポート</td>
+          <td><code>ML001_xxx.csv</code></td>
+          <td class="center"><span class="tag required">必須</span></td>
+        </tr>
+        <tr>
+          <td><strong>MA002</strong> 月次サマリ</td>
+          <td>レポート → 月次集計</td>
+          <td><code>MA002_xxx.csv</code></td>
+          <td class="center"><span class="tag required">必須</span></td>
+        </tr>
+        <tr>
+          <td><strong>PL001</strong> 売上明細</td>
+          <td>レポート → 売上明細</td>
+          <td><code>PL001_xxx.csv</code></td>
+          <td class="center"><span class="tag required">必須</span></td>
+        </tr>
+        <tr>
+          <td><strong>PS001</strong> 商品別売上</td>
+          <td>レポート → 商品別売上</td>
+          <td><code>PS001_2026-05.csv</code></td>
+          <td class="center"><span class="tag required">必須</span></td>
+        </tr>
+        <tr>
+          <td>アンケート回答</td>
+          <td>体験／入会アンケート → エクスポート</td>
+          <td><code>enquete_answer_xxx.csv</code></td>
+          <td class="center"><span class="tag optional">任意</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <strong>⚠️ PS001 だけ要注意</strong>：ファイル内に年月情報が無いため、
+      ファイル名に <code>2026-05</code> または <code>202605</code> を必ず含めてください。
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <h2 class="step" data-step="3">ダッシュボードにアップロード</h2>
+  <div class="step-body">
+    <ol class="compact">
+      <li>ダッシュボードにログイン → 上部メニュー「<strong>アップロード</strong>」を開く</li>
+      <li>「<strong>ハコモノ一括</strong>」タブを選択（既定で開いています）</li>
+      <li>ダウンロードした<strong>CSV を全てまとめてドラッグ&ドロップ</strong>
+        <ul class="compact">
+          <li>ファイル種別は自動判別（ML001 / PL001 / MA002 / PS001 / アンケート）</li>
+          <li>対象店舗は自店舗が自動選択されます</li>
+        </ul>
+      </li>
+      <li>「<strong>取り込む</strong>」ボタンをクリック</li>
+      <li>既にデータがある月は「<strong>上書き確認</strong>」が出るので、内容を確認して「すべて上書きして取込」を選択</li>
+    </ol>
+    <div class="callout">
+      <strong>🚫 空ファイル / 中身が違うCSV は絶対にアップロードしない</strong>：
+      その店舗・月のデータが消える可能性があります。心配な場合は松尾さんに確認。
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <h2 class="step" data-step="4">ダッシュボードで反映確認</h2>
+  <div class="step-body">
+    <p>上部メニュー「<strong>ダッシュボード</strong>」を開いて、当月のデータが反映されているか確認します。</p>
+    <div class="grid-2">
+      <div class="card">
+        <h3>✓ 売上セクション</h3>
+        <ul>
+          <li>会費売上 / パーソナル / 物販 / その他</li>
+          <li>0円 や 前月と極端に違う場合は再確認</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>✓ 会員セクション</h3>
+        <ul>
+          <li>在籍 / 新規入会 / 退会 / 体験者数</li>
+          <li>新規入会率（=新規÷体験）が表示される</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <div>株式会社 斗（hishaku）／ハイアルチ PLダッシュボード v2</div>
+    <div>問い合わせ：松尾さん（admin）／ 開発：星崎</div>
+  </footer>
+
+  <div class="footer-help">
+    <strong>📞 困ったとき：</strong> 松尾さんへ「<strong>店舗名 / 何の操作 / どこでつまずいた / スクショ</strong>」の4点をセットで連絡してください。
+  </div>
+
+</div>
+
+</body>
+</html>
