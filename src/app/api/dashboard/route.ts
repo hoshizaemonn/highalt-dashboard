@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { HQ_STORE } from "@/lib/constants";
+import { HQ_STORE, STORES } from "@/lib/constants";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
 import { trialDateMonthWhere } from "@/lib/csv-utils";
 
@@ -139,9 +139,33 @@ export async function GET(request: NextRequest) {
       totalExpense += row.amount;
     }
 
+    // ── 本部一括経費（admin 手動入力）を均等按分して加算 ─────────
+    // 電気代・水道代・家賃など本部で一括支払いされ PayPay 銀行 CSV に現れない
+    // 経費を、totalAmount / 営業店舗数 で按分する（坪井さん要望: 自動均等割で確定）。
+    const manualExpenseRows = await prisma.manualExpenseEntry.findMany({
+      where: {
+        year,
+        ...(month !== undefined && { month }),
+      },
+    });
+    const storeCount = STORES.length;
+    const manualExpenseByCategory: Record<string, number> = {};
+    for (const row of manualExpenseRows) {
+      const share =
+        store && store !== "全体"
+          ? Math.round(row.totalAmount / storeCount)
+          : row.totalAmount;
+      expenseByCategory[row.category] =
+        (expenseByCategory[row.category] || 0) + share;
+      manualExpenseByCategory[row.category] =
+        (manualExpenseByCategory[row.category] || 0) + share;
+      totalExpense += share;
+    }
+
     const expenseSummary = {
       total: Math.round(totalExpense),
       by_category: expenseByCategory,
+      manual_by_category: manualExpenseByCategory,
     };
 
     // ── Revenue / Sales ──────────────────────────────────────
