@@ -7,8 +7,14 @@ import { requireSession, effectiveStoreScope } from "@/lib/auth";
  * 会員属性の集計（坪井さん要望13/14）
  *
  * クエリ:
- *   year, month, store (optional, "全体" or unset = 全店舗合算)
- *   trialOnly=1 で「新規体験者属性」のみ集計（had_trial=1）
+ *   year, month  : 単月集計用
+ *   months       : "2025-10,2025-11,...,2026-04" の形式で複数月OR集計（通期/上期/下期ビュー用）
+ *   store        : optional（"全体" or unset = 全店舗合算）
+ *   trialOnly=1  : 「新規体験者属性」のみ集計（trialDate/firstTrialDate ベース）
+ *
+ * 注意:
+ *   会員属性（trialOnly未指定）は ML001 時点スナップショットの isActive=1 を集計するため、
+ *   year/month/months にかかわらず「現時点のアクティブ会員」が対象になる。
  *
  * レスポンス:
  *   gender_breakdown: { 男性: n, 女性: n, その他: n, 未登録: n }
@@ -21,14 +27,24 @@ export async function GET(request: NextRequest) {
   if (auth.error) return auth.error;
 
   const { searchParams } = request.nextUrl;
+  const monthsParam = searchParams.get("months");
   const year = parseInt(searchParams.get("year") ?? "", 10);
   const month = parseInt(searchParams.get("month") ?? "", 10);
   const storeParam = searchParams.get("store") || undefined;
   const trialOnly = searchParams.get("trialOnly") === "1";
 
-  if (isNaN(year) || isNaN(month)) {
+  // months 優先。未指定なら従来の year+month を使う
+  let yearMonthList: { year: number; month: number }[] = [];
+  if (monthsParam) {
+    for (const part of monthsParam.split(",")) {
+      const [y, m] = part.trim().split("-").map(Number);
+      if (!isNaN(y) && !isNaN(m)) yearMonthList.push({ year: y, month: m });
+    }
+  } else if (!isNaN(year) && !isNaN(month)) {
+    yearMonthList = [{ year, month }];
+  } else {
     return NextResponse.json(
-      { error: "year, month are required" },
+      { error: "year+month or months parameter is required" },
       { status: 400 },
     );
   }
@@ -41,18 +57,20 @@ export async function GET(request: NextRequest) {
 
   // ML001 は時点スナップショット。年月別ではなく「現在の会員/体験者」を集計する。
   // - 会員属性: isActive=1 の全会員（年月フィルタなし）
-  // - 新規体験者属性: trialDate or firstTrialDate が指定年月にマッチする会員
+  // - 新規体験者属性: trialDate or firstTrialDate が指定範囲にマッチする会員
   //   trialDate は "YYYY/MM/DD HH:MM:SS" or "YYYY-MM-DD ..." 形式の文字列なので
   //   startsWith で月マッチ判定する
-  const mm = String(month).padStart(2, "0");
   const trialFilter = trialOnly
     ? {
-        OR: [
-          { trialDate: { startsWith: `${year}/${mm}/` } },
-          { trialDate: { startsWith: `${year}-${mm}-` } },
-          { firstTrialDate: { startsWith: `${year}/${mm}/` } },
-          { firstTrialDate: { startsWith: `${year}-${mm}-` } },
-        ],
+        OR: yearMonthList.flatMap(({ year: y, month: m }) => {
+          const mm = String(m).padStart(2, "0");
+          return [
+            { trialDate: { startsWith: `${y}/${mm}/` } },
+            { trialDate: { startsWith: `${y}-${mm}-` } },
+            { firstTrialDate: { startsWith: `${y}/${mm}/` } },
+            { firstTrialDate: { startsWith: `${y}-${mm}-` } },
+          ];
+        }),
       }
     : { isActive: 1 };
 
@@ -98,8 +116,11 @@ export async function GET(request: NextRequest) {
   const hasData = rows.some((r) => r.gender || r.ageBucket);
 
   return NextResponse.json({
-    year,
-    month,
+    year: monthsParam ? null : year,
+    month: monthsParam ? null : month,
+    months: yearMonthList.map(
+      (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
+    ),
     store: scopedStore ?? null,
     trial_only: trialOnly,
     total: rows.length,

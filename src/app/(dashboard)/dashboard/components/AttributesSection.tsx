@@ -25,8 +25,11 @@ interface AttributesData {
 }
 
 interface Props {
-  year: number;
-  month: number;
+  /** 単月集計時に指定（year+month）。期間集計時は months[] を使う。 */
+  year?: number;
+  month?: number;
+  /** 通期/上期/下期等の期間集計用。"YYYY-MM" の配列。 */
+  months?: string[];
   store: string;
   /** true: 新規体験者属性のみ（had_trial=1）、false: 会員属性 */
   trialOnly: boolean;
@@ -44,6 +47,7 @@ const GENDER_COLORS: Record<string, string> = {
 export function AttributesSection({
   year,
   month,
+  months,
   store,
   trialOnly,
   title,
@@ -51,15 +55,20 @@ export function AttributesSection({
 }: Props) {
   const [data, setData] = useState<AttributesData | null>(null);
   const [loading, setLoading] = useState(true);
+  const monthsKey = months ? months.join(",") : "";
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams({
-      year: String(year),
-      month: String(month),
-      ...(store && store !== "全体" && { store }),
-      ...(trialOnly && { trialOnly: "1" }),
-    });
+    const params = new URLSearchParams();
+    if (monthsKey) {
+      params.set("months", monthsKey);
+    } else if (year !== undefined && month !== undefined) {
+      params.set("year", String(year));
+      params.set("month", String(month));
+    }
+    if (store && store !== "全体") params.set("store", store);
+    if (trialOnly) params.set("trialOnly", "1");
+
     fetch(`/api/dashboard/attributes?${params}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -67,7 +76,7 @@ export function AttributesSection({
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [year, month, store, trialOnly]);
+  }, [year, month, monthsKey, store, trialOnly]);
 
   if (loading) {
     return (

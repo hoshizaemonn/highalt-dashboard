@@ -31,6 +31,7 @@ import {
 } from "./shared";
 import { PromotionPeriodSection } from "./PromotionSection";
 import { useStoreDisplayName } from "../useStoreDisplayName";
+import { AttributesSection } from "./AttributesSection";
 
 export interface PeriodViewProps {
   annualData: AnnualData;
@@ -1169,6 +1170,26 @@ export default function PeriodView({
           </div>
         </>
       )}
+
+      {/* 会員属性 / 新規体験者属性（坪井さん要望: 通期/上期/下期でも表示） */}
+      {/*
+        会員属性は ML001 時点スナップショットのため期間は無関係（現アクティブ会員を集計）。
+        新規体験者属性は effective_periods（実績投入分）で複数月集計する。
+      */}
+      <AttributesSection
+        store={store}
+        trialOnly={false}
+        title="会員属性"
+        helpText="現時点でアクティブな会員の男女構成比と年代別構成比（hacomono CSV 由来・ML001時点スナップショット）"
+        months={annualData.effective_periods ?? annualData.periods ?? []}
+      />
+      <AttributesSection
+        store={store}
+        trialOnly={true}
+        title="新規体験者属性"
+        helpText="対象期間内に体験を受講した会員の男女構成比と年代別構成比（hacomono CSV 由来）"
+        months={annualData.effective_periods ?? annualData.periods ?? []}
+      />
     </>
   );
 }
