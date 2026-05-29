@@ -26,18 +26,20 @@ export function BudgetTab({
   lockedStore?: string | null;
 }) {
   const [files, setFiles] = useState<File[]>([]);
-  const [store, setStore] = useState<string>(lockedStore ?? STORES[0]);
-  useEffect(() => {
-    if (lockedStore) setStore(lockedStore);
-  }, [lockedStore]);
-  const [fiscalYear, setFiscalYear] = useState(2026);
-  const [period, setPeriod] = useState(9);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [results, setResults] = useState<string[]>([]);
+  const [confirming, setConfirming] = useState(false);
 
-  const handleUpload = async () => {
+  // 取込前の確認（同店舗・同年度の既存予算は置き換わるため）
+  const handleUpload = () => {
     if (files.length === 0) return;
+    setConfirming(true);
+  };
+
+  const doUpload = async () => {
+    if (files.length === 0) return;
+    setConfirming(false);
     setLoading(true);
     setStatus({ type: "info", text: "解析・保存中..." });
     setResults([]);
@@ -48,11 +50,9 @@ export function BudgetTab({
       try {
         // 判別はサーバー側に一本化（クライアントの文字コード誤判定を避ける）。
         // /api/upload/budget が中身を見て 予算実績対比表 / 販促報告 を自動振り分け。
+        // 店舗・年度・期はファイル名からサーバーが自動判別するので送らない
         const formData = new FormData();
         formData.append("file", f);
-        formData.append("store", store);
-        formData.append("fiscalYear", String(fiscalYear));
-        formData.append("period", String(period));
 
         const res = await fetch("/api/upload/budget", {
           method: "POST",
@@ -95,51 +95,9 @@ export function BudgetTab({
         予算CSVをアップロード（複数まとめて可）。
         <strong>予算実績対比表</strong>（売上・経費）と
         <strong>販促報告</strong>（体験者数・入会数・退会数のKPI）を自動判別して取り込みます。
-        <strong>店舗・年度・期はファイル名から自動判別</strong>するので、複数店舗をまとめて投入できます
-        （ファイル名に店舗・期が無い場合のみ下の選択を使用）。同じ年度の予算は再アップロードで置き換わります。
-      </p>
-
-      <div className="grid grid-cols-3 gap-4">
-        {lockedStore ? (
-          <LockedStoreField storeName={lockedStore} />
-        ) : (
-          <StoreSelect value={store} onChange={setStore} />
-        )}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            対象年度（決算年）
-          </label>
-          <select
-            value={fiscalYear}
-            onChange={(e) => setFiscalYear(parseInt(e.target.value))}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
-          >
-            {Array.from({ length: new Date().getFullYear() - 2020 + 6 }, (_, i) => 2020 + i).map((y) => (
-              <option key={y} value={y}>
-                {y}年度
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            第○期
-          </label>
-          <select
-            value={period}
-            onChange={(e) => setPeriod(parseInt(e.target.value))}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
-          >
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-              <option key={m} value={m}>
-                第{m}期
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <p className="text-xs text-gray-400">
-        {fiscalYear}年/第{period}期 = {fiscalYear - 1}年10月〜{fiscalYear}年9月
+        <strong>店舗・年度・期はファイル名から自動判別</strong>するので、選択は不要です
+        （例: <code>2026_9期…（東日本橋スタジオ）.csv</code>）。複数店舗をまとめてドロップでき、
+        同じ年度の予算は再アップロードで置き換わります。
       </p>
 
       <FileDropzone
@@ -154,9 +112,36 @@ export function BudgetTab({
         onRemoveFile={(idx) => setFiles((prev) => prev.filter((_, i) => i !== idx))}
       />
 
-      <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0}>
-        {files.length <= 1 ? "解析して保存する" : `${files.length}件を解析して保存`}
-      </ActionButton>
+      {!confirming && (
+        <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0}>
+          {files.length <= 1 ? "解析して保存する" : `${files.length}件を解析して保存`}
+        </ActionButton>
+      )}
+
+      {confirming && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 space-y-3">
+          <p className="text-sm text-amber-800 font-medium">
+            ⚠️ {files.length}件のCSVを取り込みます。
+            同じ店舗・同じ年度の既存予算は<strong>置き換え</strong>られます。よろしいですか？
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={doUpload}
+              disabled={loading}
+              className="px-4 py-2 rounded-md text-sm font-medium bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+            >
+              取り込む（上書き）
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={loading}
+              className="px-4 py-2 rounded-md text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
 
       {results.length > 0 && (
         <div className="space-y-1">
