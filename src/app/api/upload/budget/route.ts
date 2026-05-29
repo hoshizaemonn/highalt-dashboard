@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { getSession, requireStoreUploadAccess } from "@/lib/auth";
 import { BUDGET_ITEMS, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 import { decodeFileBuffer, parseCSV, safeInt } from "@/lib/csv-utils";
+import {
+  isPromotionReportCsv,
+  extractPromotionBudgetRecords,
+  PROMOTION_BUDGET_CATEGORIES,
+} from "@/lib/promotion-budget-parse";
 
 export async function GET(request: NextRequest) {
   try {
@@ -78,6 +83,58 @@ export async function POST(request: NextRequest) {
         { error: "CSVにデータ行がありません" },
         { status: 400 },
       );
+    }
+
+    // ── サーバー側フォールバック自動判別 ──────────────────────
+    // 販促報告シート（体験者数/入会数/退会数のKPI予算）がこのエンドポイントに
+    // 来た場合でも正しく処理する。予算実績対比表とは行レイアウトが異なり、
+    // BUDGET_ITEMS のマッチでは 0 件になってしまうため、内容で振り分ける。
+    if (isPromotionReportCsv(text)) {
+      const promoRecords = extractPromotionBudgetRecords(
+        allRows,
+        store,
+        fiscalYear,
+      );
+      if (promoRecords.length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              "販促報告シートと判定しましたが、予算行（入会数（予算）/紹介からの体験数（予算）等）を検出できませんでした。",
+          },
+          { status: 400 },
+        );
+      }
+      const promoYears = [...new Set(promoRecords.map((r) => r.year))];
+      await prisma.$transaction(async (tx) => {
+        await tx.budgetData.deleteMany({
+          where: {
+            storeName: store,
+            year: { in: promoYears },
+            category: { in: [...PROMOTION_BUDGET_CATEGORIES] },
+          },
+        });
+        await tx.budgetData.createMany({
+          data: promoRecords,
+          skipDuplicates: true,
+        });
+        await tx.uploadLog.create({
+          data: {
+            userId: session.userId,
+            userName: session.displayName || session.storeName || "ユーザー",
+            dataType: "promotion_budget",
+            storeName: store,
+            year: fiscalYear,
+            fileName: file.name,
+            recordCount: promoRecords.length,
+            note: `${fiscalYear}年度 KPI予算（体験者数/新規入会数/退会数・自動判別）`,
+          },
+        });
+      }, { timeout: 30000 });
+      return NextResponse.json({
+        records: promoRecords.length,
+        categories: [...new Set(promoRecords.map((r) => r.category))],
+        detected: "promotion",
+      });
     }
 
     // Budget CSV (予算実績対比表) format:
