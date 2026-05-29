@@ -8,6 +8,7 @@ import {
   extractPromotionBudgetRecords,
   PROMOTION_BUDGET_CATEGORIES,
 } from "@/lib/promotion-budget-parse";
+import { parseBudgetFilename } from "@/lib/budget-filename";
 
 export async function GET(request: NextRequest) {
   try {
@@ -53,18 +54,32 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const store = formData.get("store") as string;
-    const fiscalYear = parseInt(formData.get("fiscalYear") as string, 10);
-    const period = parseInt(formData.get("period") as string, 10);
+    let store = formData.get("store") as string;
+    let fiscalYear = parseInt(formData.get("fiscalYear") as string, 10);
+    let period = parseInt(formData.get("period") as string, 10);
 
-    if (!file || !store || isNaN(fiscalYear)) {
+    if (!file) {
       return NextResponse.json(
-        { error: "file, store, fiscalYear are required" },
+        { error: "file is required" },
         { status: 400 },
       );
     }
 
-    // 店舗スコープ厳格化: 非adminは自店舗以外への保存を拒否
+    // ファイル名から 店舗 / 決算年 / 期 を自動判別し、取れた値で上書きする
+    // （別店舗のファイルを誤った店舗で取り込む事故を防ぐ。坪井さん要望）
+    const fn = parseBudgetFilename(file.name);
+    if (fn.store) store = fn.store;
+    if (fn.fiscalYear) fiscalYear = fn.fiscalYear;
+    if (fn.period) period = fn.period;
+
+    if (!store || isNaN(fiscalYear)) {
+      return NextResponse.json(
+        { error: "store, fiscalYear are required" },
+        { status: 400 },
+      );
+    }
+
+    // 店舗スコープ厳格化: 非adminは自店舗以外への保存を拒否（ファイル名判別後の最終店舗で検証）
     const auth = await requireStoreUploadAccess(store);
     if (auth.error) return auth.error;
 
@@ -137,6 +152,9 @@ export async function POST(request: NextRequest) {
         records: promoRecords.length,
         categories: [...new Set(promoRecords.map((r) => r.category))],
         detected: "promotion",
+        store,
+        fiscalYear,
+        period,
       });
     }
 
@@ -233,6 +251,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       records: records.length,
       categories: [...new Set(records.map((r) => r.category))],
+      detected: "budget",
+      store,
+      fiscalYear,
+      period,
     });
   } catch (error) {
     console.error("Budget upload error:", error);
