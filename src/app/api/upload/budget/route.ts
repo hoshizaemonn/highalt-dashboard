@@ -158,15 +158,44 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Budget CSV (予算実績対比表) format:
-    // Each month has 4 columns: 予算/実績/予算差/予算比 starting from col index 1
-    // Values are in thousands (千円単位) → multiply by 1000
-    // Fiscal year: Oct(fy-1) to Sep(fy)
-
-    // Build fiscal year month mapping: [(2025,10),(2025,11),(2025,12),(2026,1),...,(2026,9)]
+    // Budget CSV は2つのレイアウトがある:
+    //   - 予算実績対比表: 月ごとに4列（予算/実績/予算差/予算比）
+    //   - 予算書: 月ごとに1列（予算のみ）
+    // どちらでも正しく読むため、ヘッダ行の月ラベル（10月〜9月）の実列位置を検出する。
+    // 値は千円単位 → 円に変換。会計年度: Oct(fy-1)〜Sep(fy)。
     const fyMonths: { year: number; month: number }[] = [];
     for (let m = 10; m <= 12; m++) fyMonths.push({ year: fiscalYear - 1, month: m });
     for (let m = 1; m <= 9; m++) fyMonths.push({ year: fiscalYear, month: m });
+
+    // 会計年度順の月ラベル
+    const monthLabelsInOrder = [
+      "10月", "11月", "12月", "1月", "2月", "3月",
+      "4月", "5月", "6月", "7月", "8月", "9月",
+    ];
+    // ヘッダ行（月ラベルが最も多く並ぶ行）から 月→列インデックス を検出。
+    // 「合計」列を January 等と誤認しないよう、各月ラベルの実位置を使う。
+    let monthColIdx: (number | undefined)[] = [];
+    let bestHits = 0;
+    for (const row of allRows.slice(0, 8)) {
+      const cols: (number | undefined)[] = new Array(12).fill(undefined);
+      let hits = 0;
+      for (let ci = 0; ci < row.length; ci++) {
+        const t = (row[ci] ?? "").trim();
+        const mi = monthLabelsInOrder.indexOf(t);
+        if (mi >= 0 && cols[mi] === undefined) {
+          cols[mi] = ci;
+          hits++;
+        }
+      }
+      if (hits > bestHits) {
+        bestHits = hits;
+        monthColIdx = cols;
+      }
+    }
+    // ヘッダ検出に失敗した場合は従来の4列/月レイアウトにフォールバック
+    if (bestHits < 10) {
+      monthColIdx = fyMonths.map((_, i) => 1 + i * 4);
+    }
 
     interface BudgetRecord {
       storeName: string;
@@ -185,28 +214,23 @@ export async function POST(request: NextRequest) {
       const categoryName = row[0].trim();
       if (!budgetItemSet.has(categoryName)) continue;
 
-      // Each month has 4 columns: 予算/実績/予算差/予算比 starting from col index 1
       for (let i = 0; i < fyMonths.length; i++) {
-        const colIdx = 1 + i * 4; // 予算 column (first of each group of 4)
-        if (colIdx >= row.length) break;
+        const colIdx = monthColIdx[i];
+        if (colIdx === undefined || colIdx >= row.length) continue;
 
         const valStr = row[colIdx].trim().replace(/,/g, "").replace(/"/g, "").replace(/ /g, "");
         if (!valStr || valStr === "0" || valStr === "-") continue;
 
-        try {
-          const amount = parseInt(valStr, 10) * 1000; // 千円単位 → 円
-          if (isNaN(amount)) continue;
+        const amount = parseInt(valStr, 10) * 1000; // 千円単位 → 円
+        if (isNaN(amount)) continue;
 
-          records.push({
-            storeName: store,
-            year: fyMonths[i].year,
-            month: fyMonths[i].month,
-            category: categoryName,
-            amount,
-          });
-        } catch {
-          // Skip invalid values
-        }
+        records.push({
+          storeName: store,
+          year: fyMonths[i].year,
+          month: fyMonths[i].month,
+          category: categoryName,
+          amount,
+        });
       }
     }
 
