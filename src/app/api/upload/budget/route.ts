@@ -75,7 +75,10 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = await file.arrayBuffer();
-    const text = decodeFileBuffer(buffer, "shift_jis");
+    // エンコーディング自動判定（UTF-8優先→Shift_JIS）。
+    // 注意: shift_jis 優先にすると UTF-8 ファイルが例外を出さず文字化けし、
+    // 「販促報告」等の判定キーワードを取りこぼすため、preference は付けない。
+    const text = decodeFileBuffer(buffer);
     const allRows = parseCSV(text);
 
     if (allRows.length < 2) {
