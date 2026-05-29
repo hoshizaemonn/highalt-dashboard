@@ -27,7 +27,6 @@ import {
   Legend,
   CartesianGrid,
   LabelList,
-  ReferenceLine,
 } from "./shared";
 import { PromotionPeriodSection } from "./PromotionSection";
 import { useStoreDisplayName } from "../useStoreDisplayName";
@@ -91,6 +90,11 @@ export default function PeriodView({
         // 月次の獲得コスト = 広告宣伝費 ÷ 新規入会数（入会1名を獲得するためにいくら広告費を使ったか）
         const acquisitionCost =
           m.ma_new_signups > 0 ? Math.round(advertising / m.ma_new_signups) : 0;
+        // 獲得コスト予算 = 広告宣伝費予算 ÷ 新規入会数予算（予算ベースの目標獲得単価）
+        const acquisitionCostBudget =
+          m.budget_new_signups > 0
+            ? Math.round(m.budget_advertising / m.budget_new_signups)
+            : 0;
         // 客単価 = 月会費売上 ÷ プラン契約者数（1人あたりの月会費収入）
         const monthlyFee = m.monthly_fee_ps001 ?? m.sales_by_category["月会費"] ?? 0;
         const unitPrice =
@@ -108,6 +112,7 @@ export default function PeriodView({
           消耗品費: supplies,
           営業利益: m.operating_profit,
           獲得コスト: acquisitionCost,
+          獲得コスト予算: acquisitionCostBudget,
           プラン契約者数: m.ma_plan_subscribers,
           在籍会員数: m.ma_total_members,
           新規入会数: m.ma_new_signups,
@@ -170,6 +175,7 @@ export default function PeriodView({
           title="経費合計"
           value={formatYen(totals.expense)}
           color={COLORS.orange}
+          help="人件費を除く店舗経費の合計（広告宣伝費・消耗品費・賃借料・通信費・支払手数料・本部一括経費 等）。仕入高・売上原価は含みません。"
           salesRatioOf={{ numerator: totals.expense, revenue: totals.revenue }}
           current={totals.expense}
           previousYear={annualData.previous_period_totals?.expense}
@@ -255,7 +261,8 @@ export default function PeriodView({
         </>
       )}
 
-      {/* Main charts (2x2) */}
+      {/* Main charts (2x2): 売上・営業損益・会員数 推移 */}
+      <SectionTitle>売上・営業損益・会員数 推移</SectionTitle>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         {/* Revenue trend with budget overlay */}
         <div className="bg-white rounded-lg border shadow-sm p-4">
@@ -303,51 +310,41 @@ export default function PeriodView({
           </ResponsiveContainer>
         </div>
 
-        {/* Expense breakdown or store comparison */}
-        {isAllStores && storeCompareDisplayed ? (
-          <div className="bg-white rounded-lg border shadow-sm p-4">
-            {/* 「店舗別営業利益」→「店舗別営業損益」: 赤字店舗の可能性があるため "損益" 表記。
-                個別バーは利益マイナスなら赤色で警告（Cell で個別塗り） */}
-            <p className="text-sm font-medium text-gray-600 mb-3">店舗別営業損益</p>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={storeCompareDisplayed.stores}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="store_display" fontSize={10} />
-                <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
-                <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="profit" name="営業損益" radius={[4, 4, 0, 0]}>
-                  {storeCompareDisplayed.stores.map((s, i) => (
-                    <Cell key={i} fill={s.profit >= 0 ? COLORS.green : COLORS.red} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg border shadow-sm p-4">
-            <p className="text-sm font-medium text-gray-600 mb-3">経費内訳推移</p>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" fontSize={11} />
-                <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend />
-                <Bar
-                  dataKey="人件費"
-                  stackId="a"
-                  fill={COLORS.red}
-                />
-                <Bar
-                  dataKey="経費"
-                  stackId="a"
-                  fill={COLORS.orange}
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+        {/* 営業損益推移（坪井さん要望: コスト・利益推移セクションからここへ移動・文言は「営業損益」） */}
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">営業損益推移</p>
+          <ResponsiveContainer width="100%" height={250}>
+            <ComposedChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="営業利益" name="営業損益" radius={[4, 4, 0, 0]}>
+                {chartData.map((d, i) => (
+                  <Cell key={i} fill={d.営業利益 >= 0 ? COLORS.green : COLORS.red} />
+                ))}
+              </Bar>
+              <Line type="monotone" dataKey="営業利益予算" name="営業損益予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* 経費内訳推移（人件費＋経費の積み上げ） */}
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">経費内訳推移</p>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend />
+              <Bar dataKey="人件費" stackId="a" fill={COLORS.red} />
+              <Bar dataKey="経費" stackId="a" fill={COLORS.orange} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* 売上4分類推移（店舗ビュー時のみ）
@@ -422,20 +419,6 @@ export default function PeriodView({
       <SectionTitle>コスト・利益推移</SectionTitle>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         <div className="bg-white rounded-lg border shadow-sm p-4">
-          <p className="text-sm font-medium text-gray-600 mb-3">人件費推移</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <ComposedChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" fontSize={11} />
-              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
-              <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="人件費" fill={COLORS.red} radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="人件費予算" name="人件費予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">広告宣伝費推移</p>
           <ResponsiveContainer width="100%" height={220}>
             <ComposedChart data={chartData}>
@@ -463,24 +446,6 @@ export default function PeriodView({
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-        <div className="bg-white rounded-lg border shadow-sm p-4">
-          <p className="text-sm font-medium text-gray-600 mb-3">営業利益推移</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <ComposedChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" fontSize={11} />
-              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
-              <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="営業利益" radius={[4, 4, 0, 0]}>
-                {chartData.map((d, i) => (
-                  <Cell key={i} fill={d.営業利益 >= 0 ? COLORS.green : COLORS.red} />
-                ))}
-              </Bar>
-              <Line type="monotone" dataKey="営業利益予算" name="営業利益予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
         <div className="bg-white rounded-lg border shadow-sm p-4 lg:col-span-2">
           <p className="text-sm font-medium text-gray-600 mb-3">
             <span className="inline-flex items-center gap-2">
@@ -489,24 +454,35 @@ export default function PeriodView({
             </span>
           </p>
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" fontSize={11} />
               <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
               <Tooltip
-                formatter={(value) => [
+                formatter={(value, name) => [
                   Number(value) > 0 ? formatYen(Number(value)) + "/人" : "-",
-                  "獲得コスト",
+                  String(name),
                 ]}
               />
               <Line
                 type="monotone"
                 dataKey="獲得コスト"
+                name="獲得コスト"
                 stroke={COLORS.orange}
                 strokeWidth={2}
                 dot={{ r: 4 }}
               />
-            </LineChart>
+              <Line
+                type="monotone"
+                dataKey="獲得コスト予算"
+                name="獲得コスト予算"
+                stroke="#374151"
+                strokeWidth={2.5}
+                strokeDasharray="6 4"
+                dot={{ r: 3, fill: "#374151" }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
@@ -565,23 +541,9 @@ export default function PeriodView({
           </ResponsiveContainer>
         </div>
         {/* 配置（坪井さん指定）:
-              [新規入会数] [休会数]
-              [退会数]     [退会率]
-            退会数の右に退会率が並ぶ */}
-        <div className="bg-white rounded-lg border shadow-sm p-4">
-          <p className="text-sm font-medium text-gray-600 mb-3">新規入会数 推移</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <ComposedChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" fontSize={11} />
-              <YAxis fontSize={11} allowDecimals={false} unit="人" />
-              <Tooltip content={<MemberTooltip />} />
-              <Bar dataKey="新規入会数" fill={COLORS.green} radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="新規入会数予算" name="新規入会数予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+              [休会数] [退会数]
+              [退会率]
+            ※「新規入会数 推移」は坪井さん要望で削除（会員数推移セクションに集約） */}
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">休会数 推移</p>
           <ResponsiveContainer width="100%" height={220}>
@@ -673,44 +635,35 @@ export default function PeriodView({
         <>
           <SectionTitle>店舗比較</SectionTitle>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-            {/* Revenue comparison */}
+            {/* Revenue comparison（坪井さん要望: 平均予算ライン→店舗ごとの予算を折れ線で） */}
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別売上</p>
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={storeCompareDisplayed.stores}>
+                <ComposedChart data={storeCompareDisplayed.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="store_display" fontSize={10} />
                   <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="revenue" name="売上" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
-                  {(() => {
-                    // 全店平均の売上予算ライン（仕様書「予算を折れ線で入れる」）
-                    const budgets = storeCompareDisplayed.stores
-                      .map((s) => s.budget_revenue ?? 0)
-                      .filter((b) => b > 0);
-                    if (budgets.length === 0) return null;
-                    const avg = Math.round(
-                      budgets.reduce((s, v) => s + v, 0) / budgets.length,
-                    );
-                    return (
-                      <ReferenceLine
-                        y={avg}
-                        stroke="#374151"
-                        strokeWidth={2}
-                        strokeDasharray="6 4"
-                        label={{ value: `平均予算 ${formatCompact(avg)}`, position: "insideTopRight", fontSize: 10, fill: "#374151" }}
-                      />
-                    );
-                  })()}
-                </BarChart>
+                  <Line
+                    type="monotone"
+                    dataKey="budget_revenue"
+                    name="予算"
+                    stroke="#374151"
+                    strokeWidth={2.5}
+                    strokeDasharray="6 4"
+                    dot={{ r: 3, fill: "#374151" }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
 
-            {/* 店舗別営業損益（坪井さん要望: 「店舗別人件費」は削除して損益に差替） */}
+            {/* 店舗別営業損益（坪井さん要望: 平均ではなく店舗ごとの予算を折れ線で） */}
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別営業損益</p>
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={storeCompareDisplayed.stores}>
+                <ComposedChart data={storeCompareDisplayed.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="store_display" fontSize={10} />
                   <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
@@ -720,38 +673,30 @@ export default function PeriodView({
                       <Cell key={i} fill={s.profit >= 0 ? COLORS.green : COLORS.red} />
                     ))}
                   </Bar>
-                  {(() => {
-                    const budgets = storeCompareDisplayed.stores
-                      .map((s) => s.budget_profit ?? 0)
-                      .filter((b) => b !== 0);
-                    if (budgets.length === 0) return null;
-                    const avg = Math.round(
-                      budgets.reduce((s, v) => s + v, 0) / budgets.length,
-                    );
-                    return (
-                      <ReferenceLine
-                        y={avg}
-                        stroke="#374151"
-                        strokeWidth={2}
-                        strokeDasharray="6 4"
-                        label={{ value: `平均予算 ${formatCompact(avg)}`, position: "insideTopRight", fontSize: 10, fill: "#374151" }}
-                      />
-                    );
-                  })()}
-                </BarChart>
+                  <Line
+                    type="monotone"
+                    dataKey="budget_profit"
+                    name="予算"
+                    stroke="#374151"
+                    strokeWidth={2.5}
+                    strokeDasharray="6 4"
+                    dot={{ r: 3, fill: "#374151" }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
 
-            {/* 店舗別新規体験者数 + 体験者数予算ライン（仕様書） */}
+            {/* 店舗別新規体験者数（坪井さん要望: 店舗ごとの予算を折れ線で） */}
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別新規体験者数</p>
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={storeCompareDisplayed.stores}>
+                <ComposedChart data={storeCompareDisplayed.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="store_display" fontSize={10} />
                   <YAxis fontSize={11} allowDecimals={false} unit="人" />
                   <Tooltip
-                    formatter={(value) => [`${Number(value)}人`, "新規体験者数"]}
+                    formatter={(value, name) => [`${Number(value)}人`, String(name)]}
                   />
                   <Bar
                     dataKey="trial_count"
@@ -759,38 +704,30 @@ export default function PeriodView({
                     fill={COLORS.purple}
                     radius={[4, 4, 0, 0]}
                   />
-                  {(() => {
-                    const budgets = storeCompareDisplayed.stores
-                      .map((s) => s.budget_trial_count ?? 0)
-                      .filter((b) => b > 0);
-                    if (budgets.length === 0) return null;
-                    const avg = Math.round(
-                      budgets.reduce((s, v) => s + v, 0) / budgets.length,
-                    );
-                    return (
-                      <ReferenceLine
-                        y={avg}
-                        stroke="#374151"
-                        strokeWidth={2}
-                        strokeDasharray="6 4"
-                        label={{ value: `平均予算 ${avg}人`, position: "insideTopRight", fontSize: 10, fill: "#374151" }}
-                      />
-                    );
-                  })()}
-                </BarChart>
+                  <Line
+                    type="monotone"
+                    dataKey="budget_trial_count"
+                    name="予算"
+                    stroke="#374151"
+                    strokeWidth={2.5}
+                    strokeDasharray="6 4"
+                    dot={{ r: 3, fill: "#374151" }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
 
-            {/* 店舗別入会率 + 入会率予算ライン（仕様書） */}
+            {/* 店舗別入会率（坪井さん要望: 店舗ごとの予算を折れ線で） */}
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">店舗別入会率</p>
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={storeCompareDisplayed.stores}>
+                <ComposedChart data={storeCompareDisplayed.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="store_display" fontSize={10} />
                   <YAxis unit="%" fontSize={11} />
                   <Tooltip
-                    formatter={(value) => [`${Number(value).toFixed(1)}%`, "入会率"]}
+                    formatter={(value, name) => [`${Number(value).toFixed(1)}%`, String(name)]}
                   />
                   <Bar
                     dataKey="signup_rate"
@@ -798,23 +735,17 @@ export default function PeriodView({
                     fill={COLORS.orange}
                     radius={[4, 4, 0, 0]}
                   />
-                  {(() => {
-                    const budgets = storeCompareDisplayed.stores
-                      .map((s) => s.budget_signup_rate ?? 0)
-                      .filter((b) => b > 0);
-                    if (budgets.length === 0) return null;
-                    const avg = budgets.reduce((s, v) => s + v, 0) / budgets.length;
-                    return (
-                      <ReferenceLine
-                        y={avg}
-                        stroke="#374151"
-                        strokeWidth={2}
-                        strokeDasharray="6 4"
-                        label={{ value: `平均予算 ${avg.toFixed(1)}%`, position: "insideTopRight", fontSize: 10, fill: "#374151" }}
-                      />
-                    );
-                  })()}
-                </BarChart>
+                  <Line
+                    type="monotone"
+                    dataKey="budget_signup_rate"
+                    name="予算"
+                    stroke="#374151"
+                    strokeWidth={2.5}
+                    strokeDasharray="6 4"
+                    dot={{ r: 3, fill: "#374151" }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
 

@@ -105,10 +105,10 @@ export function EnqueteSection({ store }: Props) {
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">来店目的</p>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={purposesData} layout="vertical">
+            <BarChart data={purposesData} layout="vertical" margin={{ left: 8, right: 8 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" fontSize={11} allowDecimals={false} unit="件" />
-              <YAxis type="category" dataKey="name" fontSize={10} width={120} />
+              <YAxis type="category" dataKey="name" fontSize={10} width={150} interval={0} />
               <Tooltip
                 formatter={(v) => [`${numFormat.format(Number(v))}件`, "回答数"]}
               />
