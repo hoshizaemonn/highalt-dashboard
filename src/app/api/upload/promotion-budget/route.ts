@@ -83,7 +83,8 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = await file.arrayBuffer();
-    const text = decodeFileBuffer(buffer, "shift_jis");
+    // エンコーディング自動判定（UTF-8優先→Shift_JIS）
+    const text = decodeFileBuffer(buffer);
     const allRows = parseCSV(text);
     if (allRows.length < 2) {
       return NextResponse.json({ error: "CSVにデータ行がありません" }, { status: 400 });

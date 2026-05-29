@@ -16,26 +16,6 @@ import {
 
 const formatYen = (n: number) => `¥${n.toLocaleString("ja-JP")}`;
 
-// CSV の中身から「予算実績対比表（売上・経費）」か「販促報告（KPI）」かを自動判定する。
-// 販促報告シートは先頭に「○○販促報告」、本文に「紹介からの体験数」等を含む。
-async function detectBudgetCsvType(file: File): Promise<"promotion" | "budget"> {
-  const buf = await file.slice(0, 16384).arrayBuffer();
-  let text = "";
-  try {
-    text = new TextDecoder("shift_jis").decode(buf);
-  } catch {
-    text = new TextDecoder("utf-8").decode(buf);
-  }
-  if (
-    text.includes("販促報告") ||
-    text.includes("紹介からの体験数") ||
-    text.includes("紹介以外からの体験数")
-  ) {
-    return "promotion";
-  }
-  return "budget";
-}
-
 // ─── Budget Tab ─────────────────────────────────────────────
 
 export function BudgetTab({
@@ -66,24 +46,24 @@ export function BudgetTab({
     let ok = 0;
     for (const f of files) {
       try {
-        const type = await detectBudgetCsvType(f);
+        // 判別はサーバー側に一本化（クライアントの文字コード誤判定を避ける）。
+        // /api/upload/budget が中身を見て 予算実績対比表 / 販促報告 を自動振り分け。
         const formData = new FormData();
         formData.append("file", f);
         formData.append("store", store);
         formData.append("fiscalYear", String(fiscalYear));
-        if (type === "budget") formData.append("period", String(period));
+        formData.append("period", String(period));
 
-        const endpoint =
-          type === "promotion"
-            ? "/api/upload/promotion-budget"
-            : "/api/upload/budget";
-        const res = await fetch(endpoint, { method: "POST", body: formData });
+        const res = await fetch("/api/upload/budget", {
+          method: "POST",
+          body: formData,
+        });
         const data = await res.json();
         if (!res.ok) {
           msgs.push(`${f.name}: ${data.error || "エラー"}`);
           continue;
         }
-        if (type === "promotion") {
+        if (data.detected === "promotion") {
           msgs.push(
             `${f.name}: 販促報告KPI予算 ${data.records}件（${(data.categories || []).join("・")}）`,
           );
