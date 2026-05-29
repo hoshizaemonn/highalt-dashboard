@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { HQ_STORE, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
+import { getHiddenStores } from "@/lib/hidden-stores";
 
 interface MonthlyEntry {
   month: number;
@@ -129,7 +130,11 @@ export async function GET(request: NextRequest) {
 
     // Fetch all data for the year range at once to minimize queries
     const years = [...new Set(periods.map((p) => p.year))];
-    const storeWhere = store ? { storeName: store } : { storeName: { not: HQ_STORE } };
+    // 全体集計時は 本部 + 非表示店舗（閉店/テスト）を除外
+    const hiddenStores = await getHiddenStores();
+    const storeWhere = store
+      ? { storeName: store }
+      : { storeName: { notIn: [HQ_STORE, ...hiddenStores] } };
 
     // Sequential queries to avoid Supabase connection pool limits
     const allPayroll = await prisma.payrollData.findMany({
@@ -172,7 +177,7 @@ export async function GET(request: NextRequest) {
           where: { year: { in: years }, storeName: store },
         })
       : await prisma.budgetData.findMany({
-          where: { year: { in: years }, storeName: { not: HQ_STORE } },
+          where: { year: { in: years }, storeName: { notIn: [HQ_STORE, ...hiddenStores] } },
         });
 
     const monthLabels = [

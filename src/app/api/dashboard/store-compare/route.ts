@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STORES, HQ_STORE } from "@/lib/constants";
 import { requireSession } from "@/lib/auth";
+import { getHiddenStores } from "@/lib/hidden-stores";
 
 export async function GET(request: NextRequest) {
   try {
@@ -137,6 +138,9 @@ export async function GET(request: NextRequest) {
     for (const r of allSquare) dynamicStoreSet.add(r.storeName);
     for (const r of allMonthlySummary) dynamicStoreSet.add(r.storeName);
     dynamicStoreSet.delete(HQ_STORE);
+    // 非表示店舗（閉店/テスト店舗）を比較から除外
+    const hiddenStores = await getHiddenStores();
+    for (const h of hiddenStores) dynamicStoreSet.delete(h);
     // STORES の順を尊重し、その後に自動検出された新店舗を追加
     const orderedStores: string[] = [];
     const seen = new Set<string>();

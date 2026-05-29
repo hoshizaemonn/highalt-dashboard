@@ -521,6 +521,8 @@ model StoreDisplayName {
   id          Int      @id @default(autoincrement())
   storeName   String   @unique @map("store_name")
   displayName String   @map("display_name")
+  /** 非表示フラグ: true の店舗は店舗リスト・店舗比較・集計から除外（閉店/テスト店舗用） */
+  hidden      Boolean  @default(false)
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("store_display_name")
