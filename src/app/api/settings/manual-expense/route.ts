@@ -52,6 +52,7 @@ export async function PUT(request: NextRequest) {
     year?: unknown;
     month?: unknown;
     category?: unknown;
+    storeName?: unknown;
     totalAmount?: unknown;
     note?: unknown;
   };
@@ -64,6 +65,7 @@ export async function PUT(request: NextRequest) {
     year: number;
     month: number;
     category: string;
+    storeName: string;
     totalAmount: number;
     note: string | null;
   };
@@ -73,12 +75,14 @@ export async function PUT(request: NextRequest) {
       const month =
         typeof r.month === "number" ? r.month : parseInt(String(r.month ?? ""), 10);
       const category = typeof r.category === "string" ? r.category.trim() : "";
+      // storeName 空 = 本部一括（均等按分）、店舗名指定 = その店のみ
+      const storeName = typeof r.storeName === "string" ? r.storeName.trim() : "";
       const totalAmount =
         typeof r.totalAmount === "number"
           ? Math.round(r.totalAmount)
           : parseInt(String(r.totalAmount ?? "0").replace(/,/g, ""), 10);
       const note = typeof r.note === "string" ? r.note : null;
-      return { year, month, category, totalAmount, note };
+      return { year, month, category, storeName, totalAmount, note };
     })
     .filter(
       (r) =>
@@ -94,22 +98,29 @@ export async function PUT(request: NextRequest) {
     for (const r of cleaned) {
       if (r.totalAmount === 0) {
         await tx.manualExpenseEntry.deleteMany({
-          where: { year: r.year, month: r.month, category: r.category },
+          where: {
+            year: r.year,
+            month: r.month,
+            category: r.category,
+            storeName: r.storeName,
+          },
         });
         continue;
       }
       await tx.manualExpenseEntry.upsert({
         where: {
-          year_month_category: {
+          year_month_category_storeName: {
             year: r.year,
             month: r.month,
             category: r.category,
+            storeName: r.storeName,
           },
         },
         create: {
           year: r.year,
           month: r.month,
           category: r.category,
+          storeName: r.storeName,
           totalAmount: r.totalAmount,
           note: r.note,
           updatedByName,

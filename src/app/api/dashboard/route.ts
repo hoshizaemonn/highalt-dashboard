@@ -149,12 +149,25 @@ export async function GET(request: NextRequest) {
       },
     });
     const storeCount = STORES.length;
+    const isSingleStore = !!(store && store !== "全体");
     const manualExpenseByCategory: Record<string, number> = {};
     for (const row of manualExpenseRows) {
-      const share =
-        store && store !== "全体"
+      // storeName 空 = 本部一括（均等按分）、店舗名指定 = その店のみ計上
+      let share = 0;
+      if (row.storeName === "") {
+        // 本部一括: 単店ビューは均等按分、全体ビューは全額
+        share = isSingleStore
           ? Math.round(row.totalAmount / storeCount)
           : row.totalAmount;
+      } else {
+        // 店舗別: 単店ビューは当該店のみ、全体ビューは全額合算
+        if (isSingleStore) {
+          if (row.storeName !== store) continue;
+          share = row.totalAmount;
+        } else {
+          share = row.totalAmount;
+        }
+      }
       expenseByCategory[row.category] =
         (expenseByCategory[row.category] || 0) + share;
       manualExpenseByCategory[row.category] =
