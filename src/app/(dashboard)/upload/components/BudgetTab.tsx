@@ -63,13 +63,16 @@ export function BudgetTab({
           msgs.push(`${f.name}: ${data.error || "エラー"}`);
           continue;
         }
+        // サーバーがファイル名から判別した店舗・年度（手動選択と違っていてもこちらを採用）
+        const dst = data.store ? `${data.store} ` : "";
+        const dy = data.fiscalYear ? `${data.fiscalYear}年度 ` : "";
         if (data.detected === "promotion") {
           msgs.push(
-            `${f.name}: 販促報告KPI予算 ${data.records}件（${(data.categories || []).join("・")}）`,
+            `${f.name}: ${dst}${dy}販促報告KPI予算 ${data.records}件（${(data.categories || []).join("・")}）`,
           );
         } else {
           msgs.push(
-            `${f.name}: 予算実績対比表 ${data.records}件 / ${data.categories?.length || 0}カテゴリ`,
+            `${f.name}: ${dst}${dy}予算実績対比表 ${data.records}件 / ${data.categories?.length || 0}カテゴリ`,
           );
         }
         ok++;
@@ -92,7 +95,8 @@ export function BudgetTab({
         予算CSVをアップロード（複数まとめて可）。
         <strong>予算実績対比表</strong>（売上・経費）と
         <strong>販促報告</strong>（体験者数・入会数・退会数のKPI）を自動判別して取り込みます。
-        同じ年度の予算は再アップロードで置き換わります。
+        <strong>店舗・年度・期はファイル名から自動判別</strong>するので、複数店舗をまとめて投入できます
+        （ファイル名に店舗・期が無い場合のみ下の選択を使用）。同じ年度の予算は再アップロードで置き換わります。
       </p>
 
       <div className="grid grid-cols-3 gap-4">
