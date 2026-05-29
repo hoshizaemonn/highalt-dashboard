@@ -288,7 +288,27 @@ export default function PeriodView({
           </ResponsiveContainer>
         </div>
 
-        {/* Member trend */}
+        {/* 営業損益推移（坪井さん要望: 在籍会員数推移と位置入れ替え。右上に配置） */}
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">営業損益推移</p>
+          <ResponsiveContainer width="100%" height={250}>
+            <ComposedChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="営業利益" name="営業損益" radius={[4, 4, 0, 0]}>
+                {chartData.map((d, i) => (
+                  <Cell key={i} fill={d.営業利益 >= 0 ? COLORS.green : COLORS.red} />
+                ))}
+              </Bar>
+              <Line type="monotone" dataKey="営業利益予算" name="営業損益予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Member trend（在籍会員数推移を左下へ） */}
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">
             {isAllStores ? "在籍会員数推移" : "プラン契約者数推移"}
@@ -307,26 +327,6 @@ export default function PeriodView({
                 dot={{ r: 4 }}
               />
             </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* 営業損益推移（坪井さん要望: コスト・利益推移セクションからここへ移動・文言は「営業損益」） */}
-        <div className="bg-white rounded-lg border shadow-sm p-4">
-          <p className="text-sm font-medium text-gray-600 mb-3">営業損益推移</p>
-          <ResponsiveContainer width="100%" height={250}>
-            <ComposedChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" fontSize={11} />
-              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
-              <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="営業利益" name="営業損益" radius={[4, 4, 0, 0]}>
-                {chartData.map((d, i) => (
-                  <Cell key={i} fill={d.営業利益 >= 0 ? COLORS.green : COLORS.red} />
-                ))}
-              </Bar>
-              <Line type="monotone" dataKey="営業利益予算" name="営業損益予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-            </ComposedChart>
           </ResponsiveContainer>
         </div>
 
@@ -413,11 +413,25 @@ export default function PeriodView({
         </>
       )}
 
-      {/* コスト・利益推移（全社×月次）
-          坪井さん要望: 人件費だけでなく、広告宣伝費・消耗品費・営業利益も個別に推移を見たい。
-          + 月次の獲得コスト推移（広告宣伝費 ÷ 新規入会数） */}
-      <SectionTitle>コスト・利益推移</SectionTitle>
+      {/* コスト推移（全社×月次）
+          坪井さん要望: 利益(営業損益推移)は上部「売上・営業損益・会員数 推移」へ移動したため
+          見出しは「コスト推移」。人件費・広告宣伝費・消耗品費・獲得コストを個別に推移表示。 */}
+      <SectionTitle>コスト推移</SectionTitle>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">人件費推移</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <ComposedChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="人件費" fill={COLORS.red} radius={[4, 4, 0, 0]} />
+              <Line type="monotone" dataKey="人件費予算" name="人件費予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">広告宣伝費推移</p>
           <ResponsiveContainer width="100%" height={220}>
