@@ -74,7 +74,10 @@ export async function POST(request: NextRequest) {
 
     if (!store || isNaN(fiscalYear)) {
       return NextResponse.json(
-        { error: "store, fiscalYear are required" },
+        {
+          error:
+            "ファイル名から店舗・年度を判別できませんでした。ファイル名に「2026_9期（○○スタジオ）」のように年度・期・店舗名を含めてください。",
+        },
         { status: 400 },
       );
     }
