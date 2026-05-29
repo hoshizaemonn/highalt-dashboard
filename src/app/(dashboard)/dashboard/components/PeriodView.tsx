@@ -540,10 +540,21 @@ export default function PeriodView({
             </LineChart>
           </ResponsiveContainer>
         </div>
-        {/* 配置（坪井さん指定）:
-              [休会数] [退会数]
-              [退会率]
-            ※「新規入会数 推移」は坪井さん要望で削除（会員数推移セクションに集約） */}
+        {/* 入会数 推移（坪井さん要望: 文言から「新規」を削除、グラフは残す） */}
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-3">入会数 推移</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <ComposedChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis fontSize={11} allowDecimals={false} unit="人" />
+              <Tooltip content={<MemberTooltip />} />
+              <Bar dataKey="新規入会数" name="入会数" fill={COLORS.green} radius={[4, 4, 0, 0]} />
+              <Line type="monotone" dataKey="新規入会数予算" name="入会数予算" stroke="#374151" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3, fill: "#374151" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
         <div className="bg-white rounded-lg border shadow-sm p-4">
           <p className="text-sm font-medium text-gray-600 mb-3">休会数 推移</p>
           <ResponsiveContainer width="100%" height={220}>
