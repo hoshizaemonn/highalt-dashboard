@@ -6,6 +6,7 @@ import { invalidateStoreDisplayNames } from "../../dashboard/useStoreDisplayName
 interface Row {
   storeName: string;
   displayName: string;
+  hidden: boolean;
 }
 
 /**
@@ -28,13 +29,19 @@ export default function StoreNamesTab() {
         fetch("/api/settings/store-display-names"),
       ]);
       const storesData = storesRes.ok ? await storesRes.json() : { stores: [] };
-      const mapData = mapRes.ok ? await mapRes.json() : { mapping: {} };
-      const stores: string[] = storesData.stores ?? [];
+      const mapData = mapRes.ok ? await mapRes.json() : { mapping: {}, hidden: {} };
+      // /api/settings/stores は非表示店舗を除外するので、非表示も含めた全店を
+      // store-display-names 側の hidden マップと auto_detected から復元する
       const mapping: Record<string, string> = mapData.mapping ?? {};
+      const hiddenMap: Record<string, boolean> = mapData.hidden ?? {};
+      const visibleStores: string[] = storesData.stores ?? [];
+      const hiddenStores: string[] = storesData.hidden_stores ?? [];
+      const allStores = [...visibleStores, ...hiddenStores];
       setRows(
-        stores.map((s) => ({
+        allStores.map((s) => ({
           storeName: s,
-          displayName: mapping[s] ?? "",
+          displayName: mapping[s] && mapping[s] !== s ? mapping[s] : "",
+          hidden: !!hiddenMap[s],
         })),
       );
     } catch {
@@ -50,6 +57,12 @@ export default function StoreNamesTab() {
   const handleChange = (idx: number, value: string) => {
     setRows((prev) =>
       prev.map((r, i) => (i === idx ? { ...r, displayName: value } : r)),
+    );
+  };
+
+  const handleHiddenChange = (idx: number, value: boolean) => {
+    setRows((prev) =>
+      prev.map((r, i) => (i === idx ? { ...r, hidden: value } : r)),
     );
   };
 
@@ -83,6 +96,9 @@ export default function StoreNamesTab() {
           各店舗のダッシュボード表示名を変更できます。**内部の店舗識別子（左列）は変更されない**ため、
           ハコモノCSVの取込やデータ集計の紐付けはそのまま維持されます。
           表示名を空欄にすると、内部識別子をそのまま表示します。
+          <br />
+          <strong>「非表示」</strong>にチェックすると、その店舗を店舗リスト・店舗比較・全体集計から除外します
+          （閉店した店舗やテスト店舗用。データは削除されません）。
         </p>
       </div>
 
@@ -100,11 +116,14 @@ export default function StoreNamesTab() {
                   <th className="text-left px-4 py-2 font-medium text-gray-600">
                     表示名
                   </th>
+                  <th className="text-center px-4 py-2 font-medium text-gray-600 w-24">
+                    非表示
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={r.storeName} className="border-b">
+                  <tr key={r.storeName} className={`border-b ${r.hidden ? "bg-gray-50 opacity-60" : ""}`}>
                     <td className="px-4 py-2 text-gray-700 font-mono text-xs">
                       {r.storeName}
                     </td>
@@ -116,6 +135,14 @@ export default function StoreNamesTab() {
                         placeholder={r.storeName}
                         maxLength={50}
                         className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={r.hidden}
+                        onChange={(e) => handleHiddenChange(i, e.target.checked)}
+                        className="w-4 h-4 accent-[#567FC0] cursor-pointer"
                       />
                     </td>
                   </tr>

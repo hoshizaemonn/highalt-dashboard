@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE, STORES } from "@/lib/constants";
+import { getHiddenStores } from "@/lib/hidden-stores";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
 import { trialDateMonthWhere } from "@/lib/csv-utils";
 
@@ -27,10 +28,14 @@ export async function GET(request: NextRequest) {
     const scopedStore = effectiveStoreScope(auth.session, requestedStore);
     const store = scopedStore ?? undefined;
 
+    // 全体集計時は 本部 + 非表示店舗（閉店/テスト）を除外
+    const hiddenStores = await getHiddenStores();
+    const notHqOrHidden = { notIn: [HQ_STORE, ...hiddenStores] };
+
     // ── Payroll ──────────────────────────────────────────────
     const storeFilter = store && store !== "全体"
       ? { storeName: store }
-      : { storeName: { not: HQ_STORE } };
+      : { storeName: notHqOrHidden };
     const payrollWhere = {
       year,
       ...(month !== undefined && { month }),
@@ -122,7 +127,7 @@ export async function GET(request: NextRequest) {
     const expenseWhere = {
       year,
       ...(month !== undefined && { month }),
-      ...(store && { storeName: store }),
+      storeName: store ? store : notHqOrHidden,
       isRevenue: 0,
     };
 
@@ -185,7 +190,7 @@ export async function GET(request: NextRequest) {
     const commonWhere = {
       year,
       ...(month !== undefined && { month }),
-      ...(store && { storeName: store }),
+      storeName: store ? store : notHqOrHidden,
     };
 
     const salesDetailRows = await prisma.salesDetail.findMany({
@@ -206,7 +211,7 @@ export async function GET(request: NextRequest) {
     // 単月ビューは store 指定必須相当だが、全体ビューでは複数店舗を合算する
     const manualWhere = store && store !== "全体"
       ? { year, ...(month !== undefined && { month }), storeName: store }
-      : { year, ...(month !== undefined && { month }), storeName: { not: HQ_STORE } };
+      : { year, ...(month !== undefined && { month }), storeName: notHqOrHidden };
     const manualRows = await prisma.manualEntry.findMany({ where: manualWhere });
     const manualTrial = manualRows.reduce((s, r) => s + r.trialCount, 0);
     const manualOtherSales = manualRows.reduce((s, r) => s + r.otherSalesAmount, 0);
@@ -216,7 +221,7 @@ export async function GET(request: NextRequest) {
     // 直接照合する（"YYYY/MM/" or "YYYY-MM-" で始まる文字列）。
     const memberStoreFilter = store && store !== "全体"
       ? { storeName: store }
-      : { storeName: { not: HQ_STORE } };
+      : { storeName: notHqOrHidden };
     const autoTrialCount = month !== undefined
       ? await prisma.memberData.count({
           where: { ...memberStoreFilter, ...trialDateMonthWhere(year, month) },
@@ -386,7 +391,7 @@ export async function GET(request: NextRequest) {
       const computeTotals = async (y: number, m: number): Promise<Totals> => {
         const sf = store && store !== "全体"
           ? { storeName: store }
-          : { storeName: { not: HQ_STORE } };
+          : { storeName: notHqOrHidden };
         // payroll: grossTotal × ratio/100 を集計
         const payRows = await prisma.payrollData.findMany({
           where: { year: y, month: m, ...sf },

@@ -41,26 +41,31 @@ export async function GET() {
     }
   }
 
-  // 名前のソート: 既存 STORES の順を尊重し、その後に新規（自動検出）追加分を追加
+  // 表示名・非表示フラグを取得（坪井さん要望: 店舗名変更 / 閉店店舗の非表示）
+  const displayRows = await prisma.storeDisplayName.findMany({
+    select: { storeName: true, displayName: true, hidden: true },
+  });
+  const displayMap: Record<string, string> = {};
+  const hiddenSet = new Set<string>();
+  for (const r of displayRows) {
+    displayMap[r.storeName] = r.displayName;
+    if (r.hidden) hiddenSet.add(r.storeName);
+  }
+
+  // 名前のソート: 既存 STORES の順を尊重し、その後に新規（自動検出）追加分を追加。
+  // 非表示店舗は除外する。
   const result: string[] = [];
   const seen = new Set<string>();
   for (const s of STORES) {
-    if (dynamicSet.has(s) && !seen.has(s)) {
+    if (dynamicSet.has(s) && !seen.has(s) && !hiddenSet.has(s)) {
       result.push(s);
       seen.add(s);
     }
   }
-  // 自動追加分（既定 STORES に無いもの）
-  const newOnes = [...dynamicSet].filter((s) => !seen.has(s));
+  // 自動追加分（既定 STORES に無いもの・非表示は除外）
+  const newOnes = [...dynamicSet].filter((s) => !seen.has(s) && !hiddenSet.has(s));
   newOnes.sort();
   for (const s of newOnes) result.push(s);
-
-  // 表示名マッピングを取得（坪井さん要望: 店舗名を変更できるように）
-  const displayRows = await prisma.storeDisplayName.findMany({
-    select: { storeName: true, displayName: true },
-  });
-  const displayMap: Record<string, string> = {};
-  for (const r of displayRows) displayMap[r.storeName] = r.displayName;
 
   return NextResponse.json({
     stores: result,
@@ -69,5 +74,7 @@ export async function GET() {
     auto_detected: newOnes,
     /** 表示名マッピング { storeName: displayName } */
     display_names: displayMap,
+    /** 非表示店舗一覧 */
+    hidden_stores: [...hiddenSet],
   });
 }
