@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireStoreUploadAccess } from "@/lib/auth";
-import { decodeFileBuffer, parseCSV, safeInt } from "@/lib/csv-utils";
+import { decodeFileBuffer, parseCSV } from "@/lib/csv-utils";
+import {
+  PROMOTION_BUDGET_CATEGORIES,
+  extractPromotionBudgetRecords,
+} from "@/lib/promotion-budget-parse";
 
 /**
  * 販促報告シート（予算実績対比表の「販促報告」タブ）から、
@@ -20,9 +24,7 @@ import { decodeFileBuffer, parseCSV, safeInt } from "@/lib/csv-utils";
  */
 
 // このエンドポイントが管理する BudgetData カテゴリ（削除スコープもこれに限定）
-const MANAGED_CATEGORIES = ["体験者数", "新規入会数", "退会数"] as const;
-
-const norm = (s: string) => s.replace(/\s/g, "").replace(/[（）]/g, (c) => (c === "（" ? "(" : ")"));
+const MANAGED_CATEGORIES = PROMOTION_BUDGET_CATEGORIES;
 
 export async function GET(request: NextRequest) {
   try {
@@ -87,69 +89,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "CSVにデータ行がありません" }, { status: 400 });
     }
 
-    // 会計年度の月マッピング: col2..col13 = 10月(fy-1)〜9月(fy)
-    const fyMonths: { year: number; month: number }[] = [];
-    for (let m = 10; m <= 12; m++) fyMonths.push({ year: fiscalYear - 1, month: m });
-    for (let m = 1; m <= 9; m++) fyMonths.push({ year: fiscalYear, month: m });
-
-    // category -> month index(0..11) -> amount を集約（体験者数は2行を合算）
-    const agg: Record<string, number[]> = {};
-    for (const c of MANAGED_CATEGORIES) agg[c] = new Array(12).fill(0);
-
-    // ラベル判定（正規化して末尾「（予算）」のものだけ拾う）
-    const classify = (labelRaw: string): (typeof MANAGED_CATEGORIES)[number] | null => {
-      const l = norm(labelRaw);
-      if (!l.includes("(予算)")) return null;
-      // 体験数（紹介 / 紹介以外）→ 体験者数 に合算
-      if (l.includes("紹介からの体験数") || l.includes("紹介以外からの体験数")) {
-        return "体験者数";
-      }
-      // 入会数（予算）。「6ヶ月内の入会者数」など別語は除外
-      if (l.startsWith("入会数(予算)")) return "新規入会数";
-      if (l.startsWith("退会数(予算)")) return "退会数";
-      return null;
-    };
-
-    const readMonths = (row: string[]): number[] => {
-      const vals: number[] = [];
-      for (let i = 0; i < 12; i++) {
-        const cell = row[2 + i];
-        vals.push(cell ? safeInt(cell) : 0);
-      }
-      return vals;
-    };
-
-    for (const row of allRows) {
-      if (!row || row.length < 14) continue;
-      const label = (row[1] ?? "").trim();
-      if (!label) continue;
-      const cat = classify(label);
-      if (!cat) continue;
-      const months = readMonths(row);
-      for (let i = 0; i < 12; i++) agg[cat][i] += months[i];
-    }
-
-    interface BudgetRecord {
-      storeName: string;
-      year: number;
-      month: number;
-      category: string;
-      amount: number;
-    }
-    const records: BudgetRecord[] = [];
-    for (const cat of MANAGED_CATEGORIES) {
-      for (let i = 0; i < 12; i++) {
-        const amount = agg[cat][i];
-        if (amount === 0) continue; // 0 は未入力扱いでスキップ
-        records.push({
-          storeName: store,
-          year: fyMonths[i].year,
-          month: fyMonths[i].month,
-          category: cat,
-          amount,
-        });
-      }
-    }
+    const records = extractPromotionBudgetRecords(allRows, store, fiscalYear);
 
     if (records.length === 0) {
       return NextResponse.json(
