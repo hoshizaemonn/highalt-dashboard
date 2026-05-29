@@ -276,13 +276,19 @@ model ManualExpenseEntry {
   month           Int
   /** 経費カテゴリ名（BUDGET_ITEMS / EXPENSE_CATEGORIES と整合させる。例: 電気料, 上下水道料, 賃借料） */
   category        String
-  /** 本部一括の総額（全店合算前の元金額） */
+  /**
+   * 計上先店舗。
+   * - "" (空): 本部一括 → totalAmount を営業店舗数で均等按分
+   * - 店舗名 (例: 東日本橋): その店舗のみに totalAmount を計上（按分しない）
+   */
+  storeName       String   @default("") @map("store_name")
+  /** 本部一括 or 店舗別の金額（本部一括時は全店合算前の元金額、店舗別時はその店の金額） */
   totalAmount     Int      @default(0) @map("total_amount")
   note            String?
   updatedByName   String?  @map("updated_by_name")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  @@unique([year, month, category])
+  @@unique([year, month, category, storeName])
   @@index([year, month])
   @@map("manual_expense_entry")
 }

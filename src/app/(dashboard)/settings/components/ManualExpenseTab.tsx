@@ -9,11 +9,16 @@ interface Row {
   year: number;
   month: number;
   category: string;
+  /** "" = 本部一括（均等按分）、店舗名 = その店のみ計上 */
+  storeName: string;
   totalAmount: number;
   note: string | null;
   updatedByName?: string | null;
   updatedAt?: string;
 }
+
+// 店舗セレクタの選択肢（先頭が本部一括）
+const HQ_OPTION = "";
 
 /**
  * 本部一括経費の手動入力タブ（admin のみ）。
@@ -71,6 +76,7 @@ export default function ManualExpenseTab() {
         year: filterYear,
         month: now.getMonth() + 1,
         category: SUGGESTED_CATEGORIES[0],
+        storeName: HQ_OPTION,
         totalAmount: 0,
         note: "",
       },
@@ -133,14 +139,15 @@ export default function ManualExpenseTab() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-bold text-gray-700 mb-1">本部一括経費</h2>
+        <h2 className="text-lg font-bold text-gray-700 mb-1">本部一括経費 / 店舗別経費</h2>
         <p className="text-xs text-gray-500 leading-relaxed">
-          電気代・水道代・家賃など、本部で一括支払いされ各店の PayPay 銀行 CSV に
-          現れない経費を月次で入力します。集計時は <strong>totalAmount ÷ {storeCount}店舗</strong>{" "}
-          で均等按分されます。
+          電気代・水道代・家賃など、各店の PayPay 銀行 CSV に現れない経費を月次で入力します。
+          計上先で <strong>「本部一括（均等按分）」</strong>を選ぶと{" "}
+          <strong>金額 ÷ {storeCount}店舗</strong> で各店に均等按分、
+          <strong>店舗を選ぶ</strong>とその店舗のみに計上されます（按分なし）。
           <br />
           ⚠️ PayPay 銀行 CSV にも該当カテゴリの支払いがある場合は二重計上になるため、
-          「本部一括分のみ」を入力してください。
+          CSVに無い分のみを入力してください。
         </p>
       </div>
 
@@ -176,8 +183,11 @@ export default function ManualExpenseTab() {
                   <th className="text-left px-3 py-2 font-medium text-gray-600">
                     カテゴリ
                   </th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">
+                    計上先
+                  </th>
                   <th className="text-right px-3 py-2 font-medium text-gray-600">
-                    総額 (本部一括)
+                    金額
                   </th>
                   <th className="text-right px-3 py-2 font-medium text-gray-600">
                     1店あたり按分
@@ -192,7 +202,7 @@ export default function ManualExpenseTab() {
                 {rows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="text-center text-gray-400 py-6 text-xs"
                     >
                       {filterYear}年の入力データがありません。下の「行を追加」ボタンから登録してください。
@@ -247,6 +257,22 @@ export default function ManualExpenseTab() {
                       </select>
                     </td>
                     <td className="px-3 py-2">
+                      <select
+                        value={r.storeName}
+                        onChange={(e) =>
+                          handleChange(i, "storeName", e.target.value)
+                        }
+                        className="border border-gray-300 rounded px-2 py-1 text-sm w-full"
+                      >
+                        <option value={HQ_OPTION}>本部一括（均等按分）</option>
+                        {STORES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
                       <input
                         type="number"
                         value={r.totalAmount}
@@ -261,7 +287,9 @@ export default function ManualExpenseTab() {
                       />
                     </td>
                     <td className="px-3 py-2 text-right text-gray-500 text-xs">
-                      ¥{Math.round(r.totalAmount / storeCount).toLocaleString()}
+                      {r.storeName === HQ_OPTION
+                        ? `¥${Math.round(r.totalAmount / storeCount).toLocaleString()}`
+                        : "—（店舗別）"}
                     </td>
                     <td className="px-3 py-2">
                       <input
