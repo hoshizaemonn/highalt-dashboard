@@ -16,6 +16,26 @@ import {
 
 const formatYen = (n: number) => `¥${n.toLocaleString("ja-JP")}`;
 
+// CSV の中身から「予算実績対比表（売上・経費）」か「販促報告（KPI）」かを自動判定する。
+// 販促報告シートは先頭に「○○販促報告」、本文に「紹介からの体験数」等を含む。
+async function detectBudgetCsvType(file: File): Promise<"promotion" | "budget"> {
+  const buf = await file.slice(0, 16384).arrayBuffer();
+  let text = "";
+  try {
+    text = new TextDecoder("shift_jis").decode(buf);
+  } catch {
+    text = new TextDecoder("utf-8").decode(buf);
+  }
+  if (
+    text.includes("販促報告") ||
+    text.includes("紹介からの体験数") ||
+    text.includes("紹介以外からの体験数")
+  ) {
+    return "promotion";
+  }
+  return "budget";
+}
+
 // ─── Budget Tab ─────────────────────────────────────────────
 
 export function BudgetTab({
@@ -25,7 +45,7 @@ export function BudgetTab({
   onSuccess?: () => void;
   lockedStore?: string | null;
 }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [store, setStore] = useState<string>(lockedStore ?? STORES[0]);
   useEffect(() => {
     if (lockedStore) setStore(lockedStore);
@@ -34,72 +54,65 @@ export function BudgetTab({
   const [period, setPeriod] = useState(9);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
-  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
-
-  const doUpload = async () => {
-    setLoading(true);
-    setStatus({ type: "info", text: "解析・保存中..." });
-    setOverwriteWarning(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file!);
-      formData.append("store", store);
-      formData.append("fiscalYear", String(fiscalYear));
-      formData.append("period", String(period));
-
-      const res = await fetch("/api/upload/budget", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus({ type: "error", text: data.error || "エラーが発生しました" });
-        return;
-      }
-
-      setStatus({
-        type: "success",
-        text: `${store} ${fiscalYear}年度 第${period}期の予算データを保存しました（${data.records}件 / ${data.categories?.length || 0}カテゴリ）`,
-      });
-      onSuccess?.();
-    } catch (e) {
-      setStatus({
-        type: "error",
-        text: e instanceof Error ? e.message : "エラーが発生しました",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [results, setResults] = useState<string[]>([]);
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setLoading(true);
-    setStatus(null);
+    setStatus({ type: "info", text: "解析・保存中..." });
+    setResults([]);
 
-    try {
-      const checkRes = await fetch(`/api/upload/budget?store=${encodeURIComponent(store)}&fiscalYear=${fiscalYear}`);
-      const checkData = await checkRes.json();
+    const msgs: string[] = [];
+    let ok = 0;
+    for (const f of files) {
+      try {
+        const type = await detectBudgetCsvType(f);
+        const formData = new FormData();
+        formData.append("file", f);
+        formData.append("store", store);
+        formData.append("fiscalYear", String(fiscalYear));
+        if (type === "budget") formData.append("period", String(period));
 
-      if (checkData.exists) {
-        setOverwriteWarning({ count: checkData.count });
-        setLoading(false);
-        return;
+        const endpoint =
+          type === "promotion"
+            ? "/api/upload/promotion-budget"
+            : "/api/upload/budget";
+        const res = await fetch(endpoint, { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) {
+          msgs.push(`${f.name}: ${data.error || "エラー"}`);
+          continue;
+        }
+        if (type === "promotion") {
+          msgs.push(
+            `${f.name}: 販促報告KPI予算 ${data.records}件（${(data.categories || []).join("・")}）`,
+          );
+        } else {
+          msgs.push(
+            `${f.name}: 予算実績対比表 ${data.records}件 / ${data.categories?.length || 0}カテゴリ`,
+          );
+        }
+        ok++;
+      } catch (e) {
+        msgs.push(`${f.name}: ${e instanceof Error ? e.message : "エラー"}`);
       }
-    } catch {
-      // Check failed, proceed with upload anyway
     }
-
-    await doUpload();
+    setResults(msgs);
+    setStatus({
+      type: ok > 0 ? "success" : "error",
+      text: `${ok}件のCSVを保存しました（全${files.length}件中）`,
+    });
+    setLoading(false);
+    if (ok > 0) onSuccess?.();
   };
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        予算実績対比表 CSVをアップロード（各月の予算列を取り込みます）
+        予算CSVをアップロード（複数まとめて可）。
+        <strong>予算実績対比表</strong>（売上・経費）と
+        <strong>販促報告</strong>（体験者数・入会数・退会数のKPI）を自動判別して取り込みます。
+        同じ年度の予算は再アップロードで置き換わります。
       </p>
 
       <div className="grid grid-cols-3 gap-4">
@@ -147,163 +160,38 @@ export function BudgetTab({
 
       <FileDropzone
         accept=".csv"
-        file={file}
-        onFileSelect={setFile}
-        onClear={() => {
-          setFile(null);
+        multiple
+        files={files}
+        onFilesSelect={(added) => {
+          setFiles((prev) => [...prev, ...added]);
           setStatus(null);
-          setOverwriteWarning(null);
+          setResults([]);
         }}
+        onRemoveFile={(idx) => setFiles((prev) => prev.filter((_, i) => i !== idx))}
       />
 
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
-        解析して保存する
+      <ActionButton onClick={handleUpload} loading={loading} disabled={files.length === 0}>
+        {files.length <= 1 ? "解析して保存する" : `${files.length}件を解析して保存`}
       </ActionButton>
 
-      {overwriteWarning && (
-        <OverwriteWarning
-          message={`\u26A0\uFE0F ${store} ${fiscalYear}年度 第${period}期の予算データが既に${overwriteWarning.count}件あります。上書きしますか？`}
-          onConfirm={doUpload}
-          onCancel={() => setOverwriteWarning(null)}
-          loading={loading}
-        />
+      {results.length > 0 && (
+        <div className="space-y-1">
+          {results.map((r, i) => (
+            <p
+              key={i}
+              className={`text-sm ${r.includes("エラー") ? "text-red-600" : "text-green-600"}`}
+            >
+              {r}
+            </p>
+          ))}
+        </div>
       )}
+
 
       <StatusBanner status={status} />
 
-      <PromotionBudgetForm lockedStore={lockedStore} />
 
       <UnitPriceBudgetForm lockedStore={lockedStore} />
-    </div>
-  );
-}
-
-// ─── Promotion Budget Form (販促報告シートのKPI予算) ─────────
-// 体験者数・新規入会数・退会数の店舗別予算を販促報告CSVから取り込む。
-// 売上・経費系の予算（上の予算実績対比表CSV）とは別シートなので分けて入力する。
-
-function PromotionBudgetForm({
-  lockedStore,
-}: {
-  lockedStore?: string | null;
-}) {
-  const [file, setFile] = useState<File | null>(null);
-  const [store, setStore] = useState<string>(lockedStore ?? STORES[0]);
-  useEffect(() => {
-    if (lockedStore) setStore(lockedStore);
-  }, [lockedStore]);
-  const [fiscalYear, setFiscalYear] = useState(2026);
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<StatusMessage | null>(null);
-  const [overwriteWarning, setOverwriteWarning] = useState<{ count: number } | null>(null);
-
-  const doUpload = async () => {
-    setLoading(true);
-    setStatus({ type: "info", text: "解析・保存中..." });
-    setOverwriteWarning(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file!);
-      formData.append("store", store);
-      formData.append("fiscalYear", String(fiscalYear));
-      const res = await fetch("/api/upload/promotion-budget", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setStatus({ type: "error", text: data.error || "エラーが発生しました" });
-        return;
-      }
-      setStatus({
-        type: "success",
-        text: `${store} ${fiscalYear}年度のKPI予算を保存しました（${data.records}件 / ${(data.categories || []).join("・")}）`,
-      });
-    } catch (e) {
-      setStatus({ type: "error", text: e instanceof Error ? e.message : "エラーが発生しました" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!file) return;
-    setLoading(true);
-    setStatus(null);
-    try {
-      const checkRes = await fetch(
-        `/api/upload/promotion-budget?store=${encodeURIComponent(store)}&fiscalYear=${fiscalYear}`,
-      );
-      const checkData = await checkRes.json();
-      if (checkData.exists) {
-        setOverwriteWarning({ count: checkData.count });
-        setLoading(false);
-        return;
-      }
-    } catch {
-      // proceed anyway
-    }
-    await doUpload();
-  };
-
-  return (
-    <div className="mt-8 pt-6 border-t space-y-3">
-      <div>
-        <p className="text-sm font-medium text-gray-700">
-          販促報告シートのKPI予算（体験者数・入会数・退会数）
-        </p>
-        <p className="text-xs text-gray-500 mt-1">
-          予算実績対比表の「販促報告」タブCSVをアップロードすると、店舗別の
-          <strong>体験者数（紹介＋紹介以外）・新規入会数・退会数</strong>の予算を取り込み、
-          店舗比較グラフに予算折れ線として表示します。売上・経費系の予算（上のCSV）には影響しません。
-        </p>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        {lockedStore ? (
-          <LockedStoreField storeName={lockedStore} />
-        ) : (
-          <StoreSelect value={store} onChange={setStore} />
-        )}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">対象年度（決算年）</label>
-          <select
-            value={fiscalYear}
-            onChange={(e) => setFiscalYear(parseInt(e.target.value))}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
-          >
-            {Array.from({ length: new Date().getFullYear() - 2020 + 6 }, (_, i) => 2020 + i).map((y) => (
-              <option key={y} value={y}>{y}年度</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <FileDropzone
-        accept=".csv"
-        file={file}
-        onFileSelect={setFile}
-        onClear={() => {
-          setFile(null);
-          setStatus(null);
-          setOverwriteWarning(null);
-        }}
-      />
-
-      <ActionButton onClick={handleUpload} loading={loading} disabled={!file || !!overwriteWarning}>
-        販促報告CSVを解析して保存
-      </ActionButton>
-
-      {overwriteWarning && (
-        <OverwriteWarning
-          message={`⚠️ ${store} ${fiscalYear}年度のKPI予算が既に${overwriteWarning.count}件あります。上書きしますか？（体験者数・新規入会数・退会数のみ。売上/経費予算は保持）`}
-          onConfirm={doUpload}
-          onCancel={() => setOverwriteWarning(null)}
-          loading={loading}
-        />
-      )}
-
-      <StatusBanner status={status} />
     </div>
   );
 }
@@ -446,14 +334,6 @@ function UnitPriceBudgetForm({
         客単価予算を保存
       </ActionButton>
 
-      {overwriteWarning && (
-        <OverwriteWarning
-          message={`\u26A0\uFE0F ${store} ${fiscalYear}年度の客単価予算は既に ${formatYen(overwriteWarning.from)} で登録されています。${formatYen(overwriteWarning.to)} で上書きしますか？（全12ヶ月に同額で適用されます）`}
-          onConfirm={doSave}
-          onCancel={() => setOverwriteWarning(null)}
-          loading={loading}
-        />
-      )}
 
       <StatusBanner status={status} />
     </div>
