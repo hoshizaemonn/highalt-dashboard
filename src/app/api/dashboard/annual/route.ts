@@ -136,37 +136,36 @@ export async function GET(request: NextRequest) {
       ? { storeName: store }
       : { storeName: { notIn: [HQ_STORE, ...hiddenStores] } };
 
-    // 高速化: 独立した取得は Promise.all で並列化。
-    // 接続プールは transaction mode(6543) なので 5並列×10クエリ程度はバースト可。
+    // 高速化: 独立した取得を並列化。ただしSupabaseプール(connection_limit=5)を
+    // 圧迫しないよう、5クエリ並列のチャンクで分割実行（5並列ユーザー時の他リクエストへの
+    // 影響を最小化）。逐次より速く、フル並列より他APIに優しい。
     const budgetWhere = store
       ? { year: { in: years }, storeName: store }
       : { year: { in: years }, storeName: { notIn: [HQ_STORE, ...hiddenStores] } };
+    // バッチ1: 集計の主軸となる重めのデータ
+    const [allPayroll, allExpenses, allSalesDetail, allRevenue, allSquare] = await Promise.all([
+      prisma.payrollData.findMany({ where: { year: { in: years }, ...storeWhere } }),
+      prisma.expenseData.findMany({ where: { year: { in: years }, isRevenue: 0, ...storeWhere } }),
+      prisma.salesDetail.findMany({ where: { year: { in: years }, ...storeWhere } }),
+      prisma.revenueData.findMany({ where: { year: { in: years }, ...storeWhere } }),
+      prisma.squareSales.findMany({ where: { year: { in: years }, ...storeWhere } }),
+    ]);
+    // バッチ2: 補助・予算・手動入力系
     const [
-      allPayroll,
-      allExpenses,
       allManualExpense,
-      allSalesDetail,
-      allRevenue,
-      allSquare,
       allMonthlySummary,
       allProductSales,
       allManual,
       allMember,
       allBudget,
     ] = await Promise.all([
-      prisma.payrollData.findMany({ where: { year: { in: years }, ...storeWhere } }),
-      prisma.expenseData.findMany({ where: { year: { in: years }, isRevenue: 0, ...storeWhere } }),
-      // 本部一括経費（手動入力）。storeName="" は本部一括（営業店舗数で均等按分）、店舗名指定はその店のみ計上
+      // 本部一括経費（手動入力）
       prisma.manualExpenseEntry.findMany({ where: { year: { in: years } } }),
-      prisma.salesDetail.findMany({ where: { year: { in: years }, ...storeWhere } }),
-      prisma.revenueData.findMany({ where: { year: { in: years }, ...storeWhere } }),
-      prisma.squareSales.findMany({ where: { year: { in: years }, ...storeWhere } }),
       prisma.monthlySummary.findMany({ where: { year: { in: years }, ...storeWhere } }),
       prisma.productSales.findMany({ where: { year: { in: years }, ...storeWhere } }),
       // 店長手動追記（体験者数 / 請求書その他売上）
       prisma.manualEntry.findMany({ where: { year: { in: years }, ...storeWhere } }),
-      // 体験者数の自動算出（ML001 時点スナップショット）。trialDate / firstTrialDate を
-      // 直接照合するため、年フィルタは外して店舗スコープのみで取得し、月別集計はJS側で行う。
+      // 体験者数の自動算出（ML001 時点スナップショット）
       prisma.memberData.findMany({
         where: { ...storeWhere },
         select: { trialDate: true, firstTrialDate: true },
