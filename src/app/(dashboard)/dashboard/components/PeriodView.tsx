@@ -776,7 +776,7 @@ export default function PeriodView({
 
             {/* Plan subscribers */}
             <div className="bg-white rounded-lg border shadow-sm p-4">
-              <p className="text-sm font-medium text-gray-600 mb-3">店舗別プラン契約者数</p>
+              <p className="text-sm font-medium text-gray-600 mb-3">店舗別在籍会員数（プラン契約者数）</p>
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={storeCompareDisplayed.stores}>
                   <CartesianGrid strokeDasharray="3 3" />
