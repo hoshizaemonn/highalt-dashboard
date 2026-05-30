@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE, STORES } from "@/lib/constants";
 import { getHiddenStores } from "@/lib/hidden-stores";
+import { memoCache } from "@/lib/memo-cache";
+
+const CACHE_TTL_MS = 30_000;
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
 import { trialDateMonthWhere } from "@/lib/csv-utils";
 
@@ -27,6 +30,10 @@ export async function GET(request: NextRequest) {
     const requestedStore = storeParam || undefined;
     const scopedStore = effectiveStoreScope(auth.session, requestedStore);
     const store = scopedStore ?? undefined;
+
+    // 30秒キャッシュ: スコープ後の店舗をキーにし、ユーザー権限と独立で再利用
+    const cacheKey = `dashboard:${year}:${month ?? "all"}:${store ?? "*"}`;
+    const responseData = await memoCache(cacheKey, CACHE_TTL_MS, async () => {
 
     // 全体集計時は 本部 + 非表示店舗（閉店/テスト）を除外
     const hiddenStores = await getHiddenStores();
@@ -460,7 +467,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    return {
       year,
       month: month ?? null,
       store: store ?? null,
@@ -476,7 +483,10 @@ export async function GET(request: NextRequest) {
       operating_profit: Math.round(operatingProfit),
       prev_month_totals: prevMonthTotals,
       prev_year_totals: prevYearTotals,
+    };
     });
+
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error("Dashboard API error:", error);
     return NextResponse.json(
