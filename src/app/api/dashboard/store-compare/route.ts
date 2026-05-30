@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { STORES, HQ_STORE } from "@/lib/constants";
 import { requireSession } from "@/lib/auth";
 import { getHiddenStores } from "@/lib/hidden-stores";
+import { memoCache } from "@/lib/memo-cache";
+
+const CACHE_TTL_MS = 30_000;
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,13 +59,18 @@ export async function GET(request: NextRequest) {
 
     const years = [...new Set(periods.map((p) => p.year))];
 
-    // Fetch all data
-    // Sequential queries to avoid Supabase connection pool limits
-    const allPayroll = await prisma.payrollData.findMany({ where: { year: { in: years } } });
-    const allExpenses = await prisma.expenseData.findMany({ where: { year: { in: years }, isRevenue: 0 } });
-    const allSalesDetail = await prisma.salesDetail.findMany({ where: { year: { in: years } } });
-    const allRevenue = await prisma.revenueData.findMany({ where: { year: { in: years } } });
-    const allSquare = await prisma.squareSales.findMany({ where: { year: { in: years } } });
+    // 30秒キャッシュ
+    const cacheKey = `storeCompare:${(yearParam ?? "")}:${(monthsParam ?? "")}`;
+    const responseData = await memoCache(cacheKey, CACHE_TTL_MS, async () => {
+
+    // 高速化: 5並列のチャンクで取得（プール圧迫を避ける）
+    const [allPayroll, allExpenses, allSalesDetail, allRevenue, allSquare] = await Promise.all([
+      prisma.payrollData.findMany({ where: { year: { in: years } } }),
+      prisma.expenseData.findMany({ where: { year: { in: years }, isRevenue: 0 } }),
+      prisma.salesDetail.findMany({ where: { year: { in: years } } }),
+      prisma.revenueData.findMany({ where: { year: { in: years } } }),
+      prisma.squareSales.findMany({ where: { year: { in: years } } }),
+    ]);
     const allMonthlySummary = await prisma.monthlySummary.findMany({
       where: { year: { in: years } },
       orderBy: [{ year: "desc" }, { month: "desc" }],
@@ -84,17 +92,14 @@ export async function GET(request: NextRequest) {
       "法定福利費",
       "福利厚生費",
     ]);
-    const allBudget = await prisma.budgetData.findMany({
-      where: { year: { in: years } },
-    });
-    // 体験者数: ManualEntry の trial_count（店長手動入力） or
-    //          MemberData の trialDate / firstTrialDate を期間内マッチでカウント
-    const allManual = await prisma.manualEntry.findMany({
-      where: { year: { in: years } },
-    });
-    const allMember = await prisma.memberData.findMany({
-      select: { storeName: true, trialDate: true, firstTrialDate: true },
-    });
+    const [allBudget, allManual, allMember] = await Promise.all([
+      prisma.budgetData.findMany({ where: { year: { in: years } } }),
+      // 体験者数: ManualEntry の trial_count（店長手動入力）or MemberData trialDate
+      prisma.manualEntry.findMany({ where: { year: { in: years } } }),
+      prisma.memberData.findMany({
+        select: { storeName: true, trialDate: true, firstTrialDate: true },
+      }),
+    ]);
 
     // 「実績データが入っている最終月」までに periods を自動キャップする（坪井さん要望）。
     // 例: 通期12ヶ月のうち1〜4月までしか売上/人件費が入っていない場合、
@@ -291,13 +296,16 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
+    return {
       periods: periods.map((p) => `${p.year}-${String(p.month).padStart(2, "0")}`),
       effective_periods: cappedPeriods.map(
         (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
       ),
       stores: storeData,
+    };
     });
+
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error("Store compare API error:", error);
     return NextResponse.json(

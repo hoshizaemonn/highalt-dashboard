@@ -4,6 +4,9 @@ import { HQ_STORE, STORES, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
+import { memoCache } from "@/lib/memo-cache";
+
+const CACHE_TTL_MS = 30_000; // 30秒
 
 interface MonthlyEntry {
   month: number;
@@ -127,6 +130,11 @@ export async function GET(request: NextRequest) {
         periods.push({ year, month: m });
       }
     }
+
+    // 30秒キャッシュ: 同じパラメータでの取得は省略してDB往復をスキップ
+    // キーは fiscalYear / store / 月範囲 / yearParam に基づく
+    const cacheKey = `annual:${fiscalYearParam ?? ""}:${store ?? "*"}:${monthStartParam ?? ""}:${monthEndParam ?? ""}:${yearParam ?? ""}`;
+    const responseData = await memoCache(cacheKey, CACHE_TTL_MS, async () => {
 
     // Fetch all data for the year range at once to minimize queries
     const years = [...new Set(periods.map((p) => p.year))];
@@ -517,17 +525,19 @@ export async function GET(request: NextRequest) {
       cancellations: prevCancellations,
     };
 
-    return NextResponse.json({
+    return {
       store: store ?? null,
       periods: periods.map((p) => `${p.year}-${String(p.month).padStart(2, "0")}`),
       // 前期/予算と揃えるため「実績データのある最終月」までキャップした範囲。
-      // フロント側で「Oct-Apr 累計（実績投入分のみ）」のように説明表示する用途。
       effective_periods: cappedPeriods.map(
         (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
       ),
       monthly_data: monthlyData,
       previous_period_totals: previousPeriodTotals,
+    };
     });
+
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error("Dashboard annual API error:", error);
     return NextResponse.json(
