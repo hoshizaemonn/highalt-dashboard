@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { HQ_STORE, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
+import { HQ_STORE, STORES, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
@@ -143,6 +143,11 @@ export async function GET(request: NextRequest) {
     const allExpenses = await prisma.expenseData.findMany({
       where: { year: { in: years }, isRevenue: 0, ...storeWhere },
     });
+    // 本部一括経費（手動入力）も月別集計に含める。
+    // storeName="" は本部一括（営業店舗数で均等按分）、店舗名指定はその店のみ計上。
+    const allManualExpense = await prisma.manualExpenseEntry.findMany({
+      where: { year: { in: years } },
+    });
     const allSalesDetail = await prisma.salesDetail.findMany({
       where: { year: { in: years }, ...storeWhere },
     });
@@ -230,6 +235,27 @@ export async function GET(request: NextRequest) {
         const cat = row.category || "その他";
         expenseByCat[cat] = (expenseByCat[cat] || 0) + row.amount;
         totalExpense += row.amount;
+      }
+      // 本部一括経費（手動入力）を加算
+      // - storeName="" : 本部一括 → 単店ビューは ÷店舗数、全体は全額
+      // - storeName=店舗名 : 単店ビューは当該店のみ、全体は全額合算
+      const storeCount = STORES.length;
+      const isSingleStore = !!store;
+      const manualExp = allManualExpense.filter((r) => r.year === y && r.month === m);
+      for (const row of manualExp) {
+        let share = 0;
+        if (row.storeName === "") {
+          share = isSingleStore ? Math.round(row.totalAmount / storeCount) : row.totalAmount;
+        } else {
+          if (isSingleStore) {
+            if (row.storeName !== store) continue;
+            share = row.totalAmount;
+          } else {
+            share = row.totalAmount;
+          }
+        }
+        expenseByCat[row.category] = (expenseByCat[row.category] || 0) + share;
+        totalExpense += share;
       }
 
       // Sales
