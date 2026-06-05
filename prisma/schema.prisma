@@ -127,9 +127,29 @@ model ExpenseData {
   category    String?
   isRevenue   Int     @default(0) @map("is_revenue")
   breakdown   String  @default("")
+  // 元CSVの該当行全体（JSON配列の文字列）。エクスポート時に元情報を欠落なく再出力するため保持。
+  // 既存データ（rawRow=null）はフォールバックで従来7列出力。
+  rawRow      String? @map("raw_row")
 
   @@index([year, month, storeName])
   @@map("expense_data")
+}
+
+// ─── Expense CSV Header (取込時のヘッダ保持) ────────────────
+// PayPay銀行/Square等のCSV取込時にヘッダ行を (year, month, storeName) 単位で保存し、
+// エクスポート時に元の列構造をそのまま再現するために使う。
+model ExpenseCsvHeader {
+  id        Int    @id @default(autoincrement())
+  year      Int
+  month     Int
+  storeName String @map("store_name")
+  /**
+   * ヘッダ列名の配列を JSON 文字列化したもの。例: ["年","月","日","曜日","摘要","出金","入金","残高",...]
+   */
+  headers   String
+
+  @@unique([year, month, storeName])
+  @@map("expense_csv_header")
 }
 
 // ─── Revenue Data ───────────────────────────────────────────

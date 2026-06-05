@@ -235,15 +235,17 @@ function PayPayExpenseSection({
       isAutoClassified: boolean;
       isRevenue: boolean;
       breakdown: string;
+      rawRow: string[];
     }[]
   >([]);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [parseStats, setParseStats] = useState<{ classified: number; unclassified: number } | null>(null);
 
   const doParse = async () => {
     setLoading(true);
     setStatus({ type: "info", text: "解析中..." });
     setOverwriteWarning(null);
-    setParsedRecords([]);
+    setParsedRecords([]); setCsvHeaders([]);
     setParseStats(null);
 
     try {
@@ -266,6 +268,7 @@ function PayPayExpenseSection({
       }
 
       setParsedRecords(data.records);
+      setCsvHeaders(Array.isArray(data.csvHeaders) ? data.csvHeaders : []);
       setParseStats({ classified: data.classified, unclassified: data.unclassified });
       setStatus({
         type: "success",
@@ -314,6 +317,7 @@ function PayPayExpenseSection({
         body: JSON.stringify({
           action: "save",
           records: parsedRecords,
+          csvHeaders,
           store,
           year,
           month,
@@ -332,7 +336,7 @@ function PayPayExpenseSection({
         text: `${store} ${year}年${month}月の経費データを保存しました（${data.saved}件）`,
       });
       onSuccess?.();
-      setParsedRecords([]);
+      setParsedRecords([]); setCsvHeaders([]);
       setParseStats(null);
       setFile(null);
     } catch (e) {
@@ -385,7 +389,7 @@ function PayPayExpenseSection({
         file={file}
         onFileSelect={(f) => {
           setFile(f);
-          setParsedRecords([]);
+          setParsedRecords([]); setCsvHeaders([]);
           setParseStats(null);
           if (f) {
             const detected = detectYearMonthFromFilename(f.name);
@@ -398,7 +402,7 @@ function PayPayExpenseSection({
           setStatus(null);
           setOverwriteWarning(null);
           setAutoDetected(false);
-          setParsedRecords([]);
+          setParsedRecords([]); setCsvHeaders([]);
           setParseStats(null);
         }}
       />
