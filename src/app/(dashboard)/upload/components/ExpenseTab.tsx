@@ -240,9 +240,13 @@ function PayPayExpenseSection({
   >([]);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [parseStats, setParseStats] = useState<{ classified: number; unclassified: number } | null>(null);
-  // 保存モード: 既存データありの確認ダイアログで「追記」が選ばれた場合 "append"
-  // （依頼③: 同月内に経費CSV＋売上CSVを別ファイルで取り込む）
-  const [saveMode, setSaveMode] = useState<"overwrite" | "append">("overwrite");
+  // 保存モード:
+  //  - "overwrite": 既定。既存全置換
+  //  - "append": 同月に複数ファイル取り込み（依頼③）
+  //  - "restore": 元情報のみ復元（既存の分類・内訳は保持。依頼②の過去データ対応）
+  const [saveMode, setSaveMode] = useState<"overwrite" | "append" | "restore">(
+    "overwrite",
+  );
 
   const doParse = async () => {
     setLoading(true);
@@ -275,7 +279,10 @@ function PayPayExpenseSection({
       setParseStats({ classified: data.classified, unclassified: data.unclassified });
       setStatus({
         type: "success",
-        text: `${data.records.length}件の取引を検出（分類済み ${data.classified}件 / 未分類 ${data.unclassified}件）`,
+        text:
+          saveMode === "restore"
+            ? `${data.records.length}件の取引を検出（復元モード: 既存の勘定科目・内訳は保持。元情報のみDBに注入されます）`
+            : `${data.records.length}件の取引を検出（分類済み ${data.classified}件 / 未分類 ${data.unclassified}件）`,
       });
     } catch (e) {
       setStatus({
@@ -337,9 +344,12 @@ function PayPayExpenseSection({
 
       setStatus({
         type: "success",
-        text: `${store} ${year}年${month}月の経費データを${
-          saveMode === "append" ? "追記" : "保存"
-        }しました（${data.saved}件）`,
+        text:
+          saveMode === "restore"
+            ? `${store} ${year}年${month}月の経費データの元情報を復元しました（既存の勘定科目・内訳は保持）`
+            : `${store} ${year}年${month}月の経費データを${
+                saveMode === "append" ? "追記" : "保存"
+              }しました（${data.saved}件）`,
       });
       onSuccess?.();
       setParsedRecords([]); setCsvHeaders([]);
@@ -432,7 +442,7 @@ function PayPayExpenseSection({
 
       {overwriteWarning && (
         <OverwriteWarning
-          message={`\u26A0\uFE0F ${store} ${year}年${month}月の経費データが既に${overwriteWarning.count}件あります。\n上書き（全置換）か、追記（既存に追加）かを選択してください。`}
+          message={`\u26A0\uFE0F ${store} ${year}年${month}月の経費データが既に${overwriteWarning.count}件あります。\n上書き（全置換）／追記（既存に追加）／元情報のみ復元 から選択してください。`}
           onConfirm={async () => {
             setSaveMode("overwrite");
             setOverwriteWarning(null);
@@ -444,6 +454,12 @@ function PayPayExpenseSection({
             await doParse();
           }}
           appendLabel="追記する（経費＋売上を別ファイルで取込）"
+          onRestore={async () => {
+            setSaveMode("restore");
+            setOverwriteWarning(null);
+            await doParse();
+          }}
+          restoreLabel="元情報のみ復元（分類・内訳は保持／エクスポート用）"
           onCancel={() => { setOverwriteWarning(null); setLoading(false); }}
           loading={loading}
         />

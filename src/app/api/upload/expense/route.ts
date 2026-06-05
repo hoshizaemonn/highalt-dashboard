@@ -128,10 +128,16 @@ export async function POST(request: NextRequest) {
       const csvHeaders: string[] | null = Array.isArray(body.csvHeaders)
         ? body.csvHeaders
         : null;
-      // 保存モード: "overwrite"（既定・既存データ全削除→挿入）/ "append"（既存を残して追記）
-      // append は同月内に経費CSV＋売上CSVを別ファイルで取り込みたいケース用（依頼③）。
-      const saveMode: "overwrite" | "append" =
-        body.mode === "append" ? "append" : "overwrite";
+      // 保存モード:
+      //  - "overwrite"（既定・既存データ全削除→挿入）
+      //  - "append"（既存を残して追記、依頼③）
+      //  - "restore"（元情報のみ復元: 既存の勘定科目・内訳を保持しつつ、rawRow と CSV ヘッダのみ更新。依頼②の過去データ対応）
+      const saveMode: "overwrite" | "append" | "restore" =
+        body.mode === "append"
+          ? "append"
+          : body.mode === "restore"
+            ? "restore"
+            : "overwrite";
 
       // Delete existing expense data for this year/month/store, then insert
       await prisma.$transaction(async (tx) => {
@@ -139,6 +145,142 @@ export async function POST(request: NextRequest) {
           await tx.expenseData.deleteMany({
             where: { year, month, storeName: store },
           });
+        }
+
+        if (saveMode === "restore") {
+          // 元情報のみ復元: 既存の勘定科目・内訳を保持し、rawRow のみ更新
+          // 既存行とCSV行を (day, description, amount, deposit) で突合
+          const existingRows = await tx.expenseData.findMany({
+            where: { year, month, storeName: store },
+            select: {
+              id: true,
+              day: true,
+              description: true,
+              amount: true,
+              deposit: true,
+              breakdown: true,
+            },
+          });
+          const matchKey = (
+            d: number,
+            desc: string,
+            amount: number,
+            deposit: number,
+          ) => `${d}|${desc.trim()}|${Math.round(amount)}|${Math.round(deposit)}`;
+
+          const existingByKey = new Map<number, typeof existingRows>();
+          // Multiple existing rows might match (rare); track all per key
+          const groupedExisting: Record<string, typeof existingRows> = {};
+          for (const r of existingRows) {
+            const k = matchKey(r.day, r.description ?? "", r.amount, r.deposit);
+            (groupedExisting[k] ??= []).push(r);
+            existingByKey.set(r.id, [r]);
+          }
+          const usedExistingIds = new Set<number>();
+
+          let matched = 0;
+          let inserted = 0;
+
+          for (const rec of inputRecords as Array<{
+            year?: number;
+            month?: number;
+            day: number;
+            description: string;
+            amount: number;
+            deposit: number;
+            category: string | null;
+            isRevenue?: boolean;
+            breakdown?: string;
+            rawRow?: string[] | null;
+          }>) {
+            const rowYear = rec.year || year;
+            const rowMonth = rec.month || month;
+            const rawJson = rec.rawRow ? JSON.stringify(rec.rawRow) : null;
+            const k = matchKey(
+              rec.day,
+              rec.description ?? "",
+              rec.amount,
+              rec.deposit,
+            );
+            const candidates = (groupedExisting[k] ?? []).filter(
+              (r) => !usedExistingIds.has(r.id),
+            );
+            if (candidates.length > 0) {
+              const target = candidates[0];
+              usedExistingIds.add(target.id);
+              // 既存 breakdown ベースで accrual を再計算（rawRow 注入時に整合）
+              const accrual = parseAccrualMonth(
+                target.breakdown ?? "",
+                rowYear,
+                rowMonth,
+              );
+              await tx.expenseData.update({
+                where: { id: target.id },
+                data: {
+                  rawRow: rawJson,
+                  accrualYear: accrual?.accrualYear ?? null,
+                  accrualMonth: accrual?.accrualMonth ?? null,
+                },
+              });
+              matched++;
+            } else {
+              // 既存に無い行は通常通り挿入（自動分類・パース込み）
+              const accrual = parseAccrualMonth(
+                rec.breakdown || "",
+                rowYear,
+                rowMonth,
+              );
+              await tx.expenseData.create({
+                data: {
+                  year: rowYear,
+                  month: rowMonth,
+                  day: rec.day,
+                  storeName: store,
+                  description: rec.description,
+                  amount: rec.amount,
+                  deposit: rec.deposit,
+                  category: rec.category || null,
+                  isRevenue: rec.isRevenue ? 1 : 0,
+                  breakdown: rec.breakdown || "",
+                  rawRow: rawJson,
+                  accrualYear: accrual?.accrualYear ?? null,
+                  accrualMonth: accrual?.accrualMonth ?? null,
+                },
+              });
+              inserted++;
+            }
+          }
+
+          await tx.uploadLog.create({
+            data: {
+              userId: session.userId,
+              userName: session.displayName || session.storeName || "ユーザー",
+              dataType: "expense",
+              storeName: store,
+              year,
+              month,
+              fileName: "PayPay銀行CSV（元情報復元）",
+              recordCount: inputRecords.length,
+              note: `元情報復元: ${matched}件マッチ / ${inserted}件新規`,
+            },
+          });
+
+          // ヘッダは常に upsert（復元の主目的）
+          if (csvHeaders && csvHeaders.length > 0) {
+            await tx.expenseCsvHeader.upsert({
+              where: {
+                year_month_storeName: { year, month, storeName: store },
+              },
+              update: { headers: JSON.stringify(csvHeaders) },
+              create: {
+                year,
+                month,
+                storeName: store,
+                headers: JSON.stringify(csvHeaders),
+              },
+            });
+          }
+          return; // restore モードはここで終了（後続の overwrite/append 用ロジックをスキップ）
         }
 
         if (inputRecords.length > 0) {
