@@ -124,6 +124,10 @@ export async function POST(request: NextRequest) {
       const saveAuth = await requireStoreUploadAccess(store);
       if (saveAuth.error) return saveAuth.error;
 
+      const csvHeaders: string[] | null = Array.isArray(body.csvHeaders)
+        ? body.csvHeaders
+        : null;
+
       // Delete existing expense data for this year/month/store, then insert
       await prisma.$transaction(async (tx) => {
         await tx.expenseData.deleteMany({
@@ -142,6 +146,7 @@ export async function POST(request: NextRequest) {
               category: string | null;
               isRevenue?: boolean;
               breakdown?: string;
+              rawRow?: string[] | null;
             }) => ({
               year: rec.year || year,
               month: rec.month || month,
@@ -153,7 +158,24 @@ export async function POST(request: NextRequest) {
               category: rec.category || null,
               isRevenue: rec.isRevenue ? 1 : 0,
               breakdown: rec.breakdown || "",
+              rawRow: rec.rawRow ? JSON.stringify(rec.rawRow) : null,
             })),
+          });
+        }
+
+        // Persist CSV headers (year, month, store単位) for export re-construction
+        if (csvHeaders && csvHeaders.length > 0) {
+          await tx.expenseCsvHeader.upsert({
+            where: {
+              year_month_storeName: { year, month, storeName: store },
+            },
+            update: { headers: JSON.stringify(csvHeaders) },
+            create: {
+              year,
+              month,
+              storeName: store,
+              headers: JSON.stringify(csvHeaders),
+            },
           });
         }
 
@@ -241,6 +263,7 @@ export async function POST(request: NextRequest) {
     // Load expense rules once
     const rules = await prisma.expenseRule.findMany();
 
+    const csvHeaders = allRows[0] ?? [];
     const dataRows = allRows.slice(1);
     let classified = 0;
     let unclassified = 0;
@@ -256,6 +279,8 @@ export async function POST(request: NextRequest) {
       isAutoClassified: boolean;
       isRevenue: boolean;
       breakdown: string;
+      // 元CSV該当行（全列）。エクスポート時に元情報を再現するため保持。
+      rawRow: string[];
     }
 
     const records: ExpensePreviewRecord[] = [];
@@ -295,6 +320,7 @@ export async function POST(request: NextRequest) {
         isAutoClassified: !!category,
         isRevenue,
         breakdown: "",
+        rawRow: row,
       });
     }
 
@@ -303,6 +329,7 @@ export async function POST(request: NextRequest) {
       records,
       classified,
       unclassified,
+      csvHeaders,
     });
   } catch (error) {
     console.error("Expense upload error:", error);
