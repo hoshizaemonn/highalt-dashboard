@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { STORES, EXPENSE_CATEGORIES } from "@/lib/constants";
+import { STORES, EXPENSE_CATEGORIES, REVENUE_CATEGORIES } from "@/lib/constants";
 import {
   StatusMessage,
   FileDropzone,
@@ -348,12 +348,21 @@ function PayPayExpenseSection({
   const updateRecordCategory = (index: number, category: string) => {
     setParsedRecords((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], category: category || null };
+      // ユーザー手動分類 → isAutoClassified=false にして expense_rules を上書き登録
+      next[index] = {
+        ...next[index],
+        category: category || null,
+        isAutoClassified: false,
+      };
       return next;
     });
   };
 
-  const currentUnclassified = parsedRecords.filter((r) => !r.category).length;
+  // 収入行のうち、自動分類が "_収入" プレースホルダのままのものは未分類扱い
+  // （旧仕様で自動分類されていた行も、新UIで具体的な売上区分の選択を促す）
+  const isUnclassified = (r: { category: string | null }) =>
+    !r.category || r.category === "_収入";
+  const currentUnclassified = parsedRecords.filter(isUnclassified).length;
 
   return (
     <div className="space-y-4">
@@ -465,7 +474,26 @@ function PayPayExpenseSection({
                     </td>
                     <td className="py-1.5 px-3">
                       {rec.isRevenue ? (
-                        <span className="text-xs text-blue-600 font-medium">収入</span>
+                        <select
+                          value={
+                            rec.category && rec.category !== "_収入"
+                              ? rec.category
+                              : ""
+                          }
+                          onChange={(e) => updateRecordCategory(i, e.target.value)}
+                          className={`text-xs border rounded px-1.5 py-1 w-full ${
+                            rec.category && rec.category !== "_収入"
+                              ? "border-blue-300 bg-blue-50"
+                              : "border-yellow-300 bg-yellow-50"
+                          }`}
+                        >
+                          <option value="">収入（未分類）</option>
+                          {REVENUE_CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                        </select>
                       ) : (
                         <select
                           value={rec.category || ""}
