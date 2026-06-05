@@ -33,6 +33,18 @@ export const EXPENSE_CATEGORIES = [
   "その他",
 ] as const;
 
+// 入金行（is_revenue=1）用の勘定科目リスト。
+// PayPay銀行CSVの入金（売上振込・補助金・雑収入等）を仕訳画面で分類する。
+export const REVENUE_CATEGORIES = [
+  "売上",
+  "Square売上",
+  "hacomono売上",
+  "その他売上",
+  "雑収入",
+  "補助金収入",
+  "その他収入",
+] as const;
+
 export const THOUSAND_DIGIT_MAP: Record<number, string> = {
   1: "東日本橋",
   2: "春日",
