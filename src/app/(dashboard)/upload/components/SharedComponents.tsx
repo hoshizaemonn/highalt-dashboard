@@ -376,6 +376,8 @@ export function OverwriteWarning({
   onCancel,
   onAppend,
   appendLabel,
+  onRestore,
+  restoreLabel,
   loading,
 }: {
   message: string;
@@ -383,12 +385,20 @@ export function OverwriteWarning({
   onCancel: () => void;
   loading?: boolean;
   /**
-   * 追記モード時のハンドラ。指定するとボタンが3択（上書き／追記／キャンセル）になる。
+   * 追記モード時のハンドラ。指定するとボタンに「追記する」が追加される。
    * 同月内に複数ファイル（経費CSV＋売上CSV等）を分けて取り込みたいケース用。
    */
   onAppend?: () => void;
   /** 追記ボタンのラベル（既定: 「追記する（既存に追加）」） */
   appendLabel?: string;
+  /**
+   * 元情報のみ復元するモード時のハンドラ。指定するとボタンに「元情報のみ復元」が追加される。
+   * 既存の勘定科目・内訳を保持したまま、元CSVの全列情報のみを再注入する。
+   * （依頼② 過去データのエクスポート対応）
+   */
+  onRestore?: () => void;
+  /** 復元ボタンのラベル */
+  restoreLabel?: string;
 }) {
   return (
     <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
@@ -409,6 +419,15 @@ export function OverwriteWarning({
             className="px-4 py-2 rounded-md text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {appendLabel ?? "追記する（既存に追加）"}
+          </button>
+        )}
+        {onRestore && (
+          <button
+            onClick={onRestore}
+            disabled={loading}
+            className="px-4 py-2 rounded-md text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {restoreLabel ?? "元情報のみ復元（分類・内訳は保持）"}
           </button>
         )}
         <button
