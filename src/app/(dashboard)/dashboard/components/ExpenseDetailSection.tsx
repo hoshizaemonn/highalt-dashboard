@@ -130,6 +130,17 @@ export default function ExpenseDetailSection({
     window.open(`/api/download/expense-csv?${params}`, "_blank");
   };
 
+  // PL書式（既存テンプレ）でのダウンロード（依頼④）
+  // 暦上の (year, month) から会計年度（10月始まり）を逆算してエンドポイントに渡す
+  const handleDownloadPlXlsx = () => {
+    const fiscalYear = month >= 10 ? year + 1 : year;
+    const params = new URLSearchParams({
+      year: String(fiscalYear),
+      store,
+    });
+    window.open(`/api/download/pl-xlsx?${params}`, "_blank");
+  };
+
   if (loading) {
     return (
       <div className="animate-pulse mt-4">
@@ -151,6 +162,13 @@ export default function ExpenseDetailSection({
           className="text-sm bg-white border rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-700 shadow-sm"
         >
           📥 経費明細をダウンロード（CSV）
+        </button>
+        <button
+          onClick={handleDownloadPlXlsx}
+          className="text-sm bg-emerald-50 border border-emerald-300 rounded-lg px-3 py-1.5 hover:bg-emerald-100 text-emerald-800 shadow-sm"
+          title="既存PLテンプレ書式で当該会計年度の損益計算書をダウンロード"
+        >
+          📊 損益計算書（PL書式・Excel）
         </button>
         {hasChanges && (
           <button
