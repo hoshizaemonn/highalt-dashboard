@@ -374,17 +374,26 @@ export function OverwriteWarning({
   message,
   onConfirm,
   onCancel,
+  onAppend,
+  appendLabel,
   loading,
 }: {
   message: string;
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
+  /**
+   * 追記モード時のハンドラ。指定するとボタンが3択（上書き／追記／キャンセル）になる。
+   * 同月内に複数ファイル（経費CSV＋売上CSV等）を分けて取り込みたいケース用。
+   */
+  onAppend?: () => void;
+  /** 追記ボタンのラベル（既定: 「追記する（既存に追加）」） */
+  appendLabel?: string;
 }) {
   return (
     <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
       <p className="text-sm text-amber-800 font-medium mb-3">{message}</p>
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <button
           onClick={onConfirm}
           disabled={loading}
@@ -393,6 +402,15 @@ export function OverwriteWarning({
           {loading && <Loader2 size={14} className="animate-spin" />}
           はい（上書き保存）
         </button>
+        {onAppend && (
+          <button
+            onClick={onAppend}
+            disabled={loading}
+            className="px-4 py-2 rounded-md text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {appendLabel ?? "追記する（既存に追加）"}
+          </button>
+        )}
         <button
           onClick={onCancel}
           disabled={loading}

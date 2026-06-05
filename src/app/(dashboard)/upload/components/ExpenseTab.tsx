@@ -240,6 +240,9 @@ function PayPayExpenseSection({
   >([]);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [parseStats, setParseStats] = useState<{ classified: number; unclassified: number } | null>(null);
+  // 保存モード: 既存データありの確認ダイアログで「追記」が選ばれた場合 "append"
+  // （依頼③: 同月内に経費CSV＋売上CSVを別ファイルで取り込む）
+  const [saveMode, setSaveMode] = useState<"overwrite" | "append">("overwrite");
 
   const doParse = async () => {
     setLoading(true);
@@ -318,6 +321,7 @@ function PayPayExpenseSection({
           action: "save",
           records: parsedRecords,
           csvHeaders,
+          mode: saveMode,
           store,
           year,
           month,
@@ -333,12 +337,15 @@ function PayPayExpenseSection({
 
       setStatus({
         type: "success",
-        text: `${store} ${year}年${month}月の経費データを保存しました（${data.saved}件）`,
+        text: `${store} ${year}年${month}月の経費データを${
+          saveMode === "append" ? "追記" : "保存"
+        }しました（${data.saved}件）`,
       });
       onSuccess?.();
       setParsedRecords([]); setCsvHeaders([]);
       setParseStats(null);
       setFile(null);
+      setSaveMode("overwrite");
     } catch (e) {
       setStatus({
         type: "error",
@@ -425,11 +432,18 @@ function PayPayExpenseSection({
 
       {overwriteWarning && (
         <OverwriteWarning
-          message={`\u26A0\uFE0F ${store} ${year}年${month}月の経費データが既に${overwriteWarning.count}件あります。上書きしますか？`}
+          message={`\u26A0\uFE0F ${store} ${year}年${month}月の経費データが既に${overwriteWarning.count}件あります。\n上書き（全置換）か、追記（既存に追加）かを選択してください。`}
           onConfirm={async () => {
+            setSaveMode("overwrite");
             setOverwriteWarning(null);
             await doParse();
           }}
+          onAppend={async () => {
+            setSaveMode("append");
+            setOverwriteWarning(null);
+            await doParse();
+          }}
+          appendLabel="追記する（経費＋売上を別ファイルで取込）"
           onCancel={() => { setOverwriteWarning(null); setLoading(false); }}
           loading={loading}
         />

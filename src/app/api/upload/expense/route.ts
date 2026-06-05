@@ -127,12 +127,18 @@ export async function POST(request: NextRequest) {
       const csvHeaders: string[] | null = Array.isArray(body.csvHeaders)
         ? body.csvHeaders
         : null;
+      // 保存モード: "overwrite"（既定・既存データ全削除→挿入）/ "append"（既存を残して追記）
+      // append は同月内に経費CSV＋売上CSVを別ファイルで取り込みたいケース用（依頼③）。
+      const saveMode: "overwrite" | "append" =
+        body.mode === "append" ? "append" : "overwrite";
 
       // Delete existing expense data for this year/month/store, then insert
       await prisma.$transaction(async (tx) => {
-        await tx.expenseData.deleteMany({
-          where: { year, month, storeName: store },
-        });
+        if (saveMode === "overwrite") {
+          await tx.expenseData.deleteMany({
+            where: { year, month, storeName: store },
+          });
+        }
 
         if (inputRecords.length > 0) {
           await tx.expenseData.createMany({
@@ -164,19 +170,38 @@ export async function POST(request: NextRequest) {
         }
 
         // Persist CSV headers (year, month, store単位) for export re-construction
+        // append時は既存ヘッダを尊重し、無い時のみ新規作成（後続ファイルで列構造を壊さないため）
         if (csvHeaders && csvHeaders.length > 0) {
-          await tx.expenseCsvHeader.upsert({
-            where: {
-              year_month_storeName: { year, month, storeName: store },
-            },
-            update: { headers: JSON.stringify(csvHeaders) },
-            create: {
-              year,
-              month,
-              storeName: store,
-              headers: JSON.stringify(csvHeaders),
-            },
-          });
+          if (saveMode === "append") {
+            const existing = await tx.expenseCsvHeader.findUnique({
+              where: {
+                year_month_storeName: { year, month, storeName: store },
+              },
+            });
+            if (!existing) {
+              await tx.expenseCsvHeader.create({
+                data: {
+                  year,
+                  month,
+                  storeName: store,
+                  headers: JSON.stringify(csvHeaders),
+                },
+              });
+            }
+          } else {
+            await tx.expenseCsvHeader.upsert({
+              where: {
+                year_month_storeName: { year, month, storeName: store },
+              },
+              update: { headers: JSON.stringify(csvHeaders) },
+              create: {
+                year,
+                month,
+                storeName: store,
+                headers: JSON.stringify(csvHeaders),
+              },
+            });
+          }
         }
 
         // Auto-register expense rules for manually classified items
