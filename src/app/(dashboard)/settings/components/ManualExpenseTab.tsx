@@ -39,6 +39,7 @@ export default function ManualExpenseTab() {
   const storeCount = STORES.length;
 
   // 候補カテゴリ（本部一括になりやすいもの優先）
+  // ※ 減価償却費・開発費償却 は CSV から自動連携されないため本タブで月次入力する（依頼⑤）
   const SUGGESTED_CATEGORIES = [
     "電気料",
     "上下水道料",
@@ -48,6 +49,8 @@ export default function ManualExpenseTab() {
     "保険料",
     "委託料",
     "支払手数料",
+    "減価償却費",
+    "開発費償却",
   ];
   const ALL_CATEGORIES = Array.from(
     new Set([...SUGGESTED_CATEGORIES, ...BUDGET_ITEMS]),
@@ -141,7 +144,7 @@ export default function ManualExpenseTab() {
       <div>
         <h2 className="text-lg font-bold text-gray-700 mb-1">本部一括経費 / 店舗別経費</h2>
         <p className="text-xs text-gray-500 leading-relaxed">
-          電気代・水道代・家賃など、各店の PayPay 銀行 CSV に現れない経費を月次で入力します。
+          電気代・水道代・家賃・減価償却費・開発費償却など、各店の PayPay 銀行 CSV に現れない経費を月次で入力します。
           計上先で <strong>「本部一括（均等按分）」</strong>を選ぶと{" "}
           <strong>金額 ÷ {storeCount}店舗</strong> で各店に均等按分、
           <strong>店舗を選ぶ</strong>とその店舗のみに計上されます（按分なし）。
