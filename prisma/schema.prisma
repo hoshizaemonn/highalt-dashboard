@@ -130,8 +130,14 @@ model ExpenseData {
   // 元CSVの該当行全体（JSON配列の文字列）。エクスポート時に元情報を欠落なく再出力するため保持。
   // 既存データ（rawRow=null）はフォールバックで従来7列出力。
   rawRow      String? @map("raw_row")
+  // 発生主義の帰属年月（依頼⑥）。内訳の "N月" "N月分" "N月◯◯費" をパースして自動設定。
+  // 集計時は COALESCE(accrual_year, year), COALESCE(accrual_month, month) を使用。
+  // 既存データ（accrualYear/Month=null）は決済月で集計（従来通り）。
+  accrualYear  Int? @map("accrual_year")
+  accrualMonth Int? @map("accrual_month")
 
   @@index([year, month, storeName])
+  @@index([accrualYear, accrualMonth, storeName])
   @@map("expense_data")
 }
 

@@ -66,7 +66,12 @@ export async function GET(request: NextRequest) {
     // 高速化: 5並列のチャンクで取得（プール圧迫を避ける）
     const [allPayroll, allExpenses, allSalesDetail, allRevenue, allSquare] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: years } } }),
-      prisma.expenseData.findMany({ where: { year: { in: years }, isRevenue: 0 } }),
+      prisma.expenseData.findMany({
+        where: {
+          year: { in: [...years, ...years.map((y) => y - 1)] },
+          isRevenue: 0,
+        },
+      }),
       prisma.salesDetail.findMany({ where: { year: { in: years } } }),
       prisma.revenueData.findMany({ where: { year: { in: years } } }),
       prisma.squareSales.findMany({ where: { year: { in: years } } }),
@@ -189,10 +194,13 @@ export async function GET(request: NextRequest) {
         0,
       );
 
-      // Expenses
-      const expenses = allExpenses.filter(
-        (r) => r.storeName === storeName && isInPeriod(r.year, r.month),
-      );
+      // Expenses（依頼⑥: accrual を優先）
+      const expenses = allExpenses.filter((r) => {
+        if (r.storeName !== storeName) return false;
+        const ey = r.accrualYear ?? r.year;
+        const em = r.accrualMonth ?? r.month;
+        return isInPeriod(ey, em);
+      });
       const totalExpense = expenses.reduce((s, r) => s + r.amount, 0);
 
       // Member summary - latest record for this store WITHIN the requested period.

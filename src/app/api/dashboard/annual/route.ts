@@ -153,7 +153,14 @@ export async function GET(request: NextRequest) {
     // バッチ1: 集計の主軸となる重めのデータ
     const [allPayroll, allExpenses, allSalesDetail, allRevenue, allSquare] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: years }, ...storeWhere } }),
-      prisma.expenseData.findMany({ where: { year: { in: years }, isRevenue: 0, ...storeWhere } }),
+      // 発生月対応（依頼⑥）: 当年の前年も取得して跨年シフト分も拾う
+      prisma.expenseData.findMany({
+        where: {
+          year: { in: [...years, ...years.map((y) => y - 1)] },
+          isRevenue: 0,
+          ...storeWhere,
+        },
+      }),
       prisma.salesDetail.findMany({ where: { year: { in: years }, ...storeWhere } }),
       prisma.revenueData.findMany({ where: { year: { in: years }, ...storeWhere } }),
       prisma.squareSales.findMany({ where: { year: { in: years }, ...storeWhere } }),
@@ -224,8 +231,12 @@ export async function GET(request: NextRequest) {
         else parttimeGross += gross;
       }
 
-      // Expenses
-      const expenses = allExpenses.filter((r) => r.year === y && r.month === m);
+      // Expenses（依頼⑥: accrual を優先）
+      const expenses = allExpenses.filter((r) => {
+        const ey = r.accrualYear ?? r.year;
+        const em = r.accrualMonth ?? r.month;
+        return ey === y && em === m;
+      });
       let totalExpense = 0;
       const expenseByCat: Record<string, number> = {};
       for (const row of expenses) {
@@ -460,7 +471,13 @@ export async function GET(request: NextRequest) {
     // 高速化: 前期データも Promise.all で並列取得
     const [prevPayroll, prevExpenses, prevSales, prevRevenue, prevSquare, prevMonthlySummary] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
-      prisma.expenseData.findMany({ where: { year: { in: prevYears }, isRevenue: 0, ...storeWhere } }),
+      prisma.expenseData.findMany({
+        where: {
+          year: { in: [...prevYears, ...prevYears.map((y) => y - 1)] },
+          isRevenue: 0,
+          ...storeWhere,
+        },
+      }),
       prisma.salesDetail.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
       prisma.revenueData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
       prisma.squareSales.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
@@ -477,7 +494,10 @@ export async function GET(request: NextRequest) {
     const prevExpenseByCat: Record<string, number> = {};
     let prevExpense = 0;
     for (const r of prevExpenses) {
-      if (!isInPeriod(r.year, r.month)) continue;
+      // 依頼⑥: accrual を優先して帰属判定
+      const ey = r.accrualYear ?? r.year;
+      const em = r.accrualMonth ?? r.month;
+      if (!isInPeriod(ey, em)) continue;
       prevExpenseByCat[r.category ?? "その他"] =
         (prevExpenseByCat[r.category ?? "その他"] ?? 0) + r.amount;
       prevExpense += r.amount;

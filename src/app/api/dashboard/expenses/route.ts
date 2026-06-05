@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
+import { parseAccrualMonth } from "@/lib/accrual";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,22 +22,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const rows = await prisma.expenseData.findMany({
+    // 発生月対応（依頼⑥）: 当年＋前年から取得し、accrual優先で当該月の行に絞る
+    const allRows = await prisma.expenseData.findMany({
       where: {
-        year,
-        month,
+        year: { in: [year - 1, year] },
         storeName: store,
         isRevenue: 0,
       },
       orderBy: { day: "asc" },
       select: {
         id: true,
+        year: true,
+        month: true,
         day: true,
         description: true,
         amount: true,
         category: true,
         breakdown: true,
+        accrualYear: true,
+        accrualMonth: true,
       },
+    });
+    const rows = allRows.filter((r) => {
+      const ey = r.accrualYear ?? r.year;
+      const em = r.accrualMonth ?? r.month;
+      return ey === year && em === month;
     });
 
     // Match Amazon orders to fill breakdown for AMAZON expenses
@@ -179,7 +189,23 @@ export async function PUT(request: NextRequest) {
       const data: Record<string, unknown> = {};
       if (update.category !== undefined) data.category = update.category;
       if (update.amount !== undefined) data.amount = update.amount;
-      if (update.breakdown !== undefined) data.breakdown = update.breakdown;
+      if (update.breakdown !== undefined) {
+        data.breakdown = update.breakdown;
+        // 依頼⑥: 内訳の編集時に発生月帰属を再計算
+        const existingForAccrual = await prisma.expenseData.findUnique({
+          where: { id: update.id },
+          select: { year: true, month: true },
+        });
+        if (existingForAccrual) {
+          const accrual = parseAccrualMonth(
+            update.breakdown,
+            existingForAccrual.year,
+            existingForAccrual.month,
+          );
+          data.accrualYear = accrual?.accrualYear ?? null;
+          data.accrualMonth = accrual?.accrualMonth ?? null;
+        }
+      }
 
       if (Object.keys(data).length === 0) continue;
 
