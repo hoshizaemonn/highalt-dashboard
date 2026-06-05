@@ -36,6 +36,12 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // PL書式エクスポート（依頼④）: テンプレXLSXをサーバレス関数に含める
+  outputFileTracingIncludes: {
+    "/api/download/pl-xlsx": [
+      "./src/lib/templates/budget_pl_template.xlsx",
+    ],
+  },
 };
 
 export default nextConfig;
