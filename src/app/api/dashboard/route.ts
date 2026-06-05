@@ -131,15 +131,26 @@ export async function GET(request: NextRequest) {
     };
 
     // ── Expenses ─────────────────────────────────────────────
-    const expenseWhere = {
-      year,
-      ...(month !== undefined && { month }),
+    // 発生月対応（依頼⑥）: 内訳に "N月" 等があると accrualYear/Month に帰属月が記録される。
+    // 集計は accrual を優先し、未設定なら決済年月を使う。
+    // 単月クエリでも、他月決済かつ accrual=対象月 の行を拾うため広めに取得して JS で絞る。
+    const expenseFetchWhere = {
+      // 当年＋前年（12月決済の前年帰属など跨年シフトに備える）
+      year: { in: [year - 1, year] },
       storeName: store ? store : notHqOrHidden,
       isRevenue: 0,
     };
 
-    const expenseRows = await prisma.expenseData.findMany({
-      where: expenseWhere,
+    const expenseRowsAll = await prisma.expenseData.findMany({
+      where: expenseFetchWhere,
+    });
+
+    const expenseRows = expenseRowsAll.filter((row) => {
+      const effYear = row.accrualYear ?? row.year;
+      const effMonth = row.accrualMonth ?? row.month;
+      if (effYear !== year) return false;
+      if (month !== undefined && effMonth !== month) return false;
+      return true;
     });
 
     const expenseByCategory: Record<string, number> = {};
@@ -409,17 +420,26 @@ export async function GET(request: NextRequest) {
           0,
         );
 
-        const expWhere = {
-          year: y,
-          month: m,
-          isRevenue: 0,
-          ...(store && { storeName: store }),
-        };
-        const expAgg = await prisma.expenseData.aggregate({
-          _sum: { amount: true },
-          where: expWhere,
+        // 発生月対応（依頼⑥）: 当年＋前年から取得し、accrual優先で当該月の合計を算出
+        const expRowsForMonth = await prisma.expenseData.findMany({
+          where: {
+            year: { in: [y - 1, y] },
+            isRevenue: 0,
+            ...(store && { storeName: store }),
+          },
+          select: {
+            year: true,
+            month: true,
+            amount: true,
+            accrualYear: true,
+            accrualMonth: true,
+          },
         });
-        const expenseTotal = expAgg._sum.amount ?? 0;
+        const expenseTotal = expRowsForMonth.reduce((s, r) => {
+          const ey = r.accrualYear ?? r.year;
+          const em = r.accrualMonth ?? r.month;
+          return ey === y && em === m ? s + r.amount : s;
+        }, 0);
 
         const cw = {
           year: y,

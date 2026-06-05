@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireStoreUploadAccess } from "@/lib/auth";
 import { decodeFileBuffer, parseCSV, safeFloat } from "@/lib/csv-utils";
+import { parseAccrualMonth } from "@/lib/accrual";
 
 /**
  * Extract a meaningful keyword from a PayPay bank description.
@@ -153,19 +154,31 @@ export async function POST(request: NextRequest) {
               isRevenue?: boolean;
               breakdown?: string;
               rawRow?: string[] | null;
-            }) => ({
-              year: rec.year || year,
-              month: rec.month || month,
-              day: rec.day,
-              storeName: store,
-              description: rec.description,
-              amount: rec.amount,
-              deposit: rec.deposit,
-              category: rec.category || null,
-              isRevenue: rec.isRevenue ? 1 : 0,
-              breakdown: rec.breakdown || "",
-              rawRow: rec.rawRow ? JSON.stringify(rec.rawRow) : null,
-            })),
+            }) => {
+              const rowYear = rec.year || year;
+              const rowMonth = rec.month || month;
+              // 内訳パース → 発生月帰属（依頼⑥・A案）
+              const accrual = parseAccrualMonth(
+                rec.breakdown || "",
+                rowYear,
+                rowMonth,
+              );
+              return {
+                year: rowYear,
+                month: rowMonth,
+                day: rec.day,
+                storeName: store,
+                description: rec.description,
+                amount: rec.amount,
+                deposit: rec.deposit,
+                category: rec.category || null,
+                isRevenue: rec.isRevenue ? 1 : 0,
+                breakdown: rec.breakdown || "",
+                rawRow: rec.rawRow ? JSON.stringify(rec.rawRow) : null,
+                accrualYear: accrual?.accrualYear ?? null,
+                accrualMonth: accrual?.accrualMonth ?? null,
+              };
+            }),
           });
         }
 
