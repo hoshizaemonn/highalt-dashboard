@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { EXPENSE_CATEGORIES } from "@/lib/constants";
+import { EXPENSE_CATEGORIES, REVENUE_CATEGORIES } from "@/lib/constants";
 import {
   SectionTitle,
 } from "./shared";
@@ -13,12 +13,15 @@ interface ExpenseRecord {
   day: number;
   description: string | null;
   amount: number;
+  deposit: number;
   category: string | null;
   breakdown: string;
+  isRevenue: number;
 }
 
 interface EditedFields {
   amount?: number;
+  deposit?: number;
   category?: string;
   breakdown?: string;
 }
@@ -105,11 +108,21 @@ export default function ExpenseDetailSection({
         prev.map((e) => {
           const ed = edits[e.id];
           if (!ed) return e;
+          const newCategory = ed.category ?? e.category;
+          // 収入カテゴリが選ばれていれば isRevenue=1 にローカル反映（DB側でもAPI PUTで同期）
+          const newIsRevenue =
+            newCategory && REVENUE_CATEGORIES.includes(
+              newCategory as typeof REVENUE_CATEGORIES[number],
+            )
+              ? 1
+              : e.isRevenue;
           return {
             ...e,
             amount: ed.amount ?? e.amount,
-            category: ed.category ?? e.category,
+            deposit: ed.deposit ?? e.deposit,
+            category: newCategory,
             breakdown: ed.breakdown ?? e.breakdown,
+            isRevenue: newIsRevenue,
           };
         }),
       );
@@ -128,17 +141,6 @@ export default function ExpenseDetailSection({
       store,
     });
     window.open(`/api/download/expense-csv?${params}`, "_blank");
-  };
-
-  // PL書式（既存テンプレ）でのダウンロード（依頼④）
-  // 暦上の (year, month) から会計年度（10月始まり）を逆算してエンドポイントに渡す
-  const handleDownloadPlXlsx = () => {
-    const fiscalYear = month >= 10 ? year + 1 : year;
-    const params = new URLSearchParams({
-      year: String(fiscalYear),
-      store,
-    });
-    window.open(`/api/download/pl-xlsx?${params}`, "_blank");
   };
 
   if (loading) {
@@ -163,13 +165,6 @@ export default function ExpenseDetailSection({
         >
           📥 経費明細をダウンロード（CSV）
         </button>
-        <button
-          onClick={handleDownloadPlXlsx}
-          className="text-sm bg-emerald-50 border border-emerald-300 rounded-lg px-3 py-1.5 hover:bg-emerald-100 text-emerald-800 shadow-sm"
-          title="既存PLテンプレ書式で当該会計年度の損益計算書をダウンロード"
-        >
-          📊 損益計算書（PL書式・Excel）
-        </button>
         {hasChanges && (
           <button
             onClick={handleSave}
@@ -187,7 +182,7 @@ export default function ExpenseDetailSection({
       {(() => {
         const missingCatCount = expenses.filter((e) => {
           const cat = edits[e.id]?.category ?? e.category ?? "";
-          return !cat;
+          return !cat || cat === "_収入";
         }).length;
         return (
           <div className="flex gap-4 mb-2">
@@ -211,22 +206,32 @@ export default function ExpenseDetailSection({
             <tr className="border-b bg-gray-50">
               <th className="text-left px-3 py-2 font-medium text-gray-600 w-12">日</th>
               <th className="text-left px-3 py-2 font-medium text-gray-600 min-w-[160px]">摘要</th>
-              <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">金額</th>
-              <th className="text-left px-3 py-2 font-medium text-gray-600 w-36">勘定科目</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">出金</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">入金</th>
+              <th className="text-left px-3 py-2 font-medium text-gray-600 w-44">勘定科目</th>
               <th className="text-left px-3 py-2 font-medium text-gray-600 min-w-[160px]">内訳</th>
             </tr>
           </thead>
           <tbody>
             {expenses.map((e) => {
               const edited = edits[e.id] ?? {};
-              const currentCategory = edited.category ?? e.category ?? "";
+              const currentCategoryRaw = edited.category ?? e.category ?? "";
+              // "_収入" プレースホルダは未分類扱い
+              const currentCategory =
+                currentCategoryRaw === "_収入" ? "" : currentCategoryRaw;
               const currentBreakdown = edited.breakdown ?? e.breakdown ?? "";
               const isMissingCategory = !currentCategory;
               const isMissingBreakdown = !currentBreakdown.trim();
+              const isRevenueRow =
+                e.isRevenue === 1 || (e.deposit > 0 && e.amount === 0);
               const rowBg = isMissingCategory
-                ? "bg-red-50"
+                ? isRevenueRow
+                  ? "bg-blue-50"
+                  : "bg-red-50"
                 : isMissingBreakdown
                 ? "bg-yellow-50"
+                : isRevenueRow
+                ? "bg-blue-50/40"
                 : "";
               return (
                 <tr key={e.id} className={`border-b hover:bg-gray-50/50 ${rowBg}`}>
@@ -242,6 +247,16 @@ export default function ExpenseDetailSection({
                       className="w-24 text-right border rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300"
                     />
                   </td>
+                  <td className="px-3 py-1.5 text-right">
+                    <input
+                      type="number"
+                      value={edited.deposit ?? e.deposit}
+                      onChange={(ev) =>
+                        handleEdit(e.id, "deposit", Number(ev.target.value))
+                      }
+                      className="w-24 text-right border rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300"
+                    />
+                  </td>
                   <td className="px-3 py-1.5">
                     <select
                       value={currentCategory}
@@ -249,15 +264,30 @@ export default function ExpenseDetailSection({
                         handleEdit(e.id, "category", ev.target.value)
                       }
                       className={`border rounded px-2 py-0.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-300 ${
-                        isMissingCategory ? "border-red-400 bg-red-50 text-red-700" : ""
+                        isMissingCategory
+                          ? isRevenueRow
+                            ? "border-blue-400 bg-blue-50 text-blue-700"
+                            : "border-red-400 bg-red-50 text-red-700"
+                          : ""
                       }`}
                     >
-                      <option value="">🔴 未分類</option>
-                      {EXPENSE_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
+                      <option value="">
+                        {isRevenueRow ? "🔵 収入（未分類）" : "🔴 未分類"}
+                      </option>
+                      <optgroup label="収入">
+                        {REVENUE_CATEGORIES.map((c) => (
+                          <option key={`r-${c}`} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="経費">
+                        {EXPENSE_CATEGORIES.map((c) => (
+                          <option key={`e-${c}`} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </optgroup>
                     </select>
                   </td>
                   <td className="px-3 py-1.5">
