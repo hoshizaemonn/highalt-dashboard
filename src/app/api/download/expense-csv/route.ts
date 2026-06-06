@@ -3,11 +3,83 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 
 /**
- * CSV セルを RFC4180 ライクにエスケープして引用符付きで返す。
+ * 経費明細 CSVエクスポート（依頼②）
+ *
+ * 出力フォーマット（PayPay銀行CSV書式・メモ列なし + 勘定科目 + 内訳）:
+ *   操作日(年) / 操作日(月) / 操作日(日)
+ *   操作時刻(時) / 操作時刻(分) / 操作時刻(秒)
+ *   取引順番号 / 摘要 / お支払金額 / お預り金額 / 残高
+ *   勘定科目 / 内訳
+ *
+ * - 元情報 (rawRow + ExpenseCsvHeader) がある月 → rawRow から元の列をマップして出力
+ * - 元情報がない過去データ → DB保存項目から復元（時刻・取引順番号・残高は空セル）
  */
+
+// 出力する固定列の順序（メモは除外）
+const OUTPUT_HEADERS = [
+  "操作日(年)",
+  "操作日(月)",
+  "操作日(日)",
+  "操作時刻(時)",
+  "操作時刻(分)",
+  "操作時刻(秒)",
+  "取引順番号",
+  "摘要",
+  "お支払金額",
+  "お預り金額",
+  "残高",
+  "勘定科目",
+  "内訳",
+];
+
+// rawRow（元CSV配列）から出力列の値を取り出す既定マッピング（PayPay書式）
+// 列0=年, 1=月, 2=日, 3=時, 4=分, 5=秒, 6=取引順番号, 7=摘要,
+// 8=お支払金額(出金), 9=お預り金額(入金), 10=残高, 11=メモ
+const PAYPAY_DEFAULT_HEADERS = [
+  "操作日(年)",
+  "操作日(月)",
+  "操作日(日)",
+  "操作時刻(時)",
+  "操作時刻(分)",
+  "操作時刻(秒)",
+  "取引順番号",
+  "摘要",
+  "お支払金額",
+  "お預り金額",
+  "残高",
+  "メモ",
+];
+
 function escapeCsvCell(value: string): string {
   const v = value ?? "";
   return `"${v.replace(/"/g, '""')}"`;
+}
+
+/**
+ * 保存されたヘッダから、各出力列がソースCSVの何列目に対応するかを推定する。
+ * 保存ヘッダ名と完全一致を試み、一致しない場合は PayPay 既定の順序に従う。
+ */
+function buildColumnMap(
+  storedHeaders: string[] | null,
+): Map<string, number | null> {
+  const map = new Map<string, number | null>();
+  for (const h of OUTPUT_HEADERS) {
+    if (h === "勘定科目" || h === "内訳") {
+      map.set(h, null); // DB側で別途付与
+      continue;
+    }
+    if (storedHeaders) {
+      const idx = storedHeaders.findIndex((sh) => sh.trim() === h);
+      if (idx >= 0) {
+        map.set(h, idx);
+        continue;
+      }
+    }
+    // フォールバック: PayPay 既定の順序
+    const defIdx = PAYPAY_DEFAULT_HEADERS.indexOf(h);
+    map.set(h, defIdx >= 0 ? defIdx : null);
+  }
+  return map;
 }
 
 export async function GET(request: NextRequest) {
@@ -43,61 +115,53 @@ export async function GET(request: NextRequest) {
       where: { year_month_storeName: { year, month, storeName: store } },
     });
 
-    // 元CSVヘッダ＋勘定科目＋内訳の付与方式（依頼②）
-    // 全行に rawRow が入っていて、ヘッダも保存されていれば、元の列構造で書き出す。
-    const hasRawData =
-      headerRow &&
-      rows.length > 0 &&
-      rows.every((r) => r.rawRow !== null && r.rawRow !== "");
+    const storedHeaders: string[] | null = headerRow
+      ? (JSON.parse(headerRow.headers) as string[])
+      : null;
+    const colMap = buildColumnMap(storedHeaders);
 
-    let csvBody: string;
+    const headerLine = OUTPUT_HEADERS.map(escapeCsvCell).join(",");
 
-    if (hasRawData) {
-      const originalHeaders: string[] = JSON.parse(headerRow!.headers);
-      const fullHeaders = [...originalHeaders, "勘定科目", "内訳"];
-      const headerLine = fullHeaders.map(escapeCsvCell).join(",");
-
-      const lines = rows.map((r) => {
-        let raw: string[] = [];
+    const lines = rows.map((r) => {
+      let raw: string[] = [];
+      if (r.rawRow) {
         try {
-          raw = JSON.parse(r.rawRow!);
-          if (!Array.isArray(raw)) raw = [];
+          const parsed = JSON.parse(r.rawRow);
+          if (Array.isArray(parsed)) raw = parsed;
         } catch {
           raw = [];
         }
-        // 元行の列数をヘッダ数に揃える（不足は空セル、超過は切り詰めない=末尾に維持）
-        const padded =
-          raw.length >= originalHeaders.length
-            ? raw
-            : [...raw, ...Array(originalHeaders.length - raw.length).fill("")];
+      }
 
-        const cat = r.category ?? "";
-        const bd = r.breakdown ?? "";
-        return [...padded, cat, bd].map(escapeCsvCell).join(",");
+      // DB由来のフォールバック値（rawRow が無い行用）
+      const dbFallback: Record<string, string> = {
+        "操作日(年)": String(r.year),
+        "操作日(月)": String(r.month),
+        "操作日(日)": String(r.day),
+        "操作時刻(時)": "",
+        "操作時刻(分)": "",
+        "操作時刻(秒)": "",
+        "取引順番号": "",
+        "摘要": r.description ?? "",
+        "お支払金額": r.amount > 0 ? String(Math.round(r.amount)) : "",
+        "お預り金額": r.deposit > 0 ? String(Math.round(r.deposit)) : "",
+        "残高": "",
+      };
+
+      const cells = OUTPUT_HEADERS.map((h) => {
+        if (h === "勘定科目") return r.category ?? "";
+        if (h === "内訳") return r.breakdown ?? "";
+        const sourceIdx = colMap.get(h);
+        if (sourceIdx !== null && sourceIdx !== undefined && raw[sourceIdx] != null) {
+          return String(raw[sourceIdx]);
+        }
+        return dbFallback[h] ?? "";
       });
 
-      csvBody = headerLine + "\r\n" + lines.join("\r\n");
-    } else {
-      // フォールバック（rawRow未保存の旧データ）: 従来の7列フォーマット
-      const header = "年,月,日,摘要,出金,入金,勘定科目,内訳";
-      const lines = rows.map((r) => {
-        return [
-          String(r.year),
-          String(r.month),
-          String(r.day),
-          r.description ?? "",
-          r.amount > 0 ? String(r.amount) : "",
-          r.deposit > 0 ? String(r.deposit) : "",
-          r.category ?? "",
-          r.breakdown ?? "",
-        ]
-          .map(escapeCsvCell)
-          .join(",");
-      });
-      csvBody = header + "\r\n" + lines.join("\r\n");
-    }
+      return cells.map(escapeCsvCell).join(",");
+    });
 
-    const csv = "﻿" + csvBody + "\r\n";
+    const csv = "﻿" + headerLine + "\r\n" + lines.join("\r\n") + "\r\n";
 
     const mm = String(month).padStart(2, "0");
     const filename = `${year}${mm}_${store}_経費明細.csv`;
