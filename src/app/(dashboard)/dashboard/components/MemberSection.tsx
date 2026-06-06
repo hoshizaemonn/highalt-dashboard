@@ -13,7 +13,6 @@ import {
   Pie,
   Cell,
   Tooltip,
-  Legend,
 } from "./shared";
 
 // ─── Plan Breakdown Pie Chart (monthly) ─────────────────
@@ -58,6 +57,11 @@ export function PlanBreakdownPie({
       <SectionTitle>プラン別会員数</SectionTitle>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-lg border shadow-sm p-4">
+          {/*
+           * プラン名が長く、ラベル/下部Legendを出すと重なる・見切れる問題が出ていたため、
+           * 円グラフ側はホバーで件数を見せるだけにし、凡例は右パネルに集約。
+           * 各スライスに件数（数値のみ）をオーバーレイで表示する。
+           */}
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
@@ -66,19 +70,26 @@ export function PlanBreakdownPie({
                 nameKey="name"
                 cx="50%"
                 cy="50%"
-                outerRadius={100}
-                label
+                outerRadius={110}
+                paddingAngle={1}
+                isAnimationActive={false}
+                label={({ value, percent }) => {
+                  // 全体の3%未満のスライスはラベル無し（重なり防止）
+                  if (!percent || percent < 0.03) return "";
+                  return String(value);
+                }}
+                labelLine={false}
               >
                 {plans.map((_, i) => (
                   <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value) => [
+                formatter={(value, name) => [
                   `${Number(value)}人（${((Number(value) / total) * 100).toFixed(1)}%）`,
+                  String(name),
                 ]}
               />
-              <Legend />
             </PieChart>
           </ResponsiveContainer>
         </div>
