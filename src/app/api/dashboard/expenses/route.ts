@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
 import { parseAccrualMonth } from "@/lib/accrual";
+import { REVENUE_CATEGORIES } from "@/lib/constants";
+
+const REVENUE_SET = new Set<string>(REVENUE_CATEGORIES as readonly string[]);
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,11 +26,11 @@ export async function GET(request: NextRequest) {
     }
 
     // 発生月対応（依頼⑥）: 当年＋前年から取得し、accrual優先で当該月の行に絞る
+    // 入金行（isRevenue=1）も含めて取得する（依頼: 入金部分も内訳・分類可能に）
     const allRows = await prisma.expenseData.findMany({
       where: {
         year: { in: [year - 1, year] },
         storeName: store,
-        isRevenue: 0,
       },
       orderBy: { day: "asc" },
       select: {
@@ -37,8 +40,10 @@ export async function GET(request: NextRequest) {
         day: true,
         description: true,
         amount: true,
+        deposit: true,
         category: true,
         breakdown: true,
+        isRevenue: true,
         accrualYear: true,
         accrualMonth: true,
       },
@@ -173,6 +178,7 @@ export async function PUT(request: NextRequest) {
       id: number;
       category?: string;
       amount?: number;
+      deposit?: number;
       breakdown?: string;
     }> = body.updates ?? [body];
 
@@ -187,8 +193,17 @@ export async function PUT(request: NextRequest) {
     const results = [];
     for (const update of updates) {
       const data: Record<string, unknown> = {};
-      if (update.category !== undefined) data.category = update.category;
+      if (update.category !== undefined) {
+        data.category = update.category;
+        // 収入カテゴリが選ばれた場合は isRevenue=1、そうでなければ 0 に自動同期
+        if (update.category && REVENUE_SET.has(update.category)) {
+          data.isRevenue = 1;
+        } else if (update.category) {
+          data.isRevenue = 0;
+        }
+      }
       if (update.amount !== undefined) data.amount = update.amount;
+      if (update.deposit !== undefined) data.deposit = update.deposit;
       if (update.breakdown !== undefined) {
         data.breakdown = update.breakdown;
         // 依頼⑥: 内訳の編集時に発生月帰属を再計算
