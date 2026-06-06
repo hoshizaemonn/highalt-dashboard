@@ -116,7 +116,25 @@ export default function MonthlyView({
       </div>
 
       {/* PL Table */}
-      <SectionTitle>損益計算書 (PL)</SectionTitle>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <SectionTitle>損益計算書 (PL)</SectionTitle>
+        <button
+          onClick={() => {
+            // 暦上の (year, month) から会計年度（10月始まり）を逆算
+            const fiscalYear = month >= 10 ? year + 1 : year;
+            const params = new URLSearchParams({
+              year: String(fiscalYear),
+              store,
+            });
+            window.open(`/api/download/pl-csv?${params}`, "_blank");
+          }}
+          className="text-sm bg-emerald-50 border border-emerald-300 rounded-lg px-3 py-1.5 hover:bg-emerald-100 text-emerald-800 shadow-sm inline-flex items-center gap-1.5"
+          title="既存PL様式（10月〜9月の月次＋合計、千円単位）で当該会計年度の損益計算書をCSVダウンロード"
+        >
+          <Download size={14} />
+          損益計算書（PL書式・CSV）
+        </button>
+      </div>
       <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
