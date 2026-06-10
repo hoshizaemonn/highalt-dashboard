@@ -135,6 +135,9 @@ model ExpenseData {
   // 既存データ（accrualYear/Month=null）は決済月で集計（従来通り）。
   accrualYear  Int? @map("accrual_year")
   accrualMonth Int? @map("accrual_month")
+  // 取込元ファイル名（依頼: 2ファイル取込→エクスポートも2ファイル分割）。
+  // 同月内で複数ファイルを取り込んだ場合、エクスポート時にこのキーで分割しZIPで返す。
+  sourceFile   String? @map("source_file")
 
   @@index([year, month, storeName])
   @@index([accrualYear, accrualMonth, storeName])

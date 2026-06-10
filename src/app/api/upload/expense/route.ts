@@ -128,6 +128,11 @@ export async function POST(request: NextRequest) {
       const csvHeaders: string[] | null = Array.isArray(body.csvHeaders)
         ? body.csvHeaders
         : null;
+      // 取込元ファイル名（依頼: 2ファイル取込→エクスポートも分割）
+      const sourceFile: string =
+        typeof body.sourceFile === "string" && body.sourceFile.trim()
+          ? body.sourceFile.trim()
+          : "PayPay銀行CSV";
       // 保存モード:
       //  - "overwrite"（既定・既存データ全削除→挿入）
       //  - "append"（既存を残して追記、依頼③）
@@ -220,6 +225,7 @@ export async function POST(request: NextRequest) {
                   rawRow: rawJson,
                   accrualYear: accrual?.accrualYear ?? null,
                   accrualMonth: accrual?.accrualMonth ?? null,
+                  sourceFile,
                 },
               });
               matched++;
@@ -245,6 +251,7 @@ export async function POST(request: NextRequest) {
                   rawRow: rawJson,
                   accrualYear: accrual?.accrualYear ?? null,
                   accrualMonth: accrual?.accrualMonth ?? null,
+                  sourceFile,
                 },
               });
               inserted++;
@@ -319,6 +326,7 @@ export async function POST(request: NextRequest) {
                 rawRow: rec.rawRow ? JSON.stringify(rec.rawRow) : null,
                 accrualYear: accrual?.accrualYear ?? null,
                 accrualMonth: accrual?.accrualMonth ?? null,
+                sourceFile,
               };
             }),
           });
