@@ -217,11 +217,24 @@ export async function POST(request: NextRequest) {
       const taxableTotal = col(51);
       const grossTotal = col(55);
 
-      const healthInsuranceCo = col(89);
-      const careInsuranceCo = col(90);
-      const pensionCo = col(91);
+      // クラウド給与CSV列マッピング（2026-06-06 修正）
+      // CSV末尾は次の順序になっている:
+      //   col(88) 標準報酬月額(健保) / col(89) 標準報酬月額(厚生年金) ← 集計に不要
+      //   col(90) 健康保険料(会社負担)
+      //   col(91) 介護保険料(会社負担)
+      //   col(92) 子ども子育て拠出金(会社負担)
+      //   col(93) 厚生年金保険料(会社負担)
+      //   col(94) 雇用保険料(会社負担)
+      //   col(95) 労災保険料(会社負担)
+      //   col(96) 一般拠出金(会社負担)
+      // 旧マッピングは col(89-96) を順に読んでいたため、健康保険料に標準報酬月額¥320,000等が
+      // 入り込み、厚生年金が全社0、法定福利費が大きくズレていた。
+      const healthInsuranceCo = col(90);
+      const careInsuranceCo = col(91);
       const childContributionCo = col(92);
-      const pensionFundCo = col(93);
+      const pensionCo = col(93);
+      // 厚生年金基金はクラウド給与CSVに該当列が無いため固定0
+      const pensionFundCo = 0;
       const employmentInsuranceCo = col(94);
       const workersCompCo = col(95);
       const generalContributionCo = col(96);
