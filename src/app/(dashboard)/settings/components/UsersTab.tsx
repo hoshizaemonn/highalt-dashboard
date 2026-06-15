@@ -50,7 +50,10 @@ export default function UsersTab() {
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
-  const [newStoreName, setNewStoreName] = useState(FALLBACK_STORES[0]);
+  // 担当店舗（複数選択可）。送信時にカンマ区切りで結合してAPIに渡す。
+  const [newStoreNames, setNewStoreNames] = useState<string[]>([
+    FALLBACK_STORES[0],
+  ]);
   // プルダウン表示用の選択中社員ID（newUsername は社員名で保存される）
   const [selectedEmpId, setSelectedEmpId] = useState("");
 
@@ -142,7 +145,8 @@ export default function UsersTab() {
           username: newUsername,
           password: newPassword,
           displayName: newDisplayName || null,
-          storeName: newStoreName,
+          // 担当店舗が複数の場合はカンマ区切りで送信（auth側でsplit）
+          storeName: newStoreNames.filter(Boolean).join(","),
         }),
       });
       const data = await res.json();
@@ -153,7 +157,7 @@ export default function UsersTab() {
         setSelectedEmpId("");
         setNewPassword("");
         setNewDisplayName("");
-        setNewStoreName(FALLBACK_STORES[0]);
+        setNewStoreNames([FALLBACK_STORES[0]]);
         await fetchData();
         setMessage("ユーザーを作成しました");
       }
@@ -361,7 +365,7 @@ export default function UsersTab() {
                       setNewUsername(emp.employeeName);
                       setNewDisplayName(emp.employeeName);
                       if (allStores.includes(emp.storeName)) {
-                        setNewStoreName(emp.storeName);
+                        setNewStoreNames([emp.storeName]);
                       }
                     } else {
                       setNewUsername("");
@@ -394,24 +398,53 @@ export default function UsersTab() {
                   onChange={(e) => setNewDisplayName(e.target.value)}
                   className="border border-gray-300 rounded px-3 py-2 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
                 />
-                <select
-                  value={newStoreName}
-                  onChange={(e) => setNewStoreName(e.target.value)}
-                  className="border border-gray-300 rounded px-2 py-2 text-sm"
-                >
-                  {allStores.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
                 <button
                   onClick={handleCreateUser}
-                  disabled={saving || !newUsername || !newPassword}
+                  disabled={
+                    saving ||
+                    !newUsername ||
+                    !newPassword ||
+                    newStoreNames.length === 0
+                  }
                   className="bg-[#567FC0] hover:bg-[#4a6fa8] text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50 transition-colors"
                 >
                   作成
                 </button>
+              </div>
+              {/* 担当店舗：複数選択可（チェックボックス） */}
+              <div className="bg-gray-50 border border-gray-200 rounded p-3">
+                <p className="text-xs font-medium text-gray-700 mb-2">
+                  担当店舗（複数選択可・チェックを入れた全店舗を1ユーザーで管理）
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {allStores
+                    .filter((s) => s !== HQ_STORE)
+                    .map((s) => (
+                      <label
+                        key={s}
+                        className="inline-flex items-center gap-1.5 text-sm cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={newStoreNames.includes(s)}
+                          onChange={(e) => {
+                            setNewStoreNames((prev) =>
+                              e.target.checked
+                                ? Array.from(new Set([...prev, s]))
+                                : prev.filter((x) => x !== s),
+                            );
+                          }}
+                          className="accent-[#567FC0]"
+                        />
+                        {s}
+                      </label>
+                    ))}
+                </div>
+                {newStoreNames.length > 1 && (
+                  <p className="text-xs text-blue-600 mt-2">
+                    選択中: {newStoreNames.join(" / ")}（{newStoreNames.length}店舗）
+                  </p>
+                )}
               </div>
             </div>
           </div>

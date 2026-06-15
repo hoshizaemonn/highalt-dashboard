@@ -25,6 +25,11 @@ export interface PeriodSelectorProps {
   onYearChange: (y: number) => void;
   onPeriodChange: (p: string) => void;
   onStoreChange: (s: string) => void;
+  /**
+   * 非null（店長）のとき、店舗セレクタの選択肢をこの配列のみに絞る。
+   * 複数店舗マネージャー対応: ["東日本橋", "船橋"] のように指定。
+   */
+  allowedStores?: string[] | null;
 }
 
 export default function PeriodSelector({
@@ -34,6 +39,7 @@ export default function PeriodSelector({
   onYearChange,
   onPeriodChange,
   onStoreChange,
+  allowedStores,
 }: PeriodSelectorProps) {
   // 動的な店舗リストを API から取得（坪井さん要望17: ハコモノ店舗自動追加）。
   // 失敗時は固定リストにフォールバック。
@@ -48,6 +54,10 @@ export default function PeriodSelector({
       })
       .catch(() => {});
   }, []);
+
+  // 店長: 担当店舗のみに絞る
+  // 「全体」は admin 用のため、店長（複数店舗担当でも）の選択肢からは除外
+  const effectiveOptions = allowedStores ?? storeOptions;
 
   return (
     <div className="grid grid-cols-3 gap-4 mb-6">
@@ -87,7 +97,7 @@ export default function PeriodSelector({
         <label className="block text-xs font-medium text-gray-500 mb-1">店舗</label>
         <StoreSelect
           store={store}
-          storeOptions={storeOptions}
+          storeOptions={effectiveOptions}
           onStoreChange={onStoreChange}
         />
       </div>
