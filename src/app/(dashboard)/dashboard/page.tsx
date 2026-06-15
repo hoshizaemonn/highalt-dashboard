@@ -63,11 +63,11 @@ export default function DashboardPage() {
         if (data?.role === "admin") {
           setIsAdmin(true);
         } else if (data?.storeName) {
-          // 店長ロール時は「自店舗・今月」をデフォルト表示にする。
-          // ログイン直後の通期サマリは情報過多で離脱を招くため、
-          // 店長が真っ先に確認したい数値（自店舗の今月）を即表示する。
+          // 担当店舗はカンマ区切りで複数の場合あり（複数店舗マネージャー）
+          // 表示は最初の店舗をデフォルトに、セレクタには全担当店舗を出す
           setSessionStoreName(data.storeName);
-          setStore(data.storeName);
+          const firstStore = data.storeName.split(",")[0]?.trim() ?? data.storeName;
+          setStore(firstStore);
           const m = new Date().getMonth() + 1;
           setPeriod(String(m));
         }
@@ -316,6 +316,15 @@ export default function DashboardPage() {
         onYearChange={setYear}
         onPeriodChange={setPeriod}
         onStoreChange={setStore}
+        allowedStores={
+          // 店長: 担当店舗（カンマ区切り対応）のみ表示。admin は全店舗。
+          !isAdmin && sessionStoreName
+            ? sessionStoreName
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : null
+        }
       />
 
       {/* Content */}

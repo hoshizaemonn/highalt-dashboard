@@ -193,8 +193,12 @@ export async function requireStoreUploadAccess(
   const result = await requireSession();
   if (result.error) return result;
   if (result.session.role === "admin") return result;
-  // 店長: 店舗未指定 or 自店舗以外は拒否
-  if (!requestedStore || requestedStore !== result.session.storeName) {
+  // 店長: 店舗未指定 or 担当店舗（カンマ区切りで複数可）に含まれていなければ拒否
+  const allowedStores = (result.session.storeName ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!requestedStore || !allowedStores.includes(requestedStore)) {
     const { NextResponse } = await import("next/server");
     return {
       error: NextResponse.json(
@@ -222,5 +226,25 @@ export function effectiveStoreScope(
   if (session.role === "admin") {
     return requestedStore || null;
   }
-  return session.storeName;
+  // 店長: 担当店舗（カンマ区切りで複数可）の中に要求店舗があればそれを返す。
+  // 無ければ最初の担当店舗にフォールバック（ダッシュボードを開いた直後等）。
+  const allowedStores = (session.storeName ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (requestedStore && allowedStores.includes(requestedStore)) {
+    return requestedStore;
+  }
+  return allowedStores[0] ?? session.storeName;
+}
+
+/**
+ * 店長セッションの担当店舗リスト（カンマ区切りを配列化）。
+ * UI側で店舗セレクタに表示する選択肢を絞るときに使う。
+ */
+export function getSessionAllowedStores(session: SessionUser): string[] {
+  return (session.storeName ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
