@@ -9,9 +9,11 @@ interface Row {
   year: number;
   month: number;
   category: string;
-  /** "" = 本部一括（均等按分）、店舗名 = その店のみ計上 */
+  /** "" = 本部一括（均等按分 or splitRatios按分）、店舗名 = その店のみ計上 */
   storeName: string;
   totalAmount: number;
+  /** 手動按分の比率（店舗→%）。null/undefined の場合は既存挙動 */
+  splitRatios?: Record<string, number> | null;
   note: string | null;
   updatedByName?: string | null;
   updatedAt?: string;
@@ -61,7 +63,20 @@ export default function ManualExpenseTab() {
     try {
       const res = await fetch(`/api/settings/manual-expense?year=${filterYear}`);
       const data = res.ok ? await res.json() : { items: [] };
-      setRows(data.items ?? []);
+      // splitRatios は DB 上 JSON 文字列で返ってくるのでオブジェクトにパースして state に保持
+      const parsed: Row[] = (data.items ?? []).map((r: Row & { splitRatios?: unknown }) => {
+        let split: Record<string, number> | null = null;
+        if (typeof r.splitRatios === "string") {
+          try {
+            const o = JSON.parse(r.splitRatios);
+            if (o && typeof o === "object") split = o as Record<string, number>;
+          } catch {}
+        } else if (r.splitRatios && typeof r.splitRatios === "object") {
+          split = r.splitRatios as Record<string, number>;
+        }
+        return { ...r, splitRatios: split };
+      });
+      setRows(parsed);
     } catch {
       setMessage("読み込みに失敗しました");
     }
@@ -261,19 +276,50 @@ export default function ManualExpenseTab() {
                     </td>
                     <td className="px-3 py-2">
                       <select
-                        value={r.storeName}
-                        onChange={(e) =>
-                          handleChange(i, "storeName", e.target.value)
+                        value={
+                          r.storeName === HQ_OPTION && r.splitRatios
+                            ? "__custom_split__"
+                            : r.storeName
                         }
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "__custom_split__") {
+                            handleChange(i, "storeName", HQ_OPTION);
+                            // 既存比率が無ければ均等から初期化
+                            if (!r.splitRatios) {
+                              const initial: Record<string, number> = {};
+                              const each = Math.floor(100 / STORES.length);
+                              STORES.forEach((s, idx) => {
+                                initial[s] =
+                                  idx === STORES.length - 1
+                                    ? 100 - each * (STORES.length - 1)
+                                    : each;
+                              });
+                              handleChange(i, "splitRatios", initial);
+                            }
+                          } else {
+                            handleChange(i, "storeName", v);
+                            handleChange(i, "splitRatios", null);
+                          }
+                        }}
                         className="border border-gray-300 rounded px-2 py-1 text-sm w-full"
                       >
                         <option value={HQ_OPTION}>本部一括（均等按分）</option>
+                        <option value="__custom_split__">本部一括（手動按分）</option>
                         {STORES.map((s) => (
                           <option key={s} value={s}>
                             {s}
                           </option>
                         ))}
                       </select>
+                      {r.splitRatios && (
+                        <SplitRatioEditor
+                          ratios={r.splitRatios}
+                          onChange={(next) =>
+                            handleChange(i, "splitRatios", next)
+                          }
+                        />
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <input
@@ -290,9 +336,22 @@ export default function ManualExpenseTab() {
                       />
                     </td>
                     <td className="px-3 py-2 text-right text-gray-500 text-xs">
-                      {r.storeName === HQ_OPTION
-                        ? `¥${Math.round(r.totalAmount / storeCount).toLocaleString()}`
-                        : "—（店舗別）"}
+                      {r.splitRatios && r.storeName === HQ_OPTION
+                        ? (() => {
+                            // 手動按分のサマリー: 各店配分の概算（合計が100%でない時は赤）
+                            const totalRatio = Object.values(r.splitRatios).reduce(
+                              (s, v) => s + v,
+                              0,
+                            );
+                            return (
+                              <span className={totalRatio !== 100 ? "text-red-600" : ""}>
+                                計 {totalRatio.toFixed(0)}%
+                              </span>
+                            );
+                          })()
+                        : r.storeName === HQ_OPTION
+                          ? `¥${Math.round(r.totalAmount / storeCount).toLocaleString()}`
+                          : "—（店舗別）"}
                     </td>
                     <td className="px-3 py-2">
                       <input
@@ -341,6 +400,40 @@ export default function ManualExpenseTab() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ─── Split Ratio Editor ────────────────────────────────────
+// 手動按分: 各店舗の比率(%)を入力するインラインエディタ
+function SplitRatioEditor({
+  ratios,
+  onChange,
+}: {
+  ratios: Record<string, number>;
+  onChange: (next: Record<string, number>) => void;
+}) {
+  const setRatio = (store: string, v: number) => {
+    const next = { ...ratios, [store]: v };
+    if (v <= 0) delete next[store];
+    onChange(next);
+  };
+  return (
+    <div className="mt-2 bg-gray-50 border border-gray-200 rounded p-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+      {STORES.map((s) => (
+        <label key={s} className="text-xs flex items-center gap-1">
+          <span className="text-gray-700 w-24 truncate">{s}</span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={ratios[s] ?? 0}
+            onChange={(e) => setRatio(s, parseFloat(e.target.value) || 0)}
+            className="w-16 border border-gray-300 rounded px-1.5 py-0.5 text-xs text-right"
+          />
+          <span className="text-gray-400 text-xs">%</span>
+        </label>
+      ))}
     </div>
   );
 }

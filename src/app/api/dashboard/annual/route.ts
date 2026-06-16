@@ -6,6 +6,7 @@ import {
   effectiveStoreScope,
   getEffectiveStoreFilter,
 } from "@/lib/auth";
+import { singleStoreShare, allStoresShare } from "@/lib/manual-expense-split";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
@@ -252,23 +253,16 @@ export async function GET(request: NextRequest) {
         totalExpense += row.amount;
       }
       // 本部一括経費（手動入力）を加算
-      // - storeName="" : 本部一括 → 単店ビューは ÷店舗数、全体は全額
-      // - storeName=店舗名 : 単店ビューは当該店のみ、全体は全額合算
+      //   - splitRatios あり: 比率で配分
+      //   - storeName="" & splitRatios無し: 単店ビュー=÷店舗数、全体=全額
+      //   - storeName=店舗名: 単店ビュー=当該店のみ、全体=全額合算
       const storeCount = STORES.length;
-      const isSingleStore = !!store;
       const manualExp = allManualExpense.filter((r) => r.year === y && r.month === m);
       for (const row of manualExp) {
-        let share = 0;
-        if (row.storeName === "") {
-          share = isSingleStore ? Math.round(row.totalAmount / storeCount) : row.totalAmount;
-        } else {
-          if (isSingleStore) {
-            if (row.storeName !== store) continue;
-            share = row.totalAmount;
-          } else {
-            share = row.totalAmount;
-          }
-        }
+        const share = store
+          ? singleStoreShare(row, store, storeCount)
+          : allStoresShare(row);
+        if (share === 0) continue;
         expenseByCat[row.category] = (expenseByCat[row.category] || 0) + share;
         totalExpense += share;
       }

@@ -11,6 +11,7 @@ import {
   getEffectiveStoreFilter,
 } from "@/lib/auth";
 import { trialDateMonthWhere } from "@/lib/csv-utils";
+import { parseSplitRatios } from "@/lib/manual-expense-split";
 
 export async function GET(request: NextRequest) {
   try {
@@ -182,10 +183,24 @@ export async function GET(request: NextRequest) {
     const isSingleStore = !!(store && store !== "全体");
     const manualExpenseByCategory: Record<string, number> = {};
     for (const row of manualExpenseRows) {
-      // storeName 空 = 本部一括（均等按分）、店舗名指定 = その店のみ計上
+      // storeName 空 = 本部一括（均等按分 or splitRatios按分）、店舗名指定 = その店のみ計上
       let share = 0;
-      if (row.storeName === "") {
-        // 本部一括: 単店ビューは均等按分、全体ビューは全額
+      const splitRatios = parseSplitRatios(row.splitRatios);
+      if (row.storeName === "" && splitRatios) {
+        // 手動按分（splitRatios 指定）: 比率に従って配分
+        if (isSingleStore) {
+          const r = splitRatios[store!] ?? 0;
+          share = Math.round((row.totalAmount * r) / 100);
+        } else {
+          // 全体ビュー: 指定された店舗への配分合計
+          const totalRatio = Object.values(splitRatios).reduce(
+            (s, v) => s + v,
+            0,
+          );
+          share = Math.round((row.totalAmount * totalRatio) / 100);
+        }
+      } else if (row.storeName === "") {
+        // 本部一括（均等按分）: 単店ビューは均等按分、全体ビューは全額
         share = isSingleStore
           ? Math.round(row.totalAmount / storeCount)
           : row.totalAmount;

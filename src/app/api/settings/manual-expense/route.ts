@@ -55,6 +55,7 @@ export async function PUT(request: NextRequest) {
     category?: unknown;
     storeName?: unknown;
     totalAmount?: unknown;
+    splitRatios?: unknown;
     note?: unknown;
   };
   const items: Entry[] = Array.isArray(body.items) ? body.items : [];
@@ -69,6 +70,7 @@ export async function PUT(request: NextRequest) {
     category: string;
     storeName: string;
     totalAmount: number;
+    splitRatios: string | null;
     note: string | null;
   };
   const cleaned: Cleaned[] = items
@@ -78,14 +80,30 @@ export async function PUT(request: NextRequest) {
       const month =
         typeof r.month === "number" ? r.month : parseInt(String(r.month ?? ""), 10);
       const category = typeof r.category === "string" ? r.category.trim() : "";
-      // storeName 空 = 本部一括（均等按分）、店舗名指定 = その店のみ
+      // storeName 空 = 本部一括（均等按分 or 手動按分）、店舗名指定 = その店のみ
       const storeName = typeof r.storeName === "string" ? r.storeName.trim() : "";
       const totalAmount =
         typeof r.totalAmount === "number"
           ? Math.round(r.totalAmount)
           : parseInt(String(r.totalAmount ?? "0").replace(/,/g, ""), 10);
+      // splitRatios: 文字列(JSON) or オブジェクトを受け取り、検証して JSON 文字列に正規化
+      let splitRatios: string | null = null;
+      const sr = r.splitRatios;
+      if (sr && typeof sr === "object") {
+        const obj: Record<string, number> = {};
+        for (const [k, v] of Object.entries(sr as Record<string, unknown>)) {
+          const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+          if (Number.isFinite(n) && n > 0) obj[k] = n;
+        }
+        if (Object.keys(obj).length > 0) splitRatios = JSON.stringify(obj);
+      } else if (typeof sr === "string" && sr.trim()) {
+        try {
+          const parsed = JSON.parse(sr);
+          if (parsed && typeof parsed === "object") splitRatios = JSON.stringify(parsed);
+        } catch {}
+      }
       const note = typeof r.note === "string" ? r.note : null;
-      return { id, year, month, category, storeName, totalAmount, note };
+      return { id, year, month, category, storeName, totalAmount, splitRatios, note };
     })
     .filter(
       (r) =>
@@ -126,6 +144,7 @@ export async function PUT(request: NextRequest) {
               category: r.category,
               storeName: r.storeName,
               totalAmount: r.totalAmount,
+              splitRatios: r.splitRatios,
               note: r.note,
               updatedByName,
             },
@@ -150,11 +169,13 @@ export async function PUT(request: NextRequest) {
           category: r.category,
           storeName: r.storeName,
           totalAmount: r.totalAmount,
+          splitRatios: r.splitRatios,
           note: r.note,
           updatedByName,
         },
         update: {
           totalAmount: r.totalAmount,
+          splitRatios: r.splitRatios,
           note: r.note,
           updatedByName,
         },

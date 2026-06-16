@@ -313,6 +313,12 @@ model ManualExpenseEntry {
   storeName       String   @default("") @map("store_name")
   /** 本部一括 or 店舗別の金額（本部一括時は全店合算前の元金額、店舗別時はその店の金額） */
   totalAmount     Int      @default(0) @map("total_amount")
+  /**
+   * 手動按分の比率（JSON文字列）。storeName="" と組み合わせて使う。
+   * 例: '{"東日本橋":40,"中目黒":30,"船橋":30}' → totalAmount を 40/30/30 で配分。
+   * null の場合は既存挙動（""=均等按分、店舗名=単店計上）。
+   */
+  splitRatios     String?  @map("split_ratios")
   note            String?
   updatedByName   String?  @map("updated_by_name")
   updatedAt       DateTime @updatedAt @map("updated_at")
