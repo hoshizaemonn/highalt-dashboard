@@ -227,13 +227,19 @@ export function effectiveStoreScope(
     return requestedStore || null;
   }
   // 店長: 担当店舗（カンマ区切りで複数可）の中に要求店舗があればそれを返す。
-  // 無ければ最初の担当店舗にフォールバック（ダッシュボードを開いた直後等）。
   const allowedStores = (session.storeName ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
   if (requestedStore && allowedStores.includes(requestedStore)) {
     return requestedStore;
+  }
+  // 複数店舗担当 + 「全体」or 担当外要求 → admin と同じく null（全店舗ビュー）を返す
+  // 単店担当の場合は自店舗にロック（従来通り）
+  const isAggregateRequest =
+    !requestedStore || requestedStore === "全体";
+  if (allowedStores.length > 1 && isAggregateRequest) {
+    return null;
   }
   return allowedStores[0] ?? session.storeName;
 }
@@ -283,9 +289,10 @@ export function getEffectiveStoreFilter(
   if (!isAggregateRequest && allowedStores.includes(normalizedRequest)) {
     return normalizedRequest;
   }
-  // 担当が1店舗なら従来通り単店、複数店舗なら担当店舗の合計
+  // 単店担当: 自店舗ロック（従来通り）
   if (allowedStores.length === 1) {
     return allowedStores[0];
   }
-  return { in: allowedStores };
+  // 複数店舗担当 + 「全体」 → 全店舗（非表示・本部除く）を閲覧可能（書き込みは別途 requireStoreUploadAccess で担当店舗のみに制限）
+  return notHqOrHidden;
 }
