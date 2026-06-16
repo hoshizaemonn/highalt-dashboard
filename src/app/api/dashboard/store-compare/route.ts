@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STORES, HQ_STORE } from "@/lib/constants";
-import { requireSession } from "@/lib/auth";
+import { requireSession, getSessionAllowedStores } from "@/lib/auth";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
 
@@ -12,12 +12,15 @@ export async function GET(request: NextRequest) {
     const auth = await requireSession();
     if (auth.error) return auth.error;
 
-    // 店舗比較は全店舗のデータを返すため admin のみ閲覧可
+    // 店舗比較は admin と複数店舗マネージャーのみ閲覧可（単店マネージャーは自店舗のみで意味なし）
     if (auth.session.role !== "admin") {
-      return NextResponse.json(
-        { error: "店舗比較は管理者のみ閲覧できます" },
-        { status: 403 },
-      );
+      const allowed = getSessionAllowedStores(auth.session);
+      if (allowed.length < 2) {
+        return NextResponse.json(
+          { error: "店舗比較は管理者または複数店舗担当者のみ閲覧できます" },
+          { status: 403 },
+        );
+      }
     }
 
     const { searchParams } = request.nextUrl;
