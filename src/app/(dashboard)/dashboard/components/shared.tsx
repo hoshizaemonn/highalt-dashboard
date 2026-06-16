@@ -634,12 +634,10 @@ export function buildBudgetRows(
 
   // Expense rows — all budget items not in REV or LABOR
   let expBudgetSum = 0;
-  const handledExpenseCats = new Set<string>();
   for (const [cat, b] of Object.entries(budget)) {
     if (REV_ITEMS.includes(cat) || LABOR_ITEMS.includes(cat) || KPI_ITEMS.includes(cat)) continue;
     expBudgetSum += b;
     const a = actuals[cat] ?? expenseByCategory[cat] ?? 0;
-    handledExpenseCats.add(cat);
     if (b === 0 && a === 0) continue;
     const diff = a - b;
     const ratio = b !== 0 ? a / b : 0;
@@ -651,21 +649,6 @@ export function buildBudgetRows(
       diff,
       ratio,
       isGood: diff <= 0,
-    });
-  }
-  // 予算に無い経費科目（未分類→「その他」等）も表示する（依頼: 未分類項目をPLに反映）
-  for (const [cat, a] of Object.entries(expenseByCategory)) {
-    if (handledExpenseCats.has(cat)) continue;
-    if (REV_ITEMS.includes(cat) || LABOR_ITEMS.includes(cat) || KPI_ITEMS.includes(cat)) continue;
-    if (a === 0) continue;
-    rows.push({
-      group: "経費",
-      category: cat,
-      budget: 0,
-      actual: a,
-      diff: a,
-      ratio: 0,
-      isGood: false,
     });
   }
 
