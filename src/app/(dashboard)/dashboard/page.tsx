@@ -353,6 +353,7 @@ export default function DashboardPage() {
           store={store}
           planBreakdown={planBreakdown}
           fiscalYear={year}
+          period={period}
         />
       )}
 

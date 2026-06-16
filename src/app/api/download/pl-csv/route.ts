@@ -69,6 +69,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const fiscalYear = parseInt(searchParams.get("year") ?? "", 10);
     const store = searchParams.get("store") ?? "";
+    // period: annual(既定) / h1(上期 10-3月) / h2(下期 4-9月)
+    const periodParam = (searchParams.get("period") ?? "annual").toLowerCase();
 
     if (isNaN(fiscalYear)) {
       return NextResponse.json(
@@ -82,29 +84,45 @@ export async function GET(request: NextRequest) {
       store,
     );
 
-    // fiscalIdx 0-11 の各月データ
+    // 表示対象の fiscalIdx を判定（period に応じて絞り込み）
+    // fiscalIdx 0=10月, 1=11月, ..., 11=9月
+    const allowedIdx = new Set<number>();
+    if (periodParam === "h1") {
+      for (let i = 0; i <= 5; i++) allowedIdx.add(i);
+    } else if (periodParam === "h2") {
+      for (let i = 6; i <= 11; i++) allowedIdx.add(i);
+    } else {
+      for (let i = 0; i <= 11; i++) allowedIdx.add(i);
+    }
+
+    // 空スロット
+    const EMPTY_SLOT: PlMonthlyData = {
+      salesPersonalAndProduct: 0,
+      salesMembership: 0,
+      salesService: 0,
+      salesVending: 0,
+      cogs: 0,
+      expenses: {},
+      payrollFulltime: 0,
+      payrollBonus: 0,
+      payrollCommute: 0,
+      payrollLegalWelfare: 0,
+      payrollWelfare: 0,
+    };
+
+    // fiscalIdx 0-11 の各月データ。期間外は空スロットに置換（合計の計算からも除外）。
     const months: PlMonthlyData[] = Array.from({ length: 12 }, (_, i) =>
-      monthly.get(i) ?? {
-        salesPersonalAndProduct: 0,
-        salesMembership: 0,
-        salesService: 0,
-        salesVending: 0,
-        cogs: 0,
-        expenses: {},
-        payrollFulltime: 0,
-        payrollBonus: 0,
-        payrollCommute: 0,
-        payrollLegalWelfare: 0,
-        payrollWelfare: 0,
-      },
+      allowedIdx.has(i) ? (monthly.get(i) ?? EMPTY_SLOT) : EMPTY_SLOT,
     );
 
     // 行ビルダー
     const lines: string[] = [];
 
     // タイトル
+    const periodLabel =
+      periodParam === "h1" ? "上期" : periodParam === "h2" ? "下期" : "通期";
     lines.push(
-      `${fiscalYear}/9期　損益計算書,${storeDisplayName},,,,,,,,,,,社外秘,単位：千円`,
+      `${fiscalYear}/9期　損益計算書（${periodLabel}）,${storeDisplayName},,,,,,,,,,,社外秘,単位：千円`,
     );
     lines.push("");
     lines.push("," + COLUMN_HEADERS.join(","));
@@ -208,7 +226,7 @@ export async function GET(request: NextRequest) {
 
     const csv = "﻿" + lines.join("\r\n") + "\r\n";
 
-    const filename = `${fiscalYear}_9期_損益計算書_${storeDisplayName}.csv`;
+    const filename = `${fiscalYear}_9期_損益計算書_${periodLabel}_${storeDisplayName}.csv`;
     return new NextResponse(csv, {
       status: 200,
       headers: {

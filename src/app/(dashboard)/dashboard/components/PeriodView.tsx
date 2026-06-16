@@ -1,6 +1,29 @@
 "use client";
 
 import { useMemo } from "react";
+
+/**
+ * 期間ラベル（通期/上期/下期）から会計年度内の月範囲を fromYM / toYM に変換。
+ * fiscalYear=2026 のとき:
+ *   通期 → 2025-10 〜 2026-09
+ *   上期 → 2025-10 〜 2026-03
+ *   下期 → 2026-04 〜 2026-09
+ */
+function periodToRange(
+  period: string,
+  fiscalYear: number,
+): { fromYM: string; toYM: string } | null {
+  if (period === "通期") {
+    return { fromYM: `${fiscalYear - 1}-10`, toYM: `${fiscalYear}-09` };
+  }
+  if (period === "上期") {
+    return { fromYM: `${fiscalYear - 1}-10`, toYM: `${fiscalYear}-03` };
+  }
+  if (period === "下期") {
+    return { fromYM: `${fiscalYear}-04`, toYM: `${fiscalYear}-09` };
+  }
+  return null;
+}
 import {
   COLORS,
   formatYen,
@@ -41,6 +64,8 @@ export interface PeriodViewProps {
   store: string;
   planBreakdown: PlanBreakdownEntry[] | null;
   fiscalYear: number;
+  /** 表示中の期間: "通期" / "上期" / "下期" */
+  period: string;
 }
 
 export default function PeriodView({
@@ -51,6 +76,7 @@ export default function PeriodView({
   store,
   planBreakdown,
   fiscalYear,
+  period,
 }: PeriodViewProps) {
   const monthly = annualData.monthly_data;
   const { display: displayStore } = useStoreDisplayName();
@@ -149,8 +175,49 @@ export default function PeriodView({
     [monthly],
   );
 
+  // 表示中の period に応じた経費CSV / PL CSV ダウンロード
+  // 「通期のところで反映している部分だけ吐き出せる」ように、period から会計年度内の月範囲を組み立てる
+  const handleDownloadExpense = () => {
+    const range = periodToRange(period, fiscalYear);
+    if (!range) return;
+    const params = new URLSearchParams({
+      fromYM: range.fromYM,
+      toYM: range.toYM,
+      store,
+    });
+    window.open(`/api/download/expense-csv?${params}`, "_blank");
+  };
+  const handleDownloadPlCsv = () => {
+    const params = new URLSearchParams({
+      year: String(fiscalYear),
+      store,
+    });
+    // 上期/下期は period=h1|h2 で API 側で月絞り込み
+    if (period === "上期") params.set("period", "h1");
+    else if (period === "下期") params.set("period", "h2");
+    window.open(`/api/download/pl-csv?${params}`, "_blank");
+  };
+
   return (
     <>
+      {/* ダウンロードボタン: 表示中の期間（通期/上期/下期）でCSV出力 */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <button
+          onClick={handleDownloadExpense}
+          className="text-sm bg-white border rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-700 shadow-sm"
+          title={`表示中の${period}（月別ZIP）で経費明細をダウンロード`}
+        >
+          📥 経費明細をダウンロード（{period}・ZIP）
+        </button>
+        <button
+          onClick={handleDownloadPlCsv}
+          className="text-sm bg-emerald-50 border border-emerald-300 rounded-lg px-3 py-1.5 hover:bg-emerald-100 text-emerald-800 shadow-sm"
+          title={`表示中の${period}で損益計算書をダウンロード`}
+        >
+          📊 損益計算書（PL書式・CSV・{period}）
+        </button>
+      </div>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <KPICard

@@ -143,40 +143,6 @@ export default function ExpenseDetailSection({
     window.open(`/api/download/expense-csv?${params}`, "_blank");
   };
 
-  // 任意期間ダウンロード（依頼: 通期や3ヶ月単位など、任意期間での一括ダウンロード）
-  // value: "h1"=会計年度上期 / "h2"=下期 / "annual"=通期 / "3m"=直近3ヶ月
-  const handleDownloadRange = (preset: "h1" | "h2" | "annual" | "3m") => {
-    // 表示中の (year, month) から会計年度（10月始まり）を逆算
-    const fiscalYear = month >= 10 ? year + 1 : year;
-    let fromYM: string;
-    let toYM: string;
-    if (preset === "annual") {
-      fromYM = `${fiscalYear - 1}-10`;
-      toYM = `${fiscalYear}-09`;
-    } else if (preset === "h1") {
-      // 上期: 10月〜3月
-      fromYM = `${fiscalYear - 1}-10`;
-      toYM = `${fiscalYear}-03`;
-    } else if (preset === "h2") {
-      // 下期: 4月〜9月
-      fromYM = `${fiscalYear}-04`;
-      toYM = `${fiscalYear}-09`;
-    } else {
-      // 直近3ヶ月（当月を末尾とする3ヶ月）
-      const endY = year;
-      const endM = month;
-      let startM = endM - 2;
-      let startY = endY;
-      if (startM <= 0) {
-        startM += 12;
-        startY -= 1;
-      }
-      fromYM = `${startY}-${String(startM).padStart(2, "0")}`;
-      toYM = `${endY}-${String(endM).padStart(2, "0")}`;
-    }
-    const params = new URLSearchParams({ fromYM, toYM, store });
-    window.open(`/api/download/expense-csv?${params}`, "_blank");
-  };
 
   if (loading) {
     return (
@@ -198,25 +164,8 @@ export default function ExpenseDetailSection({
           onClick={handleDownload}
           className="text-sm bg-white border rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-700 shadow-sm"
         >
-          📥 経費明細（当月CSV）
+          📥 経費明細をダウンロード（CSV）
         </button>
-        <select
-          onChange={(ev) => {
-            const v = ev.target.value;
-            if (!v) return;
-            handleDownloadRange(v as "h1" | "h2" | "annual" | "3m");
-            ev.target.value = "";
-          }}
-          defaultValue=""
-          className="text-sm bg-white border rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-700 shadow-sm"
-          title="任意期間で経費明細をダウンロード（ZIP）"
-        >
-          <option value="">📦 期間まとめてDL...</option>
-          <option value="3m">直近3ヶ月（ZIP）</option>
-          <option value="h1">上期（10月〜3月・ZIP）</option>
-          <option value="h2">下期（4月〜9月・ZIP）</option>
-          <option value="annual">通期（10月〜9月・ZIP）</option>
-        </select>
         {hasChanges && (
           <button
             onClick={handleSave}
