@@ -5,7 +5,11 @@ import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
 
 const CACHE_TTL_MS = 30_000;
-import { requireSession, effectiveStoreScope } from "@/lib/auth";
+import {
+  requireSession,
+  effectiveStoreScope,
+  getEffectiveStoreFilter,
+} from "@/lib/auth";
 import { trialDateMonthWhere } from "@/lib/csv-utils";
 
 export async function GET(request: NextRequest) {
@@ -31,22 +35,25 @@ export async function GET(request: NextRequest) {
     const scopedStore = effectiveStoreScope(auth.session, requestedStore);
     const store = scopedStore ?? undefined;
 
-    // 30秒キャッシュ: スコープ後の店舗をキーにし、ユーザー権限と独立で再利用
-    const cacheKey = `dashboard:${year}:${month ?? "all"}:${store ?? "*"}`;
-    const responseData = await memoCache(cacheKey, CACHE_TTL_MS, async () => {
-
     // 全体集計時は 本部 + 非表示店舗（閉店/テスト）を除外
     const hiddenStores = await getHiddenStores();
     const notHqOrHidden = { notIn: [HQ_STORE, ...hiddenStores] };
+    // 複数店舗マネージャー対応のフィルタ（admin: 単店 or 全店 / 店長: 担当店舗のみ）
+    const storeNameFilter = getEffectiveStoreFilter(
+      auth.session,
+      requestedStore,
+      notHqOrHidden,
+    );
+
+    // 30秒キャッシュ: 同一フィルタを共有するセッション間でキャッシュを共有
+    const cacheKey = `dashboard:${year}:${month ?? "all"}:${JSON.stringify(storeNameFilter)}`;
+    const responseData = await memoCache(cacheKey, CACHE_TTL_MS, async () => {
 
     // ── Payroll ──────────────────────────────────────────────
-    const storeFilter = store && store !== "全体"
-      ? { storeName: store }
-      : { storeName: notHqOrHidden };
     const payrollWhere = {
       year,
       ...(month !== undefined && { month }),
-      ...storeFilter,
+      storeName: storeNameFilter,
     };
 
     const payrollRows = await prisma.payrollData.findMany({
@@ -137,7 +144,7 @@ export async function GET(request: NextRequest) {
     const expenseFetchWhere = {
       // 当年＋前年（12月決済の前年帰属など跨年シフトに備える）
       year: { in: [year - 1, year] },
-      storeName: store ? store : notHqOrHidden,
+      storeName: storeNameFilter,
       isRevenue: 0,
     };
 
@@ -208,7 +215,7 @@ export async function GET(request: NextRequest) {
     const commonWhere = {
       year,
       ...(month !== undefined && { month }),
-      storeName: store ? store : notHqOrHidden,
+      storeName: storeNameFilter,
     };
 
     const salesDetailRows = await prisma.salesDetail.findMany({
@@ -227,9 +234,7 @@ export async function GET(request: NextRequest) {
 
     // ── 店長手動追記（坪井さん要望） ─────────────────────────
     // 単月ビューは store 指定必須相当だが、全体ビューでは複数店舗を合算する
-    const manualWhere = store && store !== "全体"
-      ? { year, ...(month !== undefined && { month }), storeName: store }
-      : { year, ...(month !== undefined && { month }), storeName: notHqOrHidden };
+    const manualWhere = { year, ...(month !== undefined && { month }), storeName: storeNameFilter };
     const manualRows = await prisma.manualEntry.findMany({ where: manualWhere });
     const manualTrial = manualRows.reduce((s, r) => s + r.trialCount, 0);
     const manualOtherSales = manualRows.reduce((s, r) => s + r.otherSalesAmount, 0);
@@ -237,9 +242,7 @@ export async function GET(request: NextRequest) {
     // 体験者数の自動算出（坪井さん要望: hacomono CSV由来で自動、手動で上書き可）
     // ML001 は時点スナップショットのため、年月別フィルタは trialDate / firstTrialDate を
     // 直接照合する（"YYYY/MM/" or "YYYY-MM-" で始まる文字列）。
-    const memberStoreFilter = store && store !== "全体"
-      ? { storeName: store }
-      : { storeName: notHqOrHidden };
+    const memberStoreFilter = { storeName: storeNameFilter };
     const autoTrialCount = month !== undefined
       ? await prisma.memberData.count({
           where: { ...memberStoreFilter, ...trialDateMonthWhere(year, month) },
@@ -344,7 +347,7 @@ export async function GET(request: NextRequest) {
     const memberWhere = {
       ...(month !== undefined && { year, month }),
       ...(month === undefined && { year }),
-      ...(store && { storeName: store }),
+      ...(store && { storeName: storeNameFilter }),
     };
 
     const memberRows = await prisma.monthlySummary.findMany({
@@ -383,7 +386,7 @@ export async function GET(request: NextRequest) {
     const budgetWhere = {
       year,
       ...(month !== undefined && { month }),
-      ...(store && { storeName: store }),
+      ...(store && { storeName: storeNameFilter }),
     };
 
     const budgetRows = await prisma.budgetData.findMany({
@@ -407,9 +410,7 @@ export async function GET(request: NextRequest) {
     let prevYearTotals: Totals | null = null;
     if (month !== undefined) {
       const computeTotals = async (y: number, m: number): Promise<Totals> => {
-        const sf = store && store !== "全体"
-          ? { storeName: store }
-          : { storeName: notHqOrHidden };
+        const sf = { storeName: storeNameFilter };
         // payroll: grossTotal × ratio/100 を集計
         const payRows = await prisma.payrollData.findMany({
           where: { year: y, month: m, ...sf },
@@ -425,7 +426,7 @@ export async function GET(request: NextRequest) {
           where: {
             year: { in: [y - 1, y] },
             isRevenue: 0,
-            ...(store && { storeName: store }),
+            ...(store && { storeName: storeNameFilter }),
           },
           select: {
             year: true,
@@ -444,7 +445,7 @@ export async function GET(request: NextRequest) {
         const cw = {
           year: y,
           month: m,
-          ...(store && { storeName: store }),
+          ...(store && { storeName: storeNameFilter }),
         };
         const sd = await prisma.salesDetail.aggregate({
           _sum: { amount: true },

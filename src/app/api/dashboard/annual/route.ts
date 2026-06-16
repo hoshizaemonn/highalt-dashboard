@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE, STORES, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
-import { requireSession, effectiveStoreScope } from "@/lib/auth";
+import {
+  requireSession,
+  effectiveStoreScope,
+  getEffectiveStoreFilter,
+} from "@/lib/auth";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
@@ -140,16 +144,19 @@ export async function GET(request: NextRequest) {
     const years = [...new Set(periods.map((p) => p.year))];
     // 全体集計時は 本部 + 非表示店舗（閉店/テスト）を除外
     const hiddenStores = await getHiddenStores();
-    const storeWhere = store
-      ? { storeName: store }
-      : { storeName: { notIn: [HQ_STORE, ...hiddenStores] } };
+    const notHqOrHidden = { notIn: [HQ_STORE, ...hiddenStores] };
+    // 複数店舗マネージャー対応のフィルタ
+    const storeNameFilter = getEffectiveStoreFilter(
+      auth.session,
+      requestedStore,
+      notHqOrHidden,
+    );
+    const storeWhere = { storeName: storeNameFilter };
 
     // 高速化: 独立した取得を並列化。ただしSupabaseプール(connection_limit=5)を
     // 圧迫しないよう、5クエリ並列のチャンクで分割実行（5並列ユーザー時の他リクエストへの
     // 影響を最小化）。逐次より速く、フル並列より他APIに優しい。
-    const budgetWhere = store
-      ? { year: { in: years }, storeName: store }
-      : { year: { in: years }, storeName: { notIn: [HQ_STORE, ...hiddenStores] } };
+    const budgetWhere = { year: { in: years }, storeName: storeNameFilter };
     // バッチ1: 集計の主軸となる重めのデータ
     const [allPayroll, allExpenses, allSalesDetail, allRevenue, allSquare] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: years }, ...storeWhere } }),
