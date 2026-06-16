@@ -56,8 +56,13 @@ export default function PeriodSelector({
   }, []);
 
   // 店長: 担当店舗のみに絞る
-  // 「全体」は admin 用のため、店長（複数店舗担当でも）の選択肢からは除外
-  const effectiveOptions = allowedStores ?? storeOptions;
+  // - 単店担当: その店舗のみ
+  // - 複数店舗担当: 担当店舗 + 「全体」（担当店舗の合計）
+  const effectiveOptions = allowedStores
+    ? allowedStores.length > 1
+      ? [...allowedStores, "全体"]
+      : allowedStores
+    : storeOptions;
 
   return (
     <div className="grid grid-cols-3 gap-4 mb-6">

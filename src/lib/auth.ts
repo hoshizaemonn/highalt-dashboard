@@ -248,3 +248,44 @@ export function getSessionAllowedStores(session: SessionUser): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+/**
+ * ダッシュボード集計APIで使う storeName フィルタを返す。
+ *
+ * 戻り値:
+ *  - 文字列: 単店舗（その店舗だけにフィルタ）
+ *  - { notIn: [...] } や { in: [...] } 等の Prisma フィルタ: 複数店舗の集計
+ *
+ * パターン:
+ *  - admin + 特定店舗指定: その店舗
+ *  - admin + 「全体」または未指定: notHqOrHidden（全店）
+ *  - 店長（単店）+ 任意指定: 担当店舗1つ（要求と無関係に強制）
+ *  - 店長（複数店舗担当）+ 担当内店舗指定: その店舗
+ *  - 店長（複数店舗担当）+ 「全体」または未指定 or 担当外: 担当店舗を IN 句で集計
+ */
+export function getEffectiveStoreFilter(
+  session: SessionUser,
+  requestedStore: string | null | undefined,
+  notHqOrHidden: { notIn: string[] },
+): string | { notIn: string[] } | { in: string[] } {
+  const normalizedRequest = (requestedStore ?? "").trim();
+  const isAggregateRequest =
+    !normalizedRequest || normalizedRequest === "全体";
+
+  if (session.role === "admin") {
+    return isAggregateRequest ? notHqOrHidden : normalizedRequest;
+  }
+  const allowedStores = getSessionAllowedStores(session);
+  if (allowedStores.length === 0) {
+    // 担当店舗が未設定の店長 → 安全のため絶対にマッチしない条件を返す
+    return { in: [] };
+  }
+  if (!isAggregateRequest && allowedStores.includes(normalizedRequest)) {
+    return normalizedRequest;
+  }
+  // 担当が1店舗なら従来通り単店、複数店舗なら担当店舗の合計
+  if (allowedStores.length === 1) {
+    return allowedStores[0];
+  }
+  return { in: allowedStores };
+}
