@@ -6,7 +6,11 @@ import {
   effectiveStoreScope,
   getEffectiveStoreFilter,
 } from "@/lib/auth";
-import { singleStoreShare, allStoresShare } from "@/lib/manual-expense-split";
+import {
+  singleStoreShare,
+  allStoresShare,
+  expenseRowShare,
+} from "@/lib/manual-expense-split";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
@@ -162,11 +166,15 @@ export async function GET(request: NextRequest) {
     const [allPayroll, allExpenses, allSalesDetail, allRevenue, allSquare] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: years }, ...storeWhere } }),
       // 発生月対応（依頼⑥）: 当年の前年も取得して跨年シフト分も拾う
+      // splitRatios あり行は店舗フィルタを跨ぐため OR で展開
       prisma.expenseData.findMany({
         where: {
           year: { in: [...years, ...years.map((y) => y - 1)] },
           isRevenue: 0,
-          ...storeWhere,
+          OR: [
+            { storeName: storeNameFilter },
+            { splitRatios: { not: null } },
+          ],
         },
       }),
       prisma.salesDetail.findMany({ where: { year: { in: years }, ...storeWhere } }),
@@ -239,7 +247,8 @@ export async function GET(request: NextRequest) {
         else parttimeGross += gross;
       }
 
-      // Expenses（依頼⑥: accrual を優先）
+      // Expenses（依頼⑥: accrual を優先 / 依頼A: splitRatios 対応）
+      const expenseTarget: string | null = store ? store : null;
       const expenses = allExpenses.filter((r) => {
         const ey = r.accrualYear ?? r.year;
         const em = r.accrualMonth ?? r.month;
@@ -248,9 +257,11 @@ export async function GET(request: NextRequest) {
       let totalExpense = 0;
       const expenseByCat: Record<string, number> = {};
       for (const row of expenses) {
+        const share = expenseRowShare(row, expenseTarget);
+        if (share === 0) continue;
         const cat = row.category || "その他";
-        expenseByCat[cat] = (expenseByCat[cat] || 0) + row.amount;
-        totalExpense += row.amount;
+        expenseByCat[cat] = (expenseByCat[cat] || 0) + share;
+        totalExpense += share;
       }
       // 本部一括経費（手動入力）を加算
       //   - splitRatios あり: 比率で配分
@@ -476,7 +487,10 @@ export async function GET(request: NextRequest) {
         where: {
           year: { in: [...prevYears, ...prevYears.map((y) => y - 1)] },
           isRevenue: 0,
-          ...storeWhere,
+          OR: [
+            { storeName: storeNameFilter },
+            { splitRatios: { not: null } },
+          ],
         },
       }),
       prisma.salesDetail.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
@@ -494,14 +508,18 @@ export async function GET(request: NextRequest) {
 
     const prevExpenseByCat: Record<string, number> = {};
     let prevExpense = 0;
+    const prevExpenseTarget: string | null = store ? store : null;
     for (const r of prevExpenses) {
       // 依頼⑥: accrual を優先して帰属判定
       const ey = r.accrualYear ?? r.year;
       const em = r.accrualMonth ?? r.month;
       if (!isInPeriod(ey, em)) continue;
+      // 依頼A: splitRatios あり行は比率で配分
+      const share = expenseRowShare(r, prevExpenseTarget);
+      if (share === 0) continue;
       prevExpenseByCat[r.category ?? "その他"] =
-        (prevExpenseByCat[r.category ?? "その他"] ?? 0) + r.amount;
-      prevExpense += r.amount;
+        (prevExpenseByCat[r.category ?? "その他"] ?? 0) + share;
+      prevExpense += share;
     }
 
     const prevSalesByCat: Record<string, number> = {};

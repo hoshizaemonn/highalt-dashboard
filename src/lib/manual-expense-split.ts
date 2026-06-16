@@ -73,3 +73,57 @@ export function allStoresShare(
   }
   return row.totalAmount;
 }
+
+/**
+ * ExpenseData 行 1 件を、対象店舗 (target) に対していくら計上するか返す。
+ * - splitRatios あり: amount × ratios[target] / 100 （target が未指定なら 0）
+ * - splitRatios なし: storeName == target なら amount、それ以外は 0
+ *
+ * target が null（全店ビュー）の場合:
+ * - splitRatios あり: amount × Σratios / 100 （明示された店舗合計）
+ * - splitRatios なし: amount（このまま全体に加算）
+ */
+export function expenseRowShare(
+  row: {
+    storeName: string;
+    amount: number;
+    splitRatios?: string | null;
+  },
+  target: string | null,
+): number {
+  const ratios = parseSplitRatios(row.splitRatios ?? null);
+  if (ratios) {
+    if (target === null) {
+      const totalRatio = Object.values(ratios).reduce((s, v) => s + v, 0);
+      return (row.amount * totalRatio) / 100;
+    }
+    const r = ratios[target] ?? 0;
+    return (row.amount * r) / 100;
+  }
+  if (target === null) {
+    return row.amount;
+  }
+  return row.storeName === target ? row.amount : 0;
+}
+
+/**
+ * ExpenseData 行 1 件のカテゴリ別配分マップを返す。
+ * 全店ビューでカテゴリ別に分解しつつ、splitRatios あり行も正しく分配するために使う。
+ */
+export function expenseRowSharesByStore(
+  row: {
+    storeName: string;
+    amount: number;
+    splitRatios?: string | null;
+  },
+): Record<string, number> {
+  const ratios = parseSplitRatios(row.splitRatios ?? null);
+  if (ratios) {
+    const out: Record<string, number> = {};
+    for (const [store, r] of Object.entries(ratios)) {
+      out[store] = (row.amount * r) / 100;
+    }
+    return out;
+  }
+  return { [row.storeName]: row.amount };
+}

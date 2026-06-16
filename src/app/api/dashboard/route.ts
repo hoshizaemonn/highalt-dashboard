@@ -11,7 +11,10 @@ import {
   getEffectiveStoreFilter,
 } from "@/lib/auth";
 import { trialDateMonthWhere } from "@/lib/csv-utils";
-import { parseSplitRatios } from "@/lib/manual-expense-split";
+import {
+  parseSplitRatios,
+  expenseRowShare,
+} from "@/lib/manual-expense-split";
 
 export async function GET(request: NextRequest) {
   try {
@@ -142,10 +145,16 @@ export async function GET(request: NextRequest) {
     // 発生月対応（依頼⑥）: 内訳に "N月" 等があると accrualYear/Month に帰属月が記録される。
     // 集計は accrual を優先し、未設定なら決済年月を使う。
     // 単月クエリでも、他月決済かつ accrual=対象月 の行を拾うため広めに取得して JS で絞る。
+    // 単店ビュー: target = 要求店舗、全体ビュー: target = null（全店合算）
+    const expenseTarget: string | null = store && store !== "全体" ? store : null;
     const expenseFetchWhere = {
       // 当年＋前年（12月決済の前年帰属など跨年シフトに備える）
       year: { in: [year - 1, year] },
-      storeName: storeNameFilter,
+      // splitRatios あり行はどの店舗を要求されていても拾う必要があるため OR で展開
+      OR: [
+        { storeName: storeNameFilter },
+        { splitRatios: { not: null } },
+      ],
       isRevenue: 0,
     };
 
@@ -165,9 +174,12 @@ export async function GET(request: NextRequest) {
     let totalExpense = 0;
 
     for (const row of expenseRows) {
+      // splitRatios があれば比率で配分、無ければ storeName が target と一致したときのみ計上
+      const share = expenseRowShare(row, expenseTarget);
+      if (share === 0) continue;
       const cat = row.category || "その他";
-      expenseByCategory[cat] = (expenseByCategory[cat] || 0) + row.amount;
-      totalExpense += row.amount;
+      expenseByCategory[cat] = (expenseByCategory[cat] || 0) + share;
+      totalExpense += share;
     }
 
     // ── 本部一括経費（admin 手動入力）を均等按分して加算 ─────────
@@ -437,24 +449,36 @@ export async function GET(request: NextRequest) {
         );
 
         // 発生月対応（依頼⑥）: 当年＋前年から取得し、accrual優先で当該月の合計を算出
+        // splitRatios あり行も拾うため OR で展開
         const expRowsForMonth = await prisma.expenseData.findMany({
           where: {
             year: { in: [y - 1, y] },
             isRevenue: 0,
-            ...(store && { storeName: storeNameFilter }),
+            ...(store
+              ? {
+                  OR: [
+                    { storeName: storeNameFilter },
+                    { splitRatios: { not: null } },
+                  ],
+                }
+              : {}),
           },
           select: {
             year: true,
             month: true,
             amount: true,
+            storeName: true,
+            splitRatios: true,
             accrualYear: true,
             accrualMonth: true,
           },
         });
+        const expTarget: string | null = store && store !== "全体" ? store : null;
         const expenseTotal = expRowsForMonth.reduce((s, r) => {
           const ey = r.accrualYear ?? r.year;
           const em = r.accrualMonth ?? r.month;
-          return ey === y && em === m ? s + r.amount : s;
+          if (ey !== y || em !== m) return s;
+          return s + expenseRowShare(r, expTarget);
         }, 0);
 
         const cw = {

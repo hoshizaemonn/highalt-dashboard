@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { EXPENSE_CATEGORIES, REVENUE_CATEGORIES } from "@/lib/constants";
+import React, { useState, useEffect } from "react";
+import { EXPENSE_CATEGORIES, REVENUE_CATEGORIES, STORES } from "@/lib/constants";
 import {
   SectionTitle,
 } from "./shared";
@@ -17,6 +17,7 @@ interface ExpenseRecord {
   category: string | null;
   breakdown: string;
   isRevenue: number;
+  splitRatios?: Record<string, number> | null;
 }
 
 interface EditedFields {
@@ -24,6 +25,7 @@ interface EditedFields {
   deposit?: number;
   category?: string;
   breakdown?: string;
+  splitRatios?: Record<string, number> | null;
 }
 
 // ─── Component ──────────────────────────────────────────────
@@ -78,6 +80,18 @@ export default function ExpenseDetailSection({
     }));
   };
 
+  // 行ごとの按分エディタ表示状態
+  const [splitEditorRowId, setSplitEditorRowId] = useState<number | null>(null);
+  const setRowSplitRatios = (
+    id: number,
+    next: Record<string, number> | null,
+  ) => {
+    setEdits((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], splitRatios: next },
+    }));
+  };
+
   const hasChanges = Object.keys(edits).length > 0;
 
   const missingBreakdownCount = expenses.filter((e) => {
@@ -123,6 +137,8 @@ export default function ExpenseDetailSection({
             category: newCategory,
             breakdown: ed.breakdown ?? e.breakdown,
             isRevenue: newIsRevenue,
+            splitRatios:
+              ed.splitRatios !== undefined ? ed.splitRatios : e.splitRatios,
           };
         }),
       );
@@ -211,6 +227,7 @@ export default function ExpenseDetailSection({
               <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">入金</th>
               <th className="text-left px-3 py-2 font-medium text-gray-600 w-44">勘定科目</th>
               <th className="text-left px-3 py-2 font-medium text-gray-600 min-w-[160px]">内訳</th>
+              <th className="text-center px-2 py-2 font-medium text-gray-600 w-24">按分</th>
             </tr>
           </thead>
           <tbody>
@@ -235,7 +252,8 @@ export default function ExpenseDetailSection({
                 ? "bg-blue-50/40"
                 : "";
               return (
-                <tr key={e.id} className={`border-b hover:bg-gray-50/50 ${rowBg}`}>
+                <React.Fragment key={e.id}>
+                <tr className={`border-b hover:bg-gray-50/50 ${rowBg}`}>
                   <td className="px-3 py-1.5 text-gray-600">{e.day}</td>
                   <td className="px-3 py-1.5 text-gray-700">{e.description ?? ""}</td>
                   <td className="px-3 py-1.5 text-right">
@@ -304,12 +322,138 @@ export default function ExpenseDetailSection({
                       placeholder="🟡 未入力"
                     />
                   </td>
+                  <td className="px-2 py-1.5 text-center">
+                    {(() => {
+                      // 編集中の按分: edits 側に splitRatios プロパティがあればそれ、なければ DB 値
+                      const editedSplit = edits[e.id]?.splitRatios;
+                      const currentSplit =
+                        editedSplit !== undefined
+                          ? editedSplit
+                          : e.splitRatios ?? null;
+                      const isExpanded = splitEditorRowId === e.id;
+                      return (
+                        <button
+                          onClick={() =>
+                            setSplitEditorRowId(isExpanded ? null : e.id)
+                          }
+                          className={`text-xs px-2 py-0.5 rounded border ${
+                            currentSplit
+                              ? "bg-purple-100 border-purple-300 text-purple-700"
+                              : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
+                          }`}
+                          title={
+                            currentSplit
+                              ? "按分設定済（クリックで編集）"
+                              : "店舗別に按分する"
+                          }
+                        >
+                          {currentSplit ? "🔀 按分中" : "按分"}
+                        </button>
+                      );
+                    })()}
+                  </td>
                 </tr>
+                {splitEditorRowId === e.id && (
+                  <tr className="border-b bg-purple-50/40">
+                    <td colSpan={7} className="px-4 py-2">
+                      <ExpenseRowSplitEditor
+                        ratios={
+                          (edits[e.id]?.splitRatios !== undefined
+                            ? edits[e.id]!.splitRatios
+                            : e.splitRatios) ?? null
+                        }
+                        amount={edited.amount ?? e.amount}
+                        onChange={(next) => setRowSplitRatios(e.id, next)}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
     </>
+  );
+}
+
+// ─── 行ごとの按分エディタ ─────────────────────────────
+// 1行の金額を複数店舗に手動の比率で按分する。
+// ratios が null のときは「単店計上（按分なし）」モード。
+function ExpenseRowSplitEditor({
+  ratios,
+  amount,
+  onChange,
+}: {
+  ratios: Record<string, number> | null;
+  amount: number;
+  onChange: (next: Record<string, number> | null) => void;
+}) {
+  const active = ratios !== null;
+  const totalRatio = ratios
+    ? Object.values(ratios).reduce((s, v) => s + v, 0)
+    : 0;
+
+  const enableSplit = () => {
+    const each = Math.floor(100 / STORES.length);
+    const initial: Record<string, number> = {};
+    STORES.forEach((s, idx) => {
+      initial[s] =
+        idx === STORES.length - 1
+          ? 100 - each * (STORES.length - 1)
+          : each;
+    });
+    onChange(initial);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3 text-xs">
+        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(ev) => (ev.target.checked ? enableSplit() : onChange(null))}
+            className="accent-purple-600"
+          />
+          <span className="font-medium text-gray-700">
+            複数店舗に按分する（PayPay銀行で一括支払い時）
+          </span>
+        </label>
+        {active && (
+          <span className={totalRatio !== 100 ? "text-red-600" : "text-gray-500"}>
+            合計 {totalRatio.toFixed(0)}% {totalRatio !== 100 && "（100%にしてください）"}
+          </span>
+        )}
+      </div>
+      {active && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-1.5 bg-white border border-purple-200 rounded p-2">
+          {STORES.map((s) => (
+            <label key={s} className="text-xs flex items-center gap-1">
+              <span className="text-gray-700 w-24 truncate">{s}</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={ratios?.[s] ?? 0}
+                onChange={(ev) => {
+                  const v = parseFloat(ev.target.value) || 0;
+                  const next = { ...(ratios ?? {}), [s]: v };
+                  if (v <= 0) delete next[s];
+                  onChange(next);
+                }}
+                className="w-16 border border-gray-300 rounded px-1.5 py-0.5 text-xs text-right"
+              />
+              <span className="text-gray-400">%</span>
+              <span className="text-gray-500 ml-1">
+                ≈ ¥
+                {Math.round(((ratios?.[s] ?? 0) * amount) / 100).toLocaleString()}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
