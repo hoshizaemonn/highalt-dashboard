@@ -159,7 +159,8 @@ export async function GET(request: NextRequest) {
         storeName: store,
         ...(scope === "expense" ? { isRevenue: 0 } : {}),
       },
-      orderBy: { day: "asc" },
+      // 日付＋ID（取込順）昇順 → 元CSVと同じ時系列順を維持
+      orderBy: [{ day: "asc" }, { id: "asc" }],
       select: {
         year: true,
         month: true,

@@ -49,6 +49,7 @@ export async function PUT(request: NextRequest) {
 
   const body = await request.json();
   type Entry = {
+    id?: unknown;
     year?: unknown;
     month?: unknown;
     category?: unknown;
@@ -62,6 +63,7 @@ export async function PUT(request: NextRequest) {
     auth.session.displayName || auth.session.storeName || "admin";
 
   type Cleaned = {
+    id?: number;
     year: number;
     month: number;
     category: string;
@@ -71,6 +73,7 @@ export async function PUT(request: NextRequest) {
   };
   const cleaned: Cleaned[] = items
     .map((r) => {
+      const id = typeof r.id === "number" ? r.id : undefined;
       const year = typeof r.year === "number" ? r.year : parseInt(String(r.year ?? ""), 10);
       const month =
         typeof r.month === "number" ? r.month : parseInt(String(r.month ?? ""), 10);
@@ -82,7 +85,7 @@ export async function PUT(request: NextRequest) {
           ? Math.round(r.totalAmount)
           : parseInt(String(r.totalAmount ?? "0").replace(/,/g, ""), 10);
       const note = typeof r.note === "string" ? r.note : null;
-      return { year, month, category, storeName, totalAmount, note };
+      return { id, year, month, category, storeName, totalAmount, note };
     })
     .filter(
       (r) =>
@@ -97,15 +100,40 @@ export async function PUT(request: NextRequest) {
   await prisma.$transaction(async (tx) => {
     for (const r of cleaned) {
       if (r.totalAmount === 0) {
-        await tx.manualExpenseEntry.deleteMany({
-          where: {
-            year: r.year,
-            month: r.month,
-            category: r.category,
-            storeName: r.storeName,
-          },
-        });
+        if (r.id !== undefined) {
+          await tx.manualExpenseEntry.deleteMany({ where: { id: r.id } });
+        } else {
+          await tx.manualExpenseEntry.deleteMany({
+            where: {
+              year: r.year,
+              month: r.month,
+              category: r.category,
+              storeName: r.storeName,
+            },
+          });
+        }
         continue;
+      }
+      // 既存ID指定時: 必ずそのレコードを id ベースで update（カテゴリ等の主キー変更も同一レコードで反映）
+      // これにより、ユーザーがカテゴリや月を変更した際に「新規追加されてしまうバグ」を回避。
+      if (r.id !== undefined) {
+        try {
+          await tx.manualExpenseEntry.update({
+            where: { id: r.id },
+            data: {
+              year: r.year,
+              month: r.month,
+              category: r.category,
+              storeName: r.storeName,
+              totalAmount: r.totalAmount,
+              note: r.note,
+              updatedByName,
+            },
+          });
+          continue;
+        } catch {
+          // unique制約違反（移動先キーに既存行あり）等は fall-through で upsert に任せる
+        }
       }
       await tx.manualExpenseEntry.upsert({
         where: {
