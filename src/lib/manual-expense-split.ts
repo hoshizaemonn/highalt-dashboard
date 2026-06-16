@@ -127,3 +127,116 @@ export function expenseRowSharesByStore(
   }
   return { [row.storeName]: row.amount };
 }
+
+// ─── カテゴリ別分解（依頼: PayPay銀行で家賃+電気代等が一括出金される行の分解） ───
+
+export interface CategorySplit {
+  category: string;
+  amount: number;
+  /** 各分解項目ごとの店舗按分（null/未指定なら親行の splitRatios もしくは storeName を使う） */
+  splitRatios?: Record<string, number> | null;
+}
+
+/**
+ * categorySplits の JSON 文字列を配列に正規化。
+ * 不正値は除外し、何も残らなければ null を返す。
+ */
+export function parseCategorySplits(
+  raw: string | null | undefined,
+): CategorySplit[] | null {
+  if (!raw) return null;
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return null;
+    const out: CategorySplit[] = [];
+    for (const item of arr) {
+      if (!item || typeof item !== "object") continue;
+      const category = String((item as { category?: unknown }).category ?? "").trim();
+      const amount = Number((item as { amount?: unknown }).amount ?? 0);
+      if (!category || !Number.isFinite(amount) || amount === 0) continue;
+      const rawSr = (item as { splitRatios?: unknown }).splitRatios;
+      let splitRatios: Record<string, number> | null = null;
+      if (rawSr && typeof rawSr === "object") {
+        const clean: Record<string, number> = {};
+        for (const [k, v] of Object.entries(rawSr as Record<string, unknown>)) {
+          const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+          if (Number.isFinite(n) && n > 0) clean[k] = n;
+        }
+        if (Object.keys(clean).length > 0) splitRatios = clean;
+      } else if (typeof rawSr === "string") {
+        splitRatios = parseSplitRatios(rawSr);
+      }
+      out.push({ category, amount, splitRatios });
+    }
+    return out.length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * categorySplits 配慮版の expenseRowShare。
+ * categorySplits が設定されている場合は分解項目を独立に計算して合算、
+ * 無ければ従来の expenseRowShare に委譲。
+ */
+export function expenseRowShareWithCategorySplit(
+  row: {
+    storeName: string;
+    amount: number;
+    splitRatios?: string | null;
+    categorySplits?: string | null;
+  },
+  target: string | null,
+): number {
+  const splits = parseCategorySplits(row.categorySplits ?? null);
+  if (splits) {
+    let total = 0;
+    for (const sp of splits) {
+      const sr = sp.splitRatios
+        ? JSON.stringify(sp.splitRatios)
+        : (row.splitRatios ?? null);
+      total += expenseRowShare(
+        { storeName: row.storeName, amount: sp.amount, splitRatios: sr },
+        target,
+      );
+    }
+    return total;
+  }
+  return expenseRowShare(row, target);
+}
+
+/**
+ * カテゴリ別配分を返す（カテゴリ→金額）。categorySplits があれば科目別に分解。
+ */
+export function expenseRowSharesByCategory(
+  row: {
+    storeName: string;
+    amount: number;
+    category?: string | null;
+    splitRatios?: string | null;
+    categorySplits?: string | null;
+  },
+  target: string | null,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  const splits = parseCategorySplits(row.categorySplits ?? null);
+  if (splits) {
+    for (const sp of splits) {
+      const sr = sp.splitRatios
+        ? JSON.stringify(sp.splitRatios)
+        : (row.splitRatios ?? null);
+      const share = expenseRowShare(
+        { storeName: row.storeName, amount: sp.amount, splitRatios: sr },
+        target,
+      );
+      if (share === 0) continue;
+      out[sp.category] = (out[sp.category] ?? 0) + share;
+    }
+    return out;
+  }
+  const share = expenseRowShare(row, target);
+  if (share !== 0) {
+    out[row.category ?? "その他"] = share;
+  }
+  return out;
+}

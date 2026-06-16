@@ -8,6 +8,12 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────
 
+interface CategorySplitItem {
+  category: string;
+  amount: number;
+  splitRatios?: Record<string, number> | null;
+}
+
 interface ExpenseRecord {
   id: number;
   day: number;
@@ -18,6 +24,7 @@ interface ExpenseRecord {
   breakdown: string;
   isRevenue: number;
   splitRatios?: Record<string, number> | null;
+  categorySplits?: CategorySplitItem[] | null;
 }
 
 interface EditedFields {
@@ -26,6 +33,7 @@ interface EditedFields {
   category?: string;
   breakdown?: string;
   splitRatios?: Record<string, number> | null;
+  categorySplits?: CategorySplitItem[] | null;
 }
 
 // ─── Component ──────────────────────────────────────────────
@@ -91,6 +99,15 @@ export default function ExpenseDetailSection({
       [id]: { ...prev[id], splitRatios: next },
     }));
   };
+  const setRowCategorySplits = (
+    id: number,
+    next: CategorySplitItem[] | null,
+  ) => {
+    setEdits((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], categorySplits: next },
+    }));
+  };
 
   const hasChanges = Object.keys(edits).length > 0;
 
@@ -139,6 +156,10 @@ export default function ExpenseDetailSection({
             isRevenue: newIsRevenue,
             splitRatios:
               ed.splitRatios !== undefined ? ed.splitRatios : e.splitRatios,
+            categorySplits:
+              ed.categorySplits !== undefined
+                ? ed.categorySplits
+                : e.categorySplits,
           };
         }),
       );
@@ -324,12 +345,16 @@ export default function ExpenseDetailSection({
                   </td>
                   <td className="px-2 py-1.5 text-center">
                     {(() => {
-                      // 編集中の按分: edits 側に splitRatios プロパティがあればそれ、なければ DB 値
+                      // 編集中の按分: edits 側にあればそれ、なければ DB 値
                       const editedSplit = edits[e.id]?.splitRatios;
                       const currentSplit =
                         editedSplit !== undefined
                           ? editedSplit
                           : e.splitRatios ?? null;
+                      const editedCs = edits[e.id]?.categorySplits;
+                      const currentCs =
+                        editedCs !== undefined ? editedCs : e.categorySplits ?? null;
+                      const hasAny = !!currentSplit || (currentCs && currentCs.length > 0);
                       const isExpanded = splitEditorRowId === e.id;
                       return (
                         <button
@@ -337,17 +362,17 @@ export default function ExpenseDetailSection({
                             setSplitEditorRowId(isExpanded ? null : e.id)
                           }
                           className={`text-xs px-2 py-0.5 rounded border ${
-                            currentSplit
+                            hasAny
                               ? "bg-purple-100 border-purple-300 text-purple-700"
                               : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
                           }`}
                           title={
-                            currentSplit
-                              ? "按分設定済（クリックで編集）"
-                              : "店舗別に按分する"
+                            hasAny
+                              ? "按分／分解設定済（クリックで編集）"
+                              : "店舗按分・科目分解"
                           }
                         >
-                          {currentSplit ? "🔀 按分中" : "按分"}
+                          {hasAny ? "🔀 設定済" : "按分/分解"}
                         </button>
                       );
                     })()}
@@ -364,6 +389,15 @@ export default function ExpenseDetailSection({
                         }
                         amount={edited.amount ?? e.amount}
                         onChange={(next) => setRowSplitRatios(e.id, next)}
+                      />
+                      <CategorySplitEditor
+                        rowAmount={edited.amount ?? e.amount}
+                        splits={
+                          edits[e.id]?.categorySplits !== undefined
+                            ? edits[e.id]!.categorySplits ?? null
+                            : e.categorySplits ?? null
+                        }
+                        onChange={(next) => setRowCategorySplits(e.id, next)}
                       />
                     </td>
                   </tr>
@@ -452,6 +486,117 @@ function ExpenseRowSplitEditor({
               </span>
             </label>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── 科目別分解エディタ（PayPay一括出金の家賃+電気代等を分ける） ───
+function CategorySplitEditor({
+  rowAmount,
+  splits,
+  onChange,
+}: {
+  rowAmount: number;
+  splits: CategorySplitItem[] | null;
+  onChange: (next: CategorySplitItem[] | null) => void;
+}) {
+  const active = !!(splits && splits.length > 0);
+  const sumAmount = active
+    ? splits!.reduce((s, it) => s + (it.amount || 0), 0)
+    : 0;
+  const diff = rowAmount - sumAmount;
+
+  const enable = () => {
+    // 1行目に元金額を初期値として入れる
+    onChange([{ category: EXPENSE_CATEGORIES[0], amount: rowAmount, splitRatios: null }]);
+  };
+
+  const updateItem = (idx: number, patch: Partial<CategorySplitItem>) => {
+    if (!splits) return;
+    onChange(splits.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  };
+
+  const removeItem = (idx: number) => {
+    if (!splits) return;
+    const next = splits.filter((_, i) => i !== idx);
+    onChange(next.length > 0 ? next : null);
+  };
+
+  const addItem = () => {
+    const remaining = Math.max(diff, 0);
+    onChange([
+      ...(splits ?? []),
+      { category: EXPENSE_CATEGORIES[0], amount: remaining, splitRatios: null },
+    ]);
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-purple-200">
+      <div className="flex items-center gap-3 text-xs mb-2">
+        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(ev) => (ev.target.checked ? enable() : onChange(null))}
+            className="accent-purple-600"
+          />
+          <span className="font-medium text-gray-700">
+            この行を科目別に分解する（PayPay一括出金で家賃+電気代等が混ざっている時）
+          </span>
+        </label>
+        {active && (
+          <span className={diff !== 0 ? "text-red-600" : "text-gray-500"}>
+            元金額 ¥{rowAmount.toLocaleString()} / 分解合計 ¥{sumAmount.toLocaleString()}
+            {diff !== 0 && ` （差分 ¥${diff.toLocaleString()}）`}
+          </span>
+        )}
+      </div>
+      {active && (
+        <div className="space-y-2 bg-white border border-purple-200 rounded p-2">
+          {splits!.map((it, idx) => (
+            <div key={idx} className="space-y-1 border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
+              <div className="flex items-center gap-2 text-xs">
+                <select
+                  value={it.category}
+                  onChange={(e) => updateItem(idx, { category: e.target.value })}
+                  className="border border-gray-300 rounded px-2 py-0.5 text-xs w-40"
+                >
+                  {EXPENSE_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  value={it.amount}
+                  onChange={(e) =>
+                    updateItem(idx, { amount: parseInt(e.target.value, 10) || 0 })
+                  }
+                  className="w-28 border border-gray-300 rounded px-2 py-0.5 text-xs text-right"
+                  placeholder="金額"
+                />
+                <button
+                  onClick={() => removeItem(idx)}
+                  className="text-red-500 hover:text-red-700 text-xs"
+                  title="削除"
+                >
+                  ✕
+                </button>
+              </div>
+              <ExpenseRowSplitEditor
+                ratios={it.splitRatios ?? null}
+                amount={it.amount}
+                onChange={(next) => updateItem(idx, { splitRatios: next })}
+              />
+            </div>
+          ))}
+          <button
+            onClick={addItem}
+            className="text-xs text-purple-700 hover:text-purple-900 mt-1"
+          >
+            ＋ 分解行を追加
+          </button>
         </div>
       )}
     </div>

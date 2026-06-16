@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STORES, HQ_STORE } from "@/lib/constants";
 import { requireSession, getSessionAllowedStores } from "@/lib/auth";
-import { expenseRowShare } from "@/lib/manual-expense-split";
+import { expenseRowShareWithCategorySplit } from "@/lib/manual-expense-split";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
 
@@ -198,17 +198,13 @@ export async function GET(request: NextRequest) {
         0,
       );
 
-      // Expenses（依頼⑥: accrual を優先 / 依頼A: splitRatios 対応）
+      // Expenses（依頼⑥: accrual を優先 / 依頼A: splitRatios + categorySplits 対応）
       let totalExpense = 0;
       for (const r of allExpenses) {
         const ey = r.accrualYear ?? r.year;
         const em = r.accrualMonth ?? r.month;
         if (!isInPeriod(ey, em)) continue;
-        // splitRatios あり: その店舗への配分分のみ加算
-        // splitRatios なし: storeName が一致する場合のみ
-        const share = expenseRowShare(r, storeName);
-        if (share === 0) continue;
-        totalExpense += share;
+        totalExpense += expenseRowShareWithCategorySplit(r, storeName);
       }
 
       // Member summary - latest record for this store WITHIN the requested period.
