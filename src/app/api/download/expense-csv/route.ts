@@ -4,13 +4,17 @@ import { requireAdmin } from "@/lib/auth";
 import JSZip from "jszip";
 
 /**
- * 経費明細 CSVエクスポート（依頼②）
+ * 経費明細 CSVエクスポート（依頼②・任意期間対応）
  *
- * 出力フォーマット（PayPay銀行CSV書式・メモ列なし + 勘定科目 + 内訳）:
- *   操作日(年/月/日) 操作時刻(時/分/秒) 取引順番号 摘要 お支払金額 お預り金額 残高 勘定科目 内訳
+ * クエリパラメータ:
+ *  - year, month: 単月モード（既存挙動）
+ *  - fromYM, toYM: YYYY-MM 形式で任意期間（範囲モード）。優先される。
+ *  - store: 店舗名
+ *  - scope: all | expense
  *
- * 取込元ファイルが複数ある場合（例: 経費CSV + 売上CSV）は、source_file 単位で
- * 行をグループ化し、ZIPで複数CSVを返す（2ファイル取込→2ファイル出力）。
+ * 範囲モードの出力:
+ *  - 月ごとに CSV を生成し ZIP で返却（取込元ファイル別の分割も同時に実施）
+ *  - 単月かつ取込元1ファイル → 単一 CSV（既存挙動）
  */
 
 const OUTPUT_HEADERS = [
@@ -126,12 +130,46 @@ function buildCsvFor(
   return "﻿" + headerLine + "\r\n" + lines.join("\r\n") + "\r\n";
 }
 
-/**
- * ファイル名から拡張子を除いた基底名を取り出す。ZIP内のCSV名生成に使う。
- */
 function baseNameWithoutExt(name: string): string {
   const idx = name.lastIndexOf(".");
   return idx > 0 ? name.slice(0, idx) : name;
+}
+
+/**
+ * YYYY-MM の文字列を {year, month} にパース。失敗時は null。
+ */
+function parseYM(s: string | null): { year: number; month: number } | null {
+  if (!s) return null;
+  const m = s.match(/^(\d{4})-(\d{1,2})$/);
+  if (!m) return null;
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    month < 1 ||
+    month > 12
+  ) {
+    return null;
+  }
+  return { year, month };
+}
+
+/**
+ * (fromYM, toYM) → 月リスト。toYM が前なら自動で入替え。
+ */
+function buildMonthList(
+  from: { year: number; month: number },
+  to: { year: number; month: number },
+): { year: number; month: number }[] {
+  const start = from.year * 12 + (from.month - 1);
+  const end = to.year * 12 + (to.month - 1);
+  const [lo, hi] = start <= end ? [start, end] : [end, start];
+  const out: { year: number; month: number }[] = [];
+  for (let v = lo; v <= hi; v++) {
+    out.push({ year: Math.floor(v / 12), month: (v % 12) + 1 });
+  }
+  return out;
 }
 
 export async function GET(request: NextRequest) {
@@ -140,27 +178,38 @@ export async function GET(request: NextRequest) {
     if (auth.error) return auth.error;
 
     const { searchParams } = request.nextUrl;
-    const year = parseInt(searchParams.get("year") ?? "", 10);
-    const month = parseInt(searchParams.get("month") ?? "", 10);
     const store = searchParams.get("store") ?? "";
     const scope = (searchParams.get("scope") ?? "all").toLowerCase();
 
-    if (isNaN(year) || isNaN(month)) {
-      return NextResponse.json(
-        { error: "year and month are required" },
-        { status: 400 },
-      );
+    const fromYM = parseYM(searchParams.get("fromYM"));
+    const toYM = parseYM(searchParams.get("toYM"));
+
+    // 範囲モード: fromYM/toYM 両方指定 or 片方のみ＝同月
+    let months: { year: number; month: number }[];
+    if (fromYM || toYM) {
+      const start = fromYM ?? toYM!;
+      const end = toYM ?? fromYM!;
+      months = buildMonthList(start, end);
+    } else {
+      const year = parseInt(searchParams.get("year") ?? "", 10);
+      const month = parseInt(searchParams.get("month") ?? "", 10);
+      if (isNaN(year) || isNaN(month)) {
+        return NextResponse.json(
+          { error: "year and month (or fromYM/toYM) are required" },
+          { status: 400 },
+        );
+      }
+      months = [{ year, month }];
     }
 
+    // 全期間の行を取得
     const rows = await prisma.expenseData.findMany({
       where: {
-        year,
-        month,
+        OR: months.map((m) => ({ year: m.year, month: m.month })),
         storeName: store,
         ...(scope === "expense" ? { isRevenue: 0 } : {}),
       },
-      // 日付＋ID（取込順）昇順 → 元CSVと同じ時系列順を維持
-      orderBy: [{ day: "asc" }, { id: "asc" }],
+      orderBy: [{ year: "asc" }, { month: "asc" }, { day: "asc" }, { id: "asc" }],
       select: {
         year: true,
         month: true,
@@ -175,49 +224,114 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const headerRow = await prisma.expenseCsvHeader.findUnique({
-      where: { year_month_storeName: { year, month, storeName: store } },
+    // 月毎のヘッダ取得
+    const headerRows = await prisma.expenseCsvHeader.findMany({
+      where: {
+        OR: months.map((m) => ({
+          year: m.year,
+          month: m.month,
+          storeName: store,
+        })),
+      },
     });
-
-    const storedHeaders: string[] | null = headerRow
-      ? (JSON.parse(headerRow.headers) as string[])
-      : null;
-    const colMap = buildColumnMap(storedHeaders);
-
-    // source_file 単位でグループ化
-    const groups = new Map<string, ExpenseRow[]>();
-    for (const r of rows) {
-      const key = r.sourceFile && r.sourceFile.trim() ? r.sourceFile : "経費明細";
-      const arr = groups.get(key) ?? [];
-      arr.push(r);
-      groups.set(key, arr);
+    const headerMap = new Map<string, string[]>();
+    for (const h of headerRows) {
+      try {
+        const parsed = JSON.parse(h.headers);
+        if (Array.isArray(parsed)) {
+          headerMap.set(`${h.year}-${h.month}`, parsed);
+        }
+      } catch {}
     }
 
-    const mm = String(month).padStart(2, "0");
+    // 月 → (sourceFile → rows) でグループ化
+    const monthGroups = new Map<
+      string,
+      Map<string, ExpenseRow[]>
+    >();
+    for (const r of rows) {
+      const monthKey = `${r.year}-${String(r.month).padStart(2, "0")}`;
+      const sfKey =
+        r.sourceFile && r.sourceFile.trim() ? r.sourceFile : "経費明細";
+      if (!monthGroups.has(monthKey)) monthGroups.set(monthKey, new Map());
+      const inner = monthGroups.get(monthKey)!;
+      const arr = inner.get(sfKey) ?? [];
+      arr.push(r);
+      inner.set(sfKey, arr);
+    }
 
-    // 1グループのみ → 単一CSV（従来挙動）
-    if (groups.size <= 1) {
-      const csv = buildCsvFor(rows, colMap);
-      const filename = `${year}${mm}_${store}_経費明細.csv`;
-      return new NextResponse(csv, {
+    const isSingleMonth = months.length === 1;
+
+    // 単月かつ source_file が1グループ以下 → 既存と同じく単一CSV
+    if (isSingleMonth) {
+      const ym = months[0];
+      const inner = monthGroups.get(`${ym.year}-${String(ym.month).padStart(2, "0")}`);
+      const groups = inner ?? new Map<string, ExpenseRow[]>();
+      const colMap = buildColumnMap(
+        headerMap.get(`${ym.year}-${ym.month}`) ?? null,
+      );
+      const mm = String(ym.month).padStart(2, "0");
+      if (groups.size <= 1) {
+        const allRows: ExpenseRow[] =
+          [...groups.values()].flat();
+        const csv = buildCsvFor(allRows, colMap);
+        const filename = `${ym.year}${mm}_${store}_経費明細.csv`;
+        return new NextResponse(csv, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+          },
+        });
+      }
+      // 単月だが複数ファイル取込 → ZIP
+      const zip = new JSZip();
+      for (const [sourceFile, groupRows] of groups) {
+        const csvBody = buildCsvFor(groupRows, colMap);
+        const csvName = `${ym.year}${mm}_${store}_${baseNameWithoutExt(sourceFile)}_経費明細.csv`;
+        zip.file(csvName, csvBody);
+      }
+      const buf = await zip.generateAsync({ type: "nodebuffer" });
+      const zipName = `${ym.year}${mm}_${store}_経費明細.zip`;
+      return new NextResponse(buf as unknown as BodyInit, {
         status: 200,
         headers: {
-          "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`,
         },
       });
     }
 
-    // 複数グループ → ZIPで返す
+    // 範囲モード → ZIP（月別 × ファイル別）
     const zip = new JSZip();
-    for (const [sourceFile, groupRows] of groups) {
-      const csvBody = buildCsvFor(groupRows, colMap);
-      const csvName = `${year}${mm}_${store}_${baseNameWithoutExt(sourceFile)}_経費明細.csv`;
-      zip.file(csvName, csvBody);
+    for (const ym of months) {
+      const monthKey = `${ym.year}-${String(ym.month).padStart(2, "0")}`;
+      const inner = monthGroups.get(monthKey);
+      if (!inner || inner.size === 0) continue;
+      const colMap = buildColumnMap(
+        headerMap.get(`${ym.year}-${ym.month}`) ?? null,
+      );
+      const mm = String(ym.month).padStart(2, "0");
+      if (inner.size === 1) {
+        const [sf, groupRows] = [...inner.entries()][0];
+        const csvBody = buildCsvFor(groupRows, colMap);
+        const tag = baseNameWithoutExt(sf) || "経費明細";
+        zip.file(`${ym.year}${mm}_${store}_${tag}.csv`, csvBody);
+      } else {
+        for (const [sourceFile, groupRows] of inner) {
+          const csvBody = buildCsvFor(groupRows, colMap);
+          const csvName = `${ym.year}${mm}_${store}_${baseNameWithoutExt(sourceFile)}_経費明細.csv`;
+          zip.file(csvName, csvBody);
+        }
+      }
     }
-    const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
-    const zipName = `${year}${mm}_${store}_経費明細.zip`;
-    return new NextResponse(zipBuffer as unknown as BodyInit, {
+    const buf = await zip.generateAsync({ type: "nodebuffer" });
+    const start = months[0];
+    const end = months[months.length - 1];
+    const startStr = `${start.year}${String(start.month).padStart(2, "0")}`;
+    const endStr = `${end.year}${String(end.month).padStart(2, "0")}`;
+    const zipName = `${startStr}-${endStr}_${store}_経費明細.zip`;
+    return new NextResponse(buf as unknown as BodyInit, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
