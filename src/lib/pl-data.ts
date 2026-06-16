@@ -7,7 +7,7 @@ import { toFiscalIndex, type PlMonthlyData } from "@/lib/pl-xlsx";
 import {
   singleStoreShare,
   allStoresShare,
-  expenseRowShare,
+  expenseRowSharesByCategory,
 } from "@/lib/manual-expense-split";
 
 export interface PlAggregateResult {
@@ -51,10 +51,11 @@ export async function aggregatePlForFiscalYear(
       where: {
         year: { in: expenseYears },
         isRevenue: 0,
-        // 依頼A: splitRatios あり行はフィルタを跨ぐため OR で展開
+        // 依頼A: splitRatios / categorySplits あり行はフィルタを跨ぐため OR で展開
         OR: [
           { storeName: store ? store : notHqOrHidden },
           { splitRatios: { not: null } },
+          { categorySplits: { not: null } },
         ],
       },
     }),
@@ -135,21 +136,22 @@ export async function aggregatePlForFiscalYear(
     ensureSlot(idx).salesPersonalAndProduct += r.grossSales;
   }
 
-  // 依頼A: splitRatios あり行は比率で配分
+  // 依頼A: splitRatios / categorySplits に対応した科目別配分
   const expenseTarget: string | null = store ? store : null;
   for (const r of allExpenses) {
     const ey = r.accrualYear ?? r.year;
     const em = r.accrualMonth ?? r.month;
     const idx = toFiscalIndex(ey, em, fiscalYear);
     if (idx === null) continue;
-    const share = expenseRowShare(r, expenseTarget);
-    if (share === 0) continue;
+    const sharesByCat = expenseRowSharesByCategory(r, expenseTarget);
+    if (Object.keys(sharesByCat).length === 0) continue;
     const slot = ensureSlot(idx);
-    const cat = r.category ?? "その他";
-    if (cat === "仕入高") {
-      slot.cogs += share;
-    } else {
-      slot.expenses[cat] = (slot.expenses[cat] ?? 0) + share;
+    for (const [cat, share] of Object.entries(sharesByCat)) {
+      if (cat === "仕入高") {
+        slot.cogs += share;
+      } else {
+        slot.expenses[cat] = (slot.expenses[cat] ?? 0) + share;
+      }
     }
   }
 

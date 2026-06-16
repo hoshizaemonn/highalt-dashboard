@@ -13,7 +13,8 @@ import {
 import { trialDateMonthWhere } from "@/lib/csv-utils";
 import {
   parseSplitRatios,
-  expenseRowShare,
+  expenseRowShareWithCategorySplit,
+  expenseRowSharesByCategory,
 } from "@/lib/manual-expense-split";
 
 export async function GET(request: NextRequest) {
@@ -150,10 +151,11 @@ export async function GET(request: NextRequest) {
     const expenseFetchWhere = {
       // 当年＋前年（12月決済の前年帰属など跨年シフトに備える）
       year: { in: [year - 1, year] },
-      // splitRatios あり行はどの店舗を要求されていても拾う必要があるため OR で展開
+      // splitRatios / categorySplits あり行は店舗フィルタを跨ぐため OR で展開
       OR: [
         { storeName: storeNameFilter },
         { splitRatios: { not: null } },
+        { categorySplits: { not: null } },
       ],
       isRevenue: 0,
     };
@@ -174,12 +176,12 @@ export async function GET(request: NextRequest) {
     let totalExpense = 0;
 
     for (const row of expenseRows) {
-      // splitRatios があれば比率で配分、無ければ storeName が target と一致したときのみ計上
-      const share = expenseRowShare(row, expenseTarget);
-      if (share === 0) continue;
-      const cat = row.category || "その他";
-      expenseByCategory[cat] = (expenseByCategory[cat] || 0) + share;
-      totalExpense += share;
+      // categorySplits あれば科目別に分解、無ければ単一カテゴリで計上
+      const sharesByCat = expenseRowSharesByCategory(row, expenseTarget);
+      for (const [cat, share] of Object.entries(sharesByCat)) {
+        expenseByCategory[cat] = (expenseByCategory[cat] || 0) + share;
+        totalExpense += share;
+      }
     }
 
     // ── 本部一括経費（admin 手動入力）を均等按分して加算 ─────────
@@ -449,7 +451,7 @@ export async function GET(request: NextRequest) {
         );
 
         // 発生月対応（依頼⑥）: 当年＋前年から取得し、accrual優先で当該月の合計を算出
-        // splitRatios あり行も拾うため OR で展開
+        // splitRatios / categorySplits あり行も拾うため OR で展開
         const expRowsForMonth = await prisma.expenseData.findMany({
           where: {
             year: { in: [y - 1, y] },
@@ -459,6 +461,7 @@ export async function GET(request: NextRequest) {
                   OR: [
                     { storeName: storeNameFilter },
                     { splitRatios: { not: null } },
+                    { categorySplits: { not: null } },
                   ],
                 }
               : {}),
@@ -469,6 +472,7 @@ export async function GET(request: NextRequest) {
             amount: true,
             storeName: true,
             splitRatios: true,
+            categorySplits: true,
             accrualYear: true,
             accrualMonth: true,
           },
@@ -478,7 +482,7 @@ export async function GET(request: NextRequest) {
           const ey = r.accrualYear ?? r.year;
           const em = r.accrualMonth ?? r.month;
           if (ey !== y || em !== m) return s;
-          return s + expenseRowShare(r, expTarget);
+          return s + expenseRowShareWithCategorySplit(r, expTarget);
         }, 0);
 
         const cw = {

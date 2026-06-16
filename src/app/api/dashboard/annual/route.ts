@@ -9,7 +9,8 @@ import {
 import {
   singleStoreShare,
   allStoresShare,
-  expenseRowShare,
+  expenseRowShareWithCategorySplit,
+  expenseRowSharesByCategory,
 } from "@/lib/manual-expense-split";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
@@ -166,7 +167,7 @@ export async function GET(request: NextRequest) {
     const [allPayroll, allExpenses, allSalesDetail, allRevenue, allSquare] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: years }, ...storeWhere } }),
       // 発生月対応（依頼⑥）: 当年の前年も取得して跨年シフト分も拾う
-      // splitRatios あり行は店舗フィルタを跨ぐため OR で展開
+      // splitRatios / categorySplits あり行は店舗フィルタを跨ぐため OR で展開
       prisma.expenseData.findMany({
         where: {
           year: { in: [...years, ...years.map((y) => y - 1)] },
@@ -174,6 +175,7 @@ export async function GET(request: NextRequest) {
           OR: [
             { storeName: storeNameFilter },
             { splitRatios: { not: null } },
+            { categorySplits: { not: null } },
           ],
         },
       }),
@@ -247,7 +249,7 @@ export async function GET(request: NextRequest) {
         else parttimeGross += gross;
       }
 
-      // Expenses（依頼⑥: accrual を優先 / 依頼A: splitRatios 対応）
+      // Expenses（依頼⑥: accrual を優先 / 依頼A: splitRatios+categorySplits 対応）
       const expenseTarget: string | null = store ? store : null;
       const expenses = allExpenses.filter((r) => {
         const ey = r.accrualYear ?? r.year;
@@ -257,11 +259,11 @@ export async function GET(request: NextRequest) {
       let totalExpense = 0;
       const expenseByCat: Record<string, number> = {};
       for (const row of expenses) {
-        const share = expenseRowShare(row, expenseTarget);
-        if (share === 0) continue;
-        const cat = row.category || "その他";
-        expenseByCat[cat] = (expenseByCat[cat] || 0) + share;
-        totalExpense += share;
+        const sharesByCat = expenseRowSharesByCategory(row, expenseTarget);
+        for (const [cat, share] of Object.entries(sharesByCat)) {
+          expenseByCat[cat] = (expenseByCat[cat] || 0) + share;
+          totalExpense += share;
+        }
       }
       // 本部一括経費（手動入力）を加算
       //   - splitRatios あり: 比率で配分
@@ -490,6 +492,7 @@ export async function GET(request: NextRequest) {
           OR: [
             { storeName: storeNameFilter },
             { splitRatios: { not: null } },
+            { categorySplits: { not: null } },
           ],
         },
       }),
@@ -514,12 +517,12 @@ export async function GET(request: NextRequest) {
       const ey = r.accrualYear ?? r.year;
       const em = r.accrualMonth ?? r.month;
       if (!isInPeriod(ey, em)) continue;
-      // 依頼A: splitRatios あり行は比率で配分
-      const share = expenseRowShare(r, prevExpenseTarget);
-      if (share === 0) continue;
-      prevExpenseByCat[r.category ?? "その他"] =
-        (prevExpenseByCat[r.category ?? "その他"] ?? 0) + share;
-      prevExpense += share;
+      // 依頼A: splitRatios / categorySplits 対応
+      const sharesByCat = expenseRowSharesByCategory(r, prevExpenseTarget);
+      for (const [cat, share] of Object.entries(sharesByCat)) {
+        prevExpenseByCat[cat] = (prevExpenseByCat[cat] ?? 0) + share;
+        prevExpense += share;
+      }
     }
 
     const prevSalesByCat: Record<string, number> = {};

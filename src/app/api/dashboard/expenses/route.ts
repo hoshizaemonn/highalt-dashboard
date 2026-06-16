@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
         accrualMonth: true,
         storeName: true,
         splitRatios: true,
+        categorySplits: true,
       },
     });
     const rows = allRows
@@ -59,31 +60,61 @@ export async function GET(request: NextRequest) {
         const ey = r.accrualYear ?? r.year;
         const em = r.accrualMonth ?? r.month;
         if (ey !== year || em !== month) return false;
-        // 自店舗指定の行は表示、splitRatios あり行は当該店舗が比率に含まれる場合のみ表示
         if (r.storeName === store) return true;
+        // splitRatios あり行は当該店舗が比率に含まれる場合のみ表示
         if (r.splitRatios) {
           try {
             const ratios = JSON.parse(r.splitRatios);
-            return !!(ratios && typeof ratios === "object" && store in ratios);
-          } catch {
-            return false;
-          }
+            if (ratios && typeof ratios === "object" && store in ratios) return true;
+          } catch {}
+        }
+        // categorySplits も同様に判定（各分解の splitRatios または親 storeName を見る）
+        if (r.categorySplits) {
+          try {
+            const cs = JSON.parse(r.categorySplits);
+            if (Array.isArray(cs)) {
+              for (const item of cs) {
+                if (
+                  item?.splitRatios &&
+                  typeof item.splitRatios === "object" &&
+                  store in item.splitRatios
+                ) {
+                  return true;
+                }
+              }
+            }
+          } catch {}
         }
         return false;
       })
-      .map((r) => ({
-        ...r,
-        // クライアント向けには splitRatios をパース済オブジェクトで返す
-        splitRatios: (() => {
-          if (!r.splitRatios) return null;
+      .map((r) => {
+        // クライアント向けには splitRatios / categorySplits をパース済で返す
+        let split: Record<string, number> | null = null;
+        if (r.splitRatios) {
           try {
-            const parsed = JSON.parse(r.splitRatios);
-            return parsed && typeof parsed === "object" ? parsed : null;
-          } catch {
-            return null;
-          }
-        })(),
-      }));
+            const o = JSON.parse(r.splitRatios);
+            if (o && typeof o === "object") split = o;
+          } catch {}
+        }
+        let catSplits:
+          | Array<{
+              category: string;
+              amount: number;
+              splitRatios?: Record<string, number> | null;
+            }>
+          | null = null;
+        if (r.categorySplits) {
+          try {
+            const arr = JSON.parse(r.categorySplits);
+            if (Array.isArray(arr)) catSplits = arr;
+          } catch {}
+        }
+        return {
+          ...r,
+          splitRatios: split,
+          categorySplits: catSplits,
+        };
+      });
 
     // Match Amazon orders to fill breakdown for AMAZON expenses
     // Include orders for this month + orders with no payment date
@@ -213,6 +244,14 @@ export async function PUT(request: NextRequest) {
       breakdown?: string;
       // 依頼A: 行ごとの按分比率（店舗→%）。null/未指定なら変更なし、明示null送信なら按分解除
       splitRatios?: Record<string, number> | null;
+      // 依頼A: 行の科目別分解（PayPay一括出金の家賃+電気代+...を分ける）
+      categorySplits?:
+        | Array<{
+            category: string;
+            amount: number;
+            splitRatios?: Record<string, number> | null;
+          }>
+        | null;
     }> = body.updates ?? [body];
 
     if (!updates.length || !updates[0].id) {
@@ -249,6 +288,32 @@ export async function PUT(request: NextRequest) {
           }
           data.splitRatios =
             Object.keys(clean).length > 0 ? JSON.stringify(clean) : null;
+        }
+      }
+      if (update.categorySplits !== undefined) {
+        // null/空配列 → 解除、配列 → JSON文字列化（カテゴリ/金額が無効な要素は除外）
+        if (update.categorySplits === null) {
+          data.categorySplits = null;
+        } else if (Array.isArray(update.categorySplits)) {
+          const cleanArr = update.categorySplits
+            .map((item) => {
+              const category = String(item?.category ?? "").trim();
+              const amount = Number(item?.amount ?? 0);
+              if (!category || !Number.isFinite(amount) || amount === 0) return null;
+              let splitRatios: Record<string, number> | null = null;
+              if (item.splitRatios && typeof item.splitRatios === "object") {
+                const clean: Record<string, number> = {};
+                for (const [k, v] of Object.entries(item.splitRatios)) {
+                  const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+                  if (Number.isFinite(n) && n > 0) clean[k] = n;
+                }
+                if (Object.keys(clean).length > 0) splitRatios = clean;
+              }
+              return { category, amount, splitRatios };
+            })
+            .filter((x): x is NonNullable<typeof x> => x !== null);
+          data.categorySplits =
+            cleanArr.length > 0 ? JSON.stringify(cleanArr) : null;
         }
       }
       if (update.breakdown !== undefined) {

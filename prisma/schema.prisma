@@ -143,6 +143,13 @@ model ExpenseData {
   // null の場合は storeName が示す店舗にそのまま計上（既存挙動）。
   // PayPay銀行で複数店舗分を一括支払いした場合に使う（依頼A）。
   splitRatios  String? @map("split_ratios")
+  // 1行を複数科目に分解する設定（JSON文字列の配列）。
+  // 例: '[{"category":"賃借料","amount":800000,"splitRatios":{"東日本橋":40,"中目黒":30,"船橋":30}},
+  //      {"category":"電気料","amount":400000,"splitRatios":{"東日本橋":40,"中目黒":30,"船橋":30}}]'
+  // categorySplits が設定されている場合、集計は行の category/amount/splitRatios を無視して
+  // 各分解項目を独立に計上する（科目別かつ店舗別の二段按分）。
+  // PayPay銀行で家賃+電気代等が一括出金される場合に使う。
+  categorySplits String? @map("category_splits")
 
   @@index([year, month, storeName])
   @@index([accrualYear, accrualMonth, storeName])
