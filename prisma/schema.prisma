@@ -138,6 +138,11 @@ model ExpenseData {
   // 取込元ファイル名（依頼: 2ファイル取込→エクスポートも2ファイル分割）。
   // 同月内で複数ファイルを取り込んだ場合、エクスポート時にこのキーで分割しZIPで返す。
   sourceFile   String? @map("source_file")
+  // 1行の金額を複数店舗に按分する比率（JSON文字列、店舗→%）。
+  // 例: '{"東日本橋":40,"中目黒":30,"船橋":30}' → amount を 40/30/30 で配分。
+  // null の場合は storeName が示す店舗にそのまま計上（既存挙動）。
+  // PayPay銀行で複数店舗分を一括支払いした場合に使う（依頼A）。
+  splitRatios  String? @map("split_ratios")
 
   @@index([year, month, storeName])
   @@index([accrualYear, accrualMonth, storeName])

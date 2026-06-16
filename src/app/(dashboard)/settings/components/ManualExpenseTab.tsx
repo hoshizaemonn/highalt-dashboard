@@ -276,50 +276,19 @@ export default function ManualExpenseTab() {
                     </td>
                     <td className="px-3 py-2">
                       <select
-                        value={
-                          r.storeName === HQ_OPTION && r.splitRatios
-                            ? "__custom_split__"
-                            : r.storeName
+                        value={r.storeName}
+                        onChange={(e) =>
+                          handleChange(i, "storeName", e.target.value)
                         }
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === "__custom_split__") {
-                            handleChange(i, "storeName", HQ_OPTION);
-                            // 既存比率が無ければ均等から初期化
-                            if (!r.splitRatios) {
-                              const initial: Record<string, number> = {};
-                              const each = Math.floor(100 / STORES.length);
-                              STORES.forEach((s, idx) => {
-                                initial[s] =
-                                  idx === STORES.length - 1
-                                    ? 100 - each * (STORES.length - 1)
-                                    : each;
-                              });
-                              handleChange(i, "splitRatios", initial);
-                            }
-                          } else {
-                            handleChange(i, "storeName", v);
-                            handleChange(i, "splitRatios", null);
-                          }
-                        }}
                         className="border border-gray-300 rounded px-2 py-1 text-sm w-full"
                       >
                         <option value={HQ_OPTION}>本部一括（均等按分）</option>
-                        <option value="__custom_split__">本部一括（手動按分）</option>
                         {STORES.map((s) => (
                           <option key={s} value={s}>
                             {s}
                           </option>
                         ))}
                       </select>
-                      {r.splitRatios && (
-                        <SplitRatioEditor
-                          ratios={r.splitRatios}
-                          onChange={(next) =>
-                            handleChange(i, "splitRatios", next)
-                          }
-                        />
-                      )}
                     </td>
                     <td className="px-3 py-2">
                       <input
@@ -336,22 +305,9 @@ export default function ManualExpenseTab() {
                       />
                     </td>
                     <td className="px-3 py-2 text-right text-gray-500 text-xs">
-                      {r.splitRatios && r.storeName === HQ_OPTION
-                        ? (() => {
-                            // 手動按分のサマリー: 各店配分の概算（合計が100%でない時は赤）
-                            const totalRatio = Object.values(r.splitRatios).reduce(
-                              (s, v) => s + v,
-                              0,
-                            );
-                            return (
-                              <span className={totalRatio !== 100 ? "text-red-600" : ""}>
-                                計 {totalRatio.toFixed(0)}%
-                              </span>
-                            );
-                          })()
-                        : r.storeName === HQ_OPTION
-                          ? `¥${Math.round(r.totalAmount / storeCount).toLocaleString()}`
-                          : "—（店舗別）"}
+                      {r.storeName === HQ_OPTION
+                        ? `¥${Math.round(r.totalAmount / storeCount).toLocaleString()}`
+                        : "—（店舗別）"}
                     </td>
                     <td className="px-3 py-2">
                       <input

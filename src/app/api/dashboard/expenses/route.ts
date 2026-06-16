@@ -27,10 +27,14 @@ export async function GET(request: NextRequest) {
 
     // 発生月対応（依頼⑥）: 当年＋前年から取得し、accrual優先で当該月の行に絞る
     // 入金行（isRevenue=1）も含めて取得する（依頼: 入金部分も内訳・分類可能に）
+    // 依頼A: splitRatios あり行は store フィルタを跨ぐため OR で展開
     const allRows = await prisma.expenseData.findMany({
       where: {
         year: { in: [year - 1, year] },
-        storeName: store,
+        OR: [
+          { storeName: store },
+          { splitRatios: { not: null } },
+        ],
       },
       orderBy: { day: "asc" },
       select: {
@@ -46,13 +50,40 @@ export async function GET(request: NextRequest) {
         isRevenue: true,
         accrualYear: true,
         accrualMonth: true,
+        storeName: true,
+        splitRatios: true,
       },
     });
-    const rows = allRows.filter((r) => {
-      const ey = r.accrualYear ?? r.year;
-      const em = r.accrualMonth ?? r.month;
-      return ey === year && em === month;
-    });
+    const rows = allRows
+      .filter((r) => {
+        const ey = r.accrualYear ?? r.year;
+        const em = r.accrualMonth ?? r.month;
+        if (ey !== year || em !== month) return false;
+        // 自店舗指定の行は表示、splitRatios あり行は当該店舗が比率に含まれる場合のみ表示
+        if (r.storeName === store) return true;
+        if (r.splitRatios) {
+          try {
+            const ratios = JSON.parse(r.splitRatios);
+            return !!(ratios && typeof ratios === "object" && store in ratios);
+          } catch {
+            return false;
+          }
+        }
+        return false;
+      })
+      .map((r) => ({
+        ...r,
+        // クライアント向けには splitRatios をパース済オブジェクトで返す
+        splitRatios: (() => {
+          if (!r.splitRatios) return null;
+          try {
+            const parsed = JSON.parse(r.splitRatios);
+            return parsed && typeof parsed === "object" ? parsed : null;
+          } catch {
+            return null;
+          }
+        })(),
+      }));
 
     // Match Amazon orders to fill breakdown for AMAZON expenses
     // Include orders for this month + orders with no payment date
@@ -180,6 +211,8 @@ export async function PUT(request: NextRequest) {
       amount?: number;
       deposit?: number;
       breakdown?: string;
+      // 依頼A: 行ごとの按分比率（店舗→%）。null/未指定なら変更なし、明示null送信なら按分解除
+      splitRatios?: Record<string, number> | null;
     }> = body.updates ?? [body];
 
     if (!updates.length || !updates[0].id) {
@@ -204,6 +237,20 @@ export async function PUT(request: NextRequest) {
       }
       if (update.amount !== undefined) data.amount = update.amount;
       if (update.deposit !== undefined) data.deposit = update.deposit;
+      if (update.splitRatios !== undefined) {
+        // null → 解除、オブジェクト → JSON文字列化（0以下/不正な比率は除外）
+        if (update.splitRatios === null) {
+          data.splitRatios = null;
+        } else if (typeof update.splitRatios === "object") {
+          const clean: Record<string, number> = {};
+          for (const [k, v] of Object.entries(update.splitRatios)) {
+            const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+            if (Number.isFinite(n) && n > 0) clean[k] = n;
+          }
+          data.splitRatios =
+            Object.keys(clean).length > 0 ? JSON.stringify(clean) : null;
+        }
+      }
       if (update.breakdown !== undefined) {
         data.breakdown = update.breakdown;
         // 依頼⑥: 内訳の編集時に発生月帰属を再計算

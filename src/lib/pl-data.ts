@@ -4,7 +4,11 @@
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE } from "@/lib/constants";
 import { toFiscalIndex, type PlMonthlyData } from "@/lib/pl-xlsx";
-import { singleStoreShare, allStoresShare } from "@/lib/manual-expense-split";
+import {
+  singleStoreShare,
+  allStoresShare,
+  expenseRowShare,
+} from "@/lib/manual-expense-split";
 
 export interface PlAggregateResult {
   fiscalYear: number;
@@ -47,7 +51,11 @@ export async function aggregatePlForFiscalYear(
       where: {
         year: { in: expenseYears },
         isRevenue: 0,
-        ...(store ? { storeName: store } : { storeName: notHqOrHidden }),
+        // 依頼A: splitRatios あり行はフィルタを跨ぐため OR で展開
+        OR: [
+          { storeName: store ? store : notHqOrHidden },
+          { splitRatios: { not: null } },
+        ],
       },
     }),
     prisma.salesDetail.findMany({
@@ -127,17 +135,21 @@ export async function aggregatePlForFiscalYear(
     ensureSlot(idx).salesPersonalAndProduct += r.grossSales;
   }
 
+  // 依頼A: splitRatios あり行は比率で配分
+  const expenseTarget: string | null = store ? store : null;
   for (const r of allExpenses) {
     const ey = r.accrualYear ?? r.year;
     const em = r.accrualMonth ?? r.month;
     const idx = toFiscalIndex(ey, em, fiscalYear);
     if (idx === null) continue;
+    const share = expenseRowShare(r, expenseTarget);
+    if (share === 0) continue;
     const slot = ensureSlot(idx);
     const cat = r.category ?? "その他";
     if (cat === "仕入高") {
-      slot.cogs += r.amount;
+      slot.cogs += share;
     } else {
-      slot.expenses[cat] = (slot.expenses[cat] ?? 0) + r.amount;
+      slot.expenses[cat] = (slot.expenses[cat] ?? 0) + share;
     }
   }
 
