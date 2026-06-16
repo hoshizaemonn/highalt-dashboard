@@ -4,6 +4,7 @@
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE } from "@/lib/constants";
 import { toFiscalIndex, type PlMonthlyData } from "@/lib/pl-xlsx";
+import { singleStoreShare, allStoresShare } from "@/lib/manual-expense-split";
 
 export interface PlAggregateResult {
   fiscalYear: number;
@@ -143,12 +144,10 @@ export async function aggregatePlForFiscalYear(
   for (const r of allManualExpense) {
     const idx = toFiscalIndex(r.year, r.month, fiscalYear);
     if (idx === null) continue;
-    let amount = r.totalAmount;
-    if (r.storeName === "") {
-      amount = store ? amount / storeCount : amount;
-    } else if (store && r.storeName !== store) {
-      continue;
-    }
+    const amount = store
+      ? singleStoreShare(r, store, storeCount)
+      : allStoresShare(r);
+    if (amount === 0) continue;
     const slot = ensureSlot(idx);
     if (r.category === "仕入高") {
       slot.cogs += amount;
