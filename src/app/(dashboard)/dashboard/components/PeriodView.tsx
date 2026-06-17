@@ -30,6 +30,7 @@ import {
   formatCompact,
   numFormat,
   KPICard,
+  MaskedAmount,
   SectionTitle,
   ChartTooltip,
   MemberTooltip,
@@ -914,6 +915,8 @@ export default function PeriodView({
           color?: string;
           isHours?: boolean;
           isPerHour?: boolean;
+          /** 社員給与の黒塗り（店長権限）: true の行は金額の代わりに黒帯を描画する */
+          masked?: boolean;
         };
 
         const nMonths = monthly.filter(
@@ -933,7 +936,11 @@ export default function PeriodView({
         });
 
         // Payroll detail
-        const hasPayroll = monthly.some((m) => m.gross_total > 0);
+        // 社員給与の黒塗り（安蒜さん依頼）: 店長など非admin では正社員給与・人件費（課税支給合計）を黒塗り。
+        // この場合サーバ側で fulltime_gross / gross_total は 0 に伏せられるため、
+        // hasPayroll の判定は黒塗りされない labor_cost（人件費合計）を使う。
+        const payrollMasked = annualData.payroll_masked === true;
+        const hasPayroll = monthly.some((m) => m.labor_cost > 0);
         if (hasPayroll) {
           const ftSum = monthly.reduce((s, m) => s + (m.fulltime_gross || 0), 0);
           const ptSum = monthly.reduce((s, m) => s + (m.parttime_gross || 0), 0);
@@ -945,6 +952,7 @@ export default function PeriodView({
             values: monthly.map((m) => m.fulltime_gross || 0),
             total: ftSum,
             avg: Math.round(ftSum / nMonths),
+            masked: payrollMasked,
           });
           rows.push({
             label: "  契約社員給与",
@@ -958,6 +966,7 @@ export default function PeriodView({
             total: grossSum,
             avg: Math.round(grossSum / nMonths),
             bold: true,
+            masked: payrollMasked,
           });
           rows.push({
             label: "  法定福利費",
@@ -1096,14 +1105,14 @@ export default function PeriodView({
                     </td>
                     {row.values.map((v, j) => (
                       <td key={j} className="px-3 py-1.5 text-right whitespace-nowrap">
-                        {fmtCell(v, row.isHours, row.isPerHour)}
+                        {row.masked ? <MaskedAmount /> : fmtCell(v, row.isHours, row.isPerHour)}
                       </td>
                     ))}
                     <td className="px-3 py-1.5 text-right bg-gray-50 whitespace-nowrap">
-                      {fmtCell(row.total, row.isHours, row.isPerHour)}
+                      {row.masked ? <MaskedAmount /> : fmtCell(row.total, row.isHours, row.isPerHour)}
                     </td>
                     <td className="px-3 py-1.5 text-right bg-gray-50 whitespace-nowrap">
-                      {fmtCell(row.avg, row.isHours, row.isPerHour)}
+                      {row.masked ? <MaskedAmount /> : fmtCell(row.avg, row.isHours, row.isPerHour)}
                     </td>
                   </tr>
                 ))}

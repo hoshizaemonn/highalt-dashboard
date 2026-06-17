@@ -141,6 +141,11 @@ export interface DashboardData {
     parttime_count: number;
     legal_welfare: number;
   };
+  /**
+   * 店長権限などで社員給与（正社員給与・基本給・役職手当・残業手当・課税支給合計）が
+   * 黒塗りされている場合 true。true のときサーバ側で該当値は 0 に伏せて返している。
+   */
+  payroll_masked?: boolean;
   expense: {
     total: number;
     by_category: Record<string, number>;
@@ -256,6 +261,11 @@ export interface PlanBreakdownEntry {
 
 export interface AnnualData {
   store: string | null;
+  /**
+   * 店長権限などで社員給与（正社員給与・課税支給合計）が黒塗りされている場合 true。
+   * true のとき各月の fulltime_gross / gross_total はサーバ側で 0 に伏せて返している。
+   */
+  payroll_masked?: boolean;
   /** リクエストした全期間（例: 通期=12ヶ月分の "YYYY-MM"） */
   periods?: string[];
   /** 実績データが入っている最終月までキャップした範囲（前期/予算と揃えるための実効期間） */
@@ -516,6 +526,20 @@ export function HelpHint({ text }: { text: string }) {
 
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-lg font-bold text-gray-700 mt-8 mb-3">{children}</h2>;
+}
+
+/**
+ * 金額の「黒塗り」表示。店長権限などで社員給与を非表示にする際に金額の代わりに描画する。
+ * 黒い帯で値を隠し、ホバーで理由を表示する。
+ */
+export function MaskedAmount() {
+  return (
+    <span
+      className="inline-block h-4 w-20 rounded bg-gray-800 align-middle select-none"
+      title="社員給与は店長権限では表示できません"
+      aria-label="非表示"
+    />
+  );
 }
 
 // Custom tooltip for charts

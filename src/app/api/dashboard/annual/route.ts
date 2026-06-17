@@ -579,6 +579,23 @@ export async function GET(request: NextRequest) {
     };
     });
 
+    // 社員給与の黒塗り（安蒜さん依頼）: 店長など非admin には社員の給与額を返さない。
+    // 各月の fulltime_gross（正社員給与）と gross_total（人件費・課税支給合計）を 0 に伏せ、
+    // payroll_masked を立てる。契約社員給与（アルバイト）・法定福利費・人件費合計・人数は従来どおり。
+    // ※ responseData はキャッシュ共有オブジェクトのため破壊的に変更せず、コピーを返す。
+    if (auth.session.role !== "admin") {
+      const masked = {
+        ...responseData,
+        monthly_data: responseData.monthly_data.map((m) => ({
+          ...m,
+          fulltime_gross: 0,
+          gross_total: 0,
+        })),
+        payroll_masked: true,
+      };
+      return NextResponse.json(masked);
+    }
+
     return NextResponse.json(responseData);
   } catch (error) {
     console.error("Dashboard annual API error:", error);
