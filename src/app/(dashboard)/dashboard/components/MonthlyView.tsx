@@ -10,6 +10,7 @@ import {
   HelpHint,
   SectionTitle,
   ChartTooltip,
+  MaskedAmount,
   DashboardData,
   buildBudgetRows,
   ResponsiveContainer,
@@ -66,6 +67,10 @@ export default function MonthlyView({
   // 予算 vs 実績セクション削除済み（坪井さん指示）。
   // budgetRows は予算データのフェッチを残してあるが、UI 表示は無し。
   void budgetRows;
+
+  // 社員給与の黒塗り（安蒜さん依頼）: 店長など非admin には社員の給与額を見せない。
+  // サーバ側で payroll_masked が立ち、対象金額は 0 に伏せて返ってくる。
+  const payrollMasked = data.payroll_masked === true || !isAdmin;
 
   return (
     <>
@@ -197,7 +202,11 @@ export default function MonthlyView({
             <tr className="border-b">
               <td className="px-4 py-1.5 pl-8 text-gray-600">正社員給与</td>
               <td className="px-4 py-1.5 text-right">
-                {formatYen(data.payroll.fulltime_gross)}
+                {payrollMasked ? (
+                  <MaskedAmount />
+                ) : (
+                  formatYen(data.payroll.fulltime_gross)
+                )}
               </td>
             </tr>
             <tr className="border-b">
@@ -206,19 +215,21 @@ export default function MonthlyView({
                 {formatYen(data.payroll.parttime_gross)}
               </td>
             </tr>
-            {data.payroll.base_salary > 0 && (
+            {/* 社員給与の内訳（基本給・役職手当・残業手当・課税支給合計）は
+                店長権限では非表示。正社員給与を黒塗りにしているため、内訳も伏せる。 */}
+            {!payrollMasked && data.payroll.base_salary > 0 && (
               <tr className="border-b">
                 <td className="px-4 py-1.5 pl-8 text-gray-600">基本給</td>
                 <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.base_salary)}</td>
               </tr>
             )}
-            {data.payroll.position_allowance > 0 && (
+            {!payrollMasked && data.payroll.position_allowance > 0 && (
               <tr className="border-b">
                 <td className="px-4 py-1.5 pl-8 text-gray-600">役職手当</td>
                 <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.position_allowance)}</td>
               </tr>
             )}
-            {data.payroll.overtime_pay > 0 && (
+            {!payrollMasked && data.payroll.overtime_pay > 0 && (
               <tr className="border-b">
                 <td className="px-4 py-1.5 pl-8 text-gray-600">残業手当</td>
                 <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.overtime_pay)}</td>
@@ -230,7 +241,7 @@ export default function MonthlyView({
                 <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.commute)}</td>
               </tr>
             )}
-            {data.payroll.taxable_total > 0 && (
+            {!payrollMasked && data.payroll.taxable_total > 0 && (
               <tr className="border-b">
                 <td className="px-4 py-1.5 pl-8 text-gray-600">
                   <span className="inline-flex items-center gap-1">
@@ -397,7 +408,7 @@ export default function MonthlyView({
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart
                   data={[
-                    data.payroll.fulltime_gross > 0 && { name: "正社員給与", 金額: data.payroll.fulltime_gross },
+                    !payrollMasked && data.payroll.fulltime_gross > 0 && { name: "正社員給与", 金額: data.payroll.fulltime_gross },
                     data.payroll.parttime_gross > 0 && { name: "契約社員給与", 金額: data.payroll.parttime_gross },
                     data.payroll.commute > 0 && { name: "通勤手当", 金額: data.payroll.commute },
                     data.payroll.legal_welfare > 0 && { name: "法定福利費", 金額: data.payroll.legal_welfare },
