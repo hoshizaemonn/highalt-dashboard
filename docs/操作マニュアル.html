@@ -324,7 +324,7 @@
   </div>
   <h1>ハイアルチ PLダッシュボード</h1>
   <div class="subtitle">操作マニュアル</div>
-  <div class="meta">URL: https://highalt-dashboard.vercel.app &nbsp;|&nbsp; 最終更新: 2026年4月20日</div>
+  <div class="meta">URL: https://highalt-dashboard.vercel.app &nbsp;|&nbsp; 最終更新: 2026年4月24日</div>
 </header>
 
 <div class="container">
@@ -585,7 +585,10 @@
   <p>KPIカードの下に、データの推移や内訳を示すグラフが表示されます。</p>
   <ul>
     <li><strong>月次推移グラフ:</strong> 売上・人件費・経費の月ごとの推移</li>
+    <li><strong>会員推移グラフ:</strong> 新規入会 / 退会 / 休会 の3本線で分割表示</li>
+    <li><strong>客単価グラフ（予算 vs 実績）:</strong> 月次・期・上期・下期の各ビューで、予算と実績を並べて表示</li>
     <li><strong>経費内訳:</strong> 勘定科目別の経費割合</li>
+    <li><strong>店舗別プラン契約者数:</strong> 店舗ごとのプラン契約者数を横並び表示（管理者のみ）</li>
     <li><strong>店舗比較:</strong> 全店舗の横並び比較（管理者のみ）</li>
   </ul>
 
@@ -619,7 +622,11 @@
     <div>
       <strong>対応形式:</strong> CSV（.csv）、Excel（.xlsx, .xls）<br>
       <strong>ファイルサイズ上限:</strong> 10MB<br>
-      <strong>上書き:</strong> 既存データがある月にアップロードすると上書きされます（確認ダイアログあり）<br>
+      <strong>上書き:</strong> 既存データがある月にアップロードすると上書きされます。下記の項目で上書き確認ダイアログが表示されます:<br>
+      &nbsp;・人件費CSV<br>
+      &nbsp;・経費CSV（PayPay銀行・Amazon注文履歴）<br>
+      &nbsp;・売上CSV（会員 ML001 / 売上明細 PL001 / 月次サマリ MA002）<br>
+      &nbsp;・客単価予算の手入力<br>
       アップロード履歴は自動的に記録されます。
     </div>
   </div>
@@ -730,6 +737,24 @@
     <li><span class="step-num">3</span><span>予算実績対比表CSVをアップロードします（各月の予算列を取り込みます）</span></li>
     <li><span class="step-num">4</span><span>「解析して保存する」をクリックします</span></li>
   </ol>
+
+  <h3>3.6 客単価予算の手入力</h3>
+  <p>予算CSVに客単価行が含まれていない場合や、後から客単価予算だけを更新したい場合に使用します。</p>
+  <ol class="steps">
+    <li><span class="step-num">1</span><span>「予算」タブを選択します</span></li>
+    <li><span class="step-num">2</span><span>対象店舗・対象年度（決算年）を指定します</span></li>
+    <li><span class="step-num">3</span><span>「客単価予算」フォームに月額（円）を入力します</span></li>
+    <li><span class="step-num">4</span><span>「保存」をクリックします（12ヶ月分一括で保存されます）</span></li>
+  </ol>
+
+  <div class="info-box info">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+    <div>
+      <strong>自動処理:</strong><br>
+      客単価の実績は <strong>PL001 の月会費合計 ÷ MA002 のプラン契約者数</strong> で自動計算されます。<br>
+      保存済みの予算を変更する場合、上書き確認ダイアログが表示されます。
+    </div>
+  </div>
 
   <a href="#top" class="back-top">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
