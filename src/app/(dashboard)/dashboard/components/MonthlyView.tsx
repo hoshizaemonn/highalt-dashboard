@@ -27,6 +27,7 @@ import { PromotionSection } from "./PromotionSection";
 import ExpenseDetailSection from "./ExpenseDetailSection";
 import { RecalculateButton, PayrollDetailSection } from "./PayrollSection";
 import { ManualEntrySection } from "./ManualEntrySection";
+import { PlComparisonSection } from "./PlComparisonSection";
 import { AttributesSection } from "./AttributesSection";
 import { EnqueteSection } from "./EnqueteSection";
 
@@ -496,6 +497,14 @@ export default function MonthlyView({
           />
         );
       })()}
+
+      {/* 前年比比較（人件費・消耗品費・広告宣伝費）— クライアント公式PL由来。
+          単月画面でも、選択中の会計年度の前年比を表示する（年次比較表）。 */}
+      <PlComparisonSection
+        store={store}
+        fiscalYear={month >= 10 ? year + 1 : year}
+        isAllStores={isAllStores}
+      />
 
       {/* 「予算 vs 実績」セクションは削除（坪井さん指示）。
           予算情報は各推移グラフの折れ線オーバーレイで確認する運用。 */}
