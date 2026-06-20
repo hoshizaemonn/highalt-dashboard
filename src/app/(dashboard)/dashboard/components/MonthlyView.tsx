@@ -241,7 +241,7 @@ export default function MonthlyView({
                 <td className="px-4 py-1.5 text-right">{formatYen(data.payroll.commute)}</td>
               </tr>
             )}
-            {!payrollMasked && data.payroll.taxable_total > 0 && (
+            {data.payroll.taxable_total > 0 && (
               <tr className="border-b">
                 <td className="px-4 py-1.5 pl-8 text-gray-600">
                   <span className="inline-flex items-center gap-1">
