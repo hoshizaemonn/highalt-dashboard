@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 /**
  * 期間ラベル（通期/上期/下期）から会計年度内の月範囲を fromYM / toYM に変換。
@@ -82,6 +82,44 @@ export default function PeriodView({
 }: PeriodViewProps) {
   const monthly = annualData.monthly_data;
   const { display: displayStore } = useStoreDisplayName();
+
+  // 前年比比較は「クライアント公式PL」を正とする（坪井さん決定）。
+  // 人件費・広告宣伝費・消耗品費は当年も前年も pl_actuals から取得し、
+  // KPI（人件費合計・営業利益）と前年比比較グラフをPL基準に揃える。
+  // ※ PL未取込・全体ビュー時は従来の granular 値にフォールバック。
+  const [plComp, setPlComp] = useState<{
+    hasData?: boolean;
+    categories?: { category: string; monthly: { month: number; current: number; prev: number }[] }[];
+  } | null>(null);
+  useEffect(() => {
+    if (isAllStores) {
+      setPlComp(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/dashboard/pl-comparison?fiscalYear=${fiscalYear}&store=${encodeURIComponent(store)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) setPlComp(d); })
+      .catch(() => { if (!cancelled) setPlComp(null); });
+    return () => { cancelled = true; };
+  }, [store, fiscalYear, isAllStores]);
+
+  const displayedMonths = new Set((monthly ?? []).map((m) => m.month));
+  const plSum = (cat: string, key: "current" | "prev"): number | null => {
+    if (!plComp || plComp.hasData === false || !plComp.categories) return null;
+    const c = plComp.categories.find((x) => x.category === cat);
+    if (!c) return null;
+    return c.monthly
+      .filter((mm) => displayedMonths.has(mm.month))
+      .reduce((s, mm) => s + (mm[key] || 0), 0);
+  };
+  const plLaborCur = plSum("人件費", "current");
+  const plLaborPrev = plSum("人件費", "prev");
+  const plAdvCur = plSum("広告宣伝費", "current");
+  const plAdvPrev = plSum("広告宣伝費", "prev");
+  const plSupCur = plSum("消耗品費", "current");
+  const plSupPrev = plSum("消耗品費", "prev");
+  const usePl = plLaborCur !== null; // PLデータがある店舗のみ差し替え
 
   // 店舗比較データの XAxis 表示用に、displayName を埋め込んだコピーを作る。
   // データ紐付けは store フィールドのまま、表示は store_display を使う。
@@ -232,11 +270,12 @@ export default function PeriodView({
         />
         <KPICard
           title="人件費合計"
-          value={formatYen(totals.labor)}
+          value={formatYen(usePl ? plLaborCur! : totals.labor)}
           color={COLORS.red}
-          salesRatioOf={{ numerator: totals.labor, revenue: totals.revenue }}
-          current={totals.labor}
-          previousYear={annualData.previous_period_totals?.labor}
+          help={usePl ? "クライアント公式PL基準（正社員・契約社員給与＋賞与＋通勤手当＋法定福利費）。前年比もPL同士で比較。" : undefined}
+          salesRatioOf={{ numerator: usePl ? plLaborCur! : totals.labor, revenue: totals.revenue }}
+          current={usePl ? plLaborCur! : totals.labor}
+          previousYear={usePl ? (plLaborPrev ?? 0) : annualData.previous_period_totals?.labor}
           previousYearLabel="前年比"
           lowerIsBetter
         />
@@ -251,15 +290,27 @@ export default function PeriodView({
           previousYearLabel="前年比"
           lowerIsBetter
         />
-        <KPICard
-          title="営業利益"
-          value={formatYen(totals.profit)}
-          color={totals.profit >= 0 ? COLORS.green : COLORS.red}
-          salesRatioOf={{ numerator: totals.profit, revenue: totals.revenue }}
-          current={totals.profit}
-          previousYear={annualData.previous_period_totals?.profit}
-          previousYearLabel="前年比"
-        />
+        {(() => {
+          // PL基準時は人件費をPLに差し替えて営業利益を再計算（売上・経費は従来ソース）
+          const profitCur = usePl
+            ? totals.revenue - plLaborCur! - totals.expense
+            : totals.profit;
+          const prevPp = annualData.previous_period_totals;
+          const profitPrev = usePl && prevPp
+            ? prevPp.revenue - (plLaborPrev ?? 0) - prevPp.expense
+            : prevPp?.profit;
+          return (
+            <KPICard
+              title="営業利益"
+              value={formatYen(profitCur)}
+              color={profitCur >= 0 ? COLORS.green : COLORS.red}
+              salesRatioOf={{ numerator: profitCur, revenue: totals.revenue }}
+              current={profitCur}
+              previousYear={profitPrev}
+              previousYearLabel="前年比"
+            />
+          );
+        })()}
       </div>
 
       {/* 前年比比較グラフ（坪井さん要望: 前期 vs 今期 を項目別に並べて見たい） */}
@@ -271,26 +322,33 @@ export default function PeriodView({
               <BarChart
                 data={(() => {
                   const prev = annualData.previous_period_totals!;
-                  const adv = chartData.reduce((s, d) => s + d.広告宣伝費, 0);
-                  const sup = chartData.reduce((s, d) => s + d.消耗品費, 0);
+                  // 人件費・広告宣伝費・消耗品費は PL を正とする（PLがあればPL、無ければgranular）
+                  const advCur = usePl ? (plAdvCur ?? 0) : chartData.reduce((s, d) => s + d.広告宣伝費, 0);
+                  const advPrev = usePl ? (plAdvPrev ?? 0) : prev.advertising;
+                  const supCur = usePl ? (plSupCur ?? 0) : chartData.reduce((s, d) => s + d.消耗品費, 0);
+                  const supPrev = usePl ? (plSupPrev ?? 0) : prev.supplies;
+                  const laborCur = usePl ? plLaborCur! : totals.labor;
+                  const laborPrev = usePl ? (plLaborPrev ?? 0) : prev.labor;
+                  const profitCur = usePl ? totals.revenue - laborCur - totals.expense : totals.profit;
+                  const profitPrev = usePl ? prev.revenue - laborPrev - prev.expense : prev.profit;
 
                   const items = isAllStores
                     ? [
                         { 項目: "売上", 前期: prev.revenue, 今期: totals.revenue },
-                        { 項目: "人件費", 前期: prev.labor, 今期: totals.labor },
-                        { 項目: "広告宣伝費", 前期: prev.advertising, 今期: adv },
-                        { 項目: "消耗品費", 前期: prev.supplies, 今期: sup },
-                        { 項目: "営業利益", 前期: prev.profit, 今期: totals.profit },
+                        { 項目: "人件費", 前期: laborPrev, 今期: laborCur },
+                        { 項目: "広告宣伝費", 前期: advPrev, 今期: advCur },
+                        { 項目: "消耗品費", 前期: supPrev, 今期: supCur },
+                        { 項目: "営業利益", 前期: profitPrev, 今期: profitCur },
                       ]
                     : [
                         { 項目: "会費", 前期: prev.sales_membership, 今期: chartData.reduce((s, d) => s + d.会費売上, 0) },
                         { 項目: "パーソナル", 前期: prev.sales_personal, 今期: chartData.reduce((s, d) => s + d.パーソナル売上, 0) },
                         { 項目: "物販", 前期: prev.sales_product, 今期: chartData.reduce((s, d) => s + d.物販売上, 0) },
                         { 項目: "その他", 前期: prev.sales_other, 今期: chartData.reduce((s, d) => s + d.その他売上, 0) },
-                        { 項目: "人件費", 前期: prev.labor, 今期: totals.labor },
-                        { 項目: "広告宣伝費", 前期: prev.advertising, 今期: adv },
-                        { 項目: "消耗品費", 前期: prev.supplies, 今期: sup },
-                        { 項目: "営業利益", 前期: prev.profit, 今期: totals.profit },
+                        { 項目: "人件費", 前期: laborPrev, 今期: laborCur },
+                        { 項目: "広告宣伝費", 前期: advPrev, 今期: advCur },
+                        { 項目: "消耗品費", 前期: supPrev, 今期: supCur },
+                        { 項目: "営業利益", 前期: profitPrev, 今期: profitCur },
                       ];
                   return items.map((d) => ({
                     ...d,
