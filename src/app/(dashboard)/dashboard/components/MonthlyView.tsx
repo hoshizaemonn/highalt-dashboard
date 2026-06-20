@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Download } from "lucide-react";
 import {
   COLORS,
@@ -27,6 +27,7 @@ import { PromotionSection } from "./PromotionSection";
 import ExpenseDetailSection from "./ExpenseDetailSection";
 import { RecalculateButton, PayrollDetailSection } from "./PayrollSection";
 import { ManualEntrySection } from "./ManualEntrySection";
+import { PlComparisonSection } from "./PlComparisonSection";
 import { AttributesSection } from "./AttributesSection";
 import { EnqueteSection } from "./EnqueteSection";
 
@@ -72,6 +73,41 @@ export default function MonthlyView({
   // サーバ側で payroll_masked が立ち、対象金額は 0 に伏せて返ってくる。
   const payrollMasked = data.payroll_masked === true || !isAdmin;
 
+  // 前年比は「クライアント公式PL」を正とする（坪井さん決定）。
+  // 当月の人件費をPLに差し替え、KPI（人件費合計・営業利益）と前年同月比をPL基準に揃える。
+  // ※ PL未取込・全体ビュー時は従来の granular 値にフォールバック。
+  const fiscalYear = month >= 10 ? year + 1 : year;
+  const [plComp, setPlComp] = useState<{
+    hasData?: boolean;
+    categories?: { category: string; monthly: { month: number; current: number; prev: number }[] }[];
+  } | null>(null);
+  useEffect(() => {
+    if (isAllStores) {
+      setPlComp(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/dashboard/pl-comparison?fiscalYear=${fiscalYear}&store=${encodeURIComponent(store)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) setPlComp(d); })
+      .catch(() => { if (!cancelled) setPlComp(null); });
+    return () => { cancelled = true; };
+  }, [store, fiscalYear, isAllStores]);
+
+  const plLaborMonth = (cal: number, key: "current" | "prev"): number | null => {
+    if (!plComp || plComp.hasData === false || !plComp.categories) return null;
+    const c = plComp.categories.find((x) => x.category === "人件費");
+    const mm = c?.monthly.find((m) => m.month === cal);
+    return mm ? mm[key] : null;
+  };
+  const plLaborCur = plLaborMonth(month, "current");
+  const usePl = plLaborCur !== null && plLaborCur !== 0;
+  const prevCalMonth = month === 1 ? 12 : month - 1;
+  const laborValue = usePl ? plLaborCur! : data.total_labor;
+  const laborPrevMonth = usePl ? plLaborMonth(prevCalMonth, "current") ?? undefined : data.prev_month_totals?.labor;
+  const laborPrevYear = usePl ? plLaborMonth(month, "prev") ?? undefined : data.prev_year_totals?.labor;
+  const profitValue = usePl ? data.total_revenue - laborValue - data.total_expense : data.operating_profit;
+
   return (
     <>
       {/* KPI Cards */}
@@ -87,14 +123,14 @@ export default function MonthlyView({
         />
         <KPICard
           title="人件費合計"
-          value={formatYen(data.total_labor)}
+          value={formatYen(laborValue)}
           color={COLORS.red}
-          help="正社員・契約社員給与の課税支給合計＋法定福利費＋通勤手当の合計。"
-          current={data.total_labor}
-          previousMonth={data.prev_month_totals?.labor}
-          previousYear={data.prev_year_totals?.labor}
+          help={usePl ? "クライアント公式PL基準（正社員・契約社員給与＋賞与＋通勤手当＋法定福利費）。前年同月比もPL同士で比較。" : "正社員・契約社員給与の課税支給合計＋法定福利費＋通勤手当の合計。"}
+          current={laborValue}
+          previousMonth={laborPrevMonth}
+          previousYear={laborPrevYear}
           lowerIsBetter
-          salesRatioOf={{ numerator: data.total_labor, revenue: data.total_revenue }}
+          salesRatioOf={{ numerator: laborValue, revenue: data.total_revenue }}
         />
         <KPICard
           title="経費合計"
@@ -109,14 +145,14 @@ export default function MonthlyView({
         />
         <KPICard
           title="営業利益"
-          value={formatYen(data.operating_profit)}
+          value={formatYen(profitValue)}
           // 赤字（営業利益マイナス）の場合は赤色で警告。緑固定だとミスリード。
-          color={data.operating_profit >= 0 ? COLORS.green : COLORS.red}
+          color={profitValue >= 0 ? COLORS.green : COLORS.red}
           help="売上合計 − 人件費合計 − 経費合計。プラスなら黒字、マイナスなら赤字。"
-          current={data.operating_profit}
+          current={profitValue}
           previousMonth={data.prev_month_totals?.profit}
           previousYear={data.prev_year_totals?.profit}
-          salesRatioOf={{ numerator: data.operating_profit, revenue: data.total_revenue }}
+          salesRatioOf={{ numerator: profitValue, revenue: data.total_revenue }}
         />
       </div>
 
@@ -496,6 +532,14 @@ export default function MonthlyView({
           />
         );
       })()}
+
+      {/* 前年比比較（人件費・消耗品費・広告宣伝費）— クライアント公式PL由来。
+          単月画面でも、選択中の会計年度の前年比を表示する（年次比較表）。 */}
+      <PlComparisonSection
+        store={store}
+        fiscalYear={month >= 10 ? year + 1 : year}
+        isAllStores={isAllStores}
+      />
 
       {/* 「予算 vs 実績」セクションは削除（坪井さん指示）。
           予算情報は各推移グラフの折れ線オーバーレイで確認する運用。 */}
