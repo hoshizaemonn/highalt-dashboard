@@ -966,7 +966,6 @@ export default function PeriodView({
             total: grossSum,
             avg: Math.round(grossSum / nMonths),
             bold: true,
-            masked: payrollMasked,
           });
           rows.push({
             label: "  法定福利費",

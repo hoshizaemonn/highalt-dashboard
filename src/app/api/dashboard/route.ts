@@ -551,8 +551,9 @@ export async function GET(request: NextRequest) {
     });
 
     // 社員給与の黒塗り（安蒜さん依頼）: 店長など非admin には社員の給与額を返さない。
-    // 正社員給与・基本給・役職手当・残業手当・課税支給合計を 0 に伏せ、payroll_masked を立てる。
-    // アルバイト（契約社員給与）・通勤手当・法定福利費・総勤務時間・人件費合計は従来どおり表示。
+    // 正社員給与・基本給・役職手当・残業手当を 0 に伏せ、payroll_masked を立てる。
+    // 課税支給合計（基本給+役職手当+残業代の合算・社員/アルバイト混在）は店長にも表示するため伏せない。
+    // アルバイト（契約社員給与）・通勤手当・法定福利費・総勤務時間・人件費合計も従来どおり表示。
     // ※ responseData はキャッシュ共有オブジェクトのため破壊的に変更せず、コピーを返す。
     if (auth.session.role !== "admin") {
       const masked = {
@@ -563,7 +564,6 @@ export async function GET(request: NextRequest) {
           base_salary: 0,
           position_allowance: 0,
           overtime_pay: 0,
-          taxable_total: 0,
         },
         payroll_masked: true,
       };
