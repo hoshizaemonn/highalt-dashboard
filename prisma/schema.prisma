@@ -574,3 +574,23 @@ model StoreDisplayName {
 
   @@map("store_display_name")
 }
+
+// ─── PL Actuals（前年比比較用・クライアント公式PL由来）──────────────
+// クライアントの「開業からの実績累計（PL）」から取り込む月次の費目別実績。
+// ダッシュボードの granular（PayPay自動仕分け）とは別系統で、
+// 前年比比較を「同一ソース（公式PL）の当年 vs 前年」で内部整合させるために使う。
+// 当年(9期)の値は翌期になれば自動的に前年(year-1)として比較対象になる。
+// amount は円（PLは千円なので取込時に ×1000 して保存）。
+model PlActual {
+  id        Int    @id @default(autoincrement())
+  storeName String @map("store_name")
+  year      Int
+  month     Int
+  /** 費目キー: "人件費" / "消耗品費" / "広告宣伝費" */
+  category  String
+  /** 金額（円） */
+  amount    Int    @default(0)
+
+  @@unique([storeName, year, month, category])
+  @@map("pl_actuals")
+}
