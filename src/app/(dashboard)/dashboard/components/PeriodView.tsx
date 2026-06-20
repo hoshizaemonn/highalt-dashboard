@@ -53,6 +53,7 @@ import {
   LabelList,
 } from "./shared";
 import { PromotionPeriodSection } from "./PromotionSection";
+import { PlComparisonSection } from "./PlComparisonSection";
 import { useStoreDisplayName } from "../useStoreDisplayName";
 import { AttributesSection } from "./AttributesSection";
 import { EnqueteSection } from "./EnqueteSection";
@@ -721,6 +722,13 @@ export default function PeriodView({
         fiscalYear={fiscalYear}
         store={store}
         months={monthly.map((m) => m.month)}
+      />
+
+      {/* 前年比比較（人件費・消耗品費・広告宣伝費）— クライアント公式PL由来 */}
+      <PlComparisonSection
+        store={store}
+        fiscalYear={fiscalYear}
+        isAllStores={isAllStores}
       />
 
       {/* Store comparison (全体 only) */}
