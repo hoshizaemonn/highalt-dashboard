@@ -3,11 +3,14 @@
 // クライアント（ハイアルチ）の「2026_9期 予算実績対比表（◯◯スタジオ）」xlsx の
 // 「開業からの実績累計（PL）」シートを CSV にしたものを取り込む。
 //
-// CSV 構造（全店共通様式・単位は千円）:
-//   [ラベル列][開業〜前期末までの月次...][前年(8期)12ヶ月][当年(9期)12ヶ月][累積]
-//   - 月ヘッダー行に「累積」が含まれる。累積の手前12列＝当年、その手前12列＝前年。
-//   - 当年ブロックの月ラベルは前年と同じ表記（1年ずれの誤表記）。位置で判定し、
-//     前年ブロック先頭ラベルから基準年月を読み、当年＝前年+1年として補正する。
+// CSV 構造（店舗の開業時期で列範囲が異なるが行様式は共通・単位は千円）:
+//   [ラベル列][月次ヘッダー...][累積 or 実績累計]
+//   - 月ヘッダー行は最後に合計列「累積」または「実績累計」を持つ。
+//   - 月ラベルは原則そのまま (例 "2025.10") だが、一部店舗（東日本橋・春日）は
+//     末尾に当年(9期)を「前年と同じ年表記」で複製した誤ラベル列が付く。
+//     → 同じ(年,月)が2回出たら2回目以降を「当年＝+1年」として補正する。
+//   - 月ごとに(年,月)→列を確定し、直近24ヶ月（前年+当年）を採用する。
+//   - 前年比は取込後に (year) vs (year-1) で比較する（このパーサは年月をそのまま保存）。
 //
 // 抽出費目（坪井さん要望の前年比比較3費目）:
 //   - 人件費 = 正社員・契約社員給与 + 賞与(8期は契約社員給与) + 通勤手当 + 法定福利費
@@ -42,50 +45,61 @@ function findRow(
   return rows.find((r) => r[0] != null && pred(String(r[0]).trim()));
 }
 
+const TOTAL_RE = /^(実績)?累[積計]$/; // 「累積」「実績累計」など合計列のラベル
+const MONTH_RE = /^(\d{4})[.,/](\d{1,2})$/; // "2025.10" / "2024,12" 等
+
 /**
  * パース済み CSV 行（parseCSV の戻り値）から PlActualRecord[] を生成する。
  * 解析できない場合は Error を投げる（呼び出し側で 400 を返す）。
  */
 export function parsePlActuals(rows: string[][]): PlActualRecord[] {
-  // 月ヘッダー行 = 「累積」を含む行
+  // 月ヘッダー行 = 合計列ラベル（累積/実績累計）を含む行
   const headerIdx = rows.findIndex((r) =>
-    r.some((c) => String(c).trim() === "累積"),
+    r.some((c) => TOTAL_RE.test(String(c).trim())),
   );
   if (headerIdx === -1) {
     throw new Error(
-      "PL CSVの形式を認識できません（『累積』列が見つかりません）。『開業からの実績累計（PL）』シートのCSVか確認してください。",
+      "PL CSVの形式を認識できません（合計列『累積』『実績累計』が見つかりません）。『開業からの実績累計（PL）』シートのCSVか確認してください。",
     );
   }
   const header = rows[headerIdx];
-  const ruiIdx = header.findIndex((c) => String(c).trim() === "累積");
-  if (ruiIdx < 24) {
-    throw new Error("PL CSVの列数が不足しています（前年・当年ブロックを抽出できません）。");
+  const totalIdx = header.findIndex((c) => TOTAL_RE.test(String(c).trim()));
+
+  // 月ラベル列を収集（ラベル列=0 を除く、合計列の手前まで）
+  const monthCols: { col: number; year: number; month: number }[] = [];
+  for (let i = 1; i < totalIdx; i++) {
+    const label = String(header[i]).replace(/\s/g, "");
+    const m = label.match(MONTH_RE);
+    if (m) {
+      monthCols.push({ col: i, year: parseInt(m[1], 10), month: parseInt(m[2], 10) });
+    }
+  }
+  if (monthCols.length === 0) {
+    throw new Error("PL CSVに月次ヘッダー（例: 2025.10）が見つかりません。");
   }
 
-  // 当年=累積の手前12列、前年=その手前12列
-  const currentCols: number[] = [];
-  for (let i = ruiIdx - 12; i < ruiIdx; i++) currentCols.push(i);
-  const prevCols: number[] = [];
-  for (let i = ruiIdx - 24; i < ruiIdx - 12; i++) prevCols.push(i);
-
-  // 前年ブロック先頭ラベルから基準年月（例 "2024.10" / "2024,10" / "2024\n10"）を読む
-  const firstPrevLabel = String(header[prevCols[0]]).replace(/\s/g, "");
-  const m = firstPrevLabel.match(/(\d{4})[.,/](\d{1,2})/);
-  if (!m) {
-    throw new Error(
-      `前年ブロックの年月ラベルを認識できません（取得値: "${header[prevCols[0]]}"）。`,
-    );
+  // 重複ラベル補正: 同じ(年,月)が2回目以降に出たら誤ラベルの当年ブロック → +1年
+  // （東日本橋・春日: 末尾に当年を前年表記で複製している）
+  const seen = new Set<string>();
+  for (const mc of monthCols) {
+    let key = `${mc.year}-${mc.month}`;
+    if (seen.has(key)) {
+      mc.year += 1;
+      key = `${mc.year}-${mc.month}`;
+    }
+    seen.add(key);
   }
-  const baseYear = parseInt(m[1], 10);
-  const baseMonth = parseInt(m[2], 10);
 
-  // offset ヶ月目（0=基準月）の (year, month)。addYear で年を足す（当年=+1）。
-  const ymOf = (offset: number, addYear: number): [number, number] => {
-    let mm = baseMonth + offset;
-    const yy = baseYear + addYear + Math.floor((mm - 1) / 12);
-    mm = ((mm - 1) % 12) + 1;
-    return [yy, mm];
-  };
+  // (年,月) → 列（補正後に重複が残る場合は後勝ち）。直近24ヶ月（前年+当年）を採用。
+  const byYm = new Map<string, number>();
+  for (const mc of monthCols) byYm.set(`${mc.year}-${mc.month}`, mc.col);
+  const yms = Array.from(byYm.entries())
+    .map(([k, col]) => {
+      const [y, m] = k.split("-").map(Number);
+      return { year: y, month: m, col };
+    })
+    .sort((a, b) => a.year - b.year || a.month - b.month)
+    .slice(-24);
 
   // 費目の行を特定
   const laborRows = [
@@ -110,25 +124,13 @@ export function parsePlActuals(rows: string[][]): PlActualRecord[] {
     out.push({ year, month, category, amount: Math.round(sen * 1000) });
   };
 
-  for (let i = 0; i < 12; i++) {
-    const [py, pm] = ymOf(i, 0); // 前年
-    const [cy, cm] = ymOf(i, 1); // 当年
-    // 人件費
-    push(py, pm, "人件費", sumAt(laborRows, prevCols[i]));
-    push(cy, cm, "人件費", sumAt(laborRows, currentCols[i]));
-    // 消耗品費
-    if (shohinRow) {
-      push(py, pm, "消耗品費", toNumber(shohinRow[prevCols[i]]));
-      push(cy, cm, "消耗品費", toNumber(shohinRow[currentCols[i]]));
-    }
-    // 広告宣伝費
-    if (adRow) {
-      push(py, pm, "広告宣伝費", toNumber(adRow[prevCols[i]]));
-      push(cy, cm, "広告宣伝費", toNumber(adRow[currentCols[i]]));
-    }
+  for (const { year, month, col } of yms) {
+    push(year, month, "人件費", sumAt(laborRows, col));
+    if (shohinRow) push(year, month, "消耗品費", toNumber(shohinRow[col]));
+    if (adRow) push(year, month, "広告宣伝費", toNumber(adRow[col]));
   }
 
-  // 全0月（未到来の当年後半など）は保存しない（前年比の分母/見栄えのため）
+  // 0円は保存しない（未到来月・未発生費目）
   return out.filter((r) => r.amount !== 0);
 }
 
