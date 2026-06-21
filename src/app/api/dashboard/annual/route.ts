@@ -191,6 +191,7 @@ export async function GET(request: NextRequest) {
       allManual,
       allMember,
       allBudget,
+      allPlActual,
     ] = await Promise.all([
       // 本部一括経費（手動入力）
       prisma.manualExpenseEntry.findMany({ where: { year: { in: years } } }),
@@ -205,7 +206,22 @@ export async function GET(request: NextRequest) {
       }),
       // 予算: 店舗指定があればその店舗、全体時は本部+非表示除外
       prisma.budgetData.findMany({ where: budgetWhere }),
+      // 消耗品費・広告宣伝費はクライアント公式PLを正とする（坪井さん決定）
+      prisma.plActual.findMany({
+        where: {
+          year: { in: years },
+          ...storeWhere,
+          category: { in: ["消耗品費", "広告宣伝費"] },
+        },
+        select: { year: true, month: true, category: true, amount: true },
+      }),
     ]);
+    // PL上書き用マップ: `${year}-${month}-${category}` -> 金額（全体時は店舗合算）
+    const plExpMap = new Map<string, number>();
+    for (const r of allPlActual) {
+      const k = `${r.year}-${r.month}-${r.category}`;
+      plExpMap.set(k, (plExpMap.get(k) ?? 0) + r.amount);
+    }
 
     const monthLabels = [
       "", "1月", "2月", "3月", "4月", "5月", "6月",
@@ -278,6 +294,16 @@ export async function GET(request: NextRequest) {
         if (share === 0) continue;
         expenseByCat[row.category] = (expenseByCat[row.category] || 0) + share;
         totalExpense += share;
+      }
+
+      // 消耗品費・広告宣伝費はクライアント公式PL（pl_actuals）を正に上書き（坪井さん決定）
+      for (const cat of ["消耗品費", "広告宣伝費"]) {
+        const plVal = plExpMap.get(`${y}-${m}-${cat}`);
+        if (plVal !== undefined) {
+          const old = expenseByCat[cat] || 0;
+          expenseByCat[cat] = plVal;
+          totalExpense += plVal - old;
+        }
       }
 
       // Sales

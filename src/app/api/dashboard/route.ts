@@ -234,6 +234,31 @@ export async function GET(request: NextRequest) {
       totalExpense += share;
     }
 
+    // 消耗品費・広告宣伝費はクライアント公式PL（pl_actuals）を正とする（坪井さん決定）。
+    // PayPay自動仕分けの誤分類（消耗品費が桁違い等）を避けるため、PLに該当月の値があれば上書き。
+    const PL_OVERRIDE_CATS = ["消耗品費", "広告宣伝費"];
+    const plExpRows = await prisma.plActual.findMany({
+      where: {
+        storeName: storeNameFilter,
+        category: { in: PL_OVERRIDE_CATS },
+        ...(month !== undefined ? { year, month } : { year }),
+      },
+      select: { category: true, amount: true },
+    });
+    if (plExpRows.length > 0) {
+      const plByCat: Record<string, number> = {};
+      for (const r of plExpRows) {
+        plByCat[r.category] = (plByCat[r.category] || 0) + r.amount;
+      }
+      for (const cat of PL_OVERRIDE_CATS) {
+        if (plByCat[cat] !== undefined) {
+          const old = expenseByCategory[cat] || 0;
+          expenseByCategory[cat] = plByCat[cat];
+          totalExpense += plByCat[cat] - old;
+        }
+      }
+    }
+
     const expenseSummary = {
       total: Math.round(totalExpense),
       by_category: expenseByCategory,
