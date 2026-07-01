@@ -45,10 +45,11 @@ export default function OverridesTab() {
   const [sortKey, setSortKey] = useState<SortKey>("employeeId");
   const [sortAsc, setSortAsc] = useState(true);
 
-  // Dual assignment (兼務) dialog
+  // Dual/Multi assignment (兼務) dialog — 3店舗以上に対応（可変の割当リスト）
   const [dualTarget, setDualTarget] = useState<Override | null>(null);
-  const [dualStore, setDualStore] = useState(STORES[0]);
-  const [dualRatio, setDualRatio] = useState(50);
+  const [dualSplits, setDualSplits] = useState<
+    { storeName: string; ratio: number }[]
+  >([]);
 
   // New employee form
   const [newEmpId, setNewEmpId] = useState("");
@@ -240,24 +241,21 @@ export default function OverridesTab() {
     setSaving(false);
   }
 
-  // Handle dual assignment (兼務) registration
+  // Handle multi-store assignment (兼務・N店舗) registration
   async function handleDualRegister() {
     if (!dualTarget) return;
     setSaving(true);
     setMessage("");
     try {
-      // Use dual action to atomically replace all overrides for this employee
+      // multi action で全 override を N 店舗分に原子的に置き換える
       await fetch("/api/settings/overrides", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "dual",
+          action: "multi",
           employeeId: dualTarget.employeeId,
           employeeName: dualTarget.employeeName,
-          store1: dualTarget.storeName,
-          ratio1: 100 - dualRatio,
-          store2: dualStore,
-          ratio2: dualRatio,
+          stores: dualSplits.filter((s) => s.ratio > 0),
         }),
       });
       setDualTarget(null);
@@ -268,6 +266,14 @@ export default function OverridesTab() {
     }
     setSaving(false);
   }
+
+  // 兼務モーダルの割当合計（100%チェック用）
+  const dualTotal = dualSplits.reduce((s, x) => s + (x.ratio || 0), 0);
+  const dualValid = Math.abs(dualTotal - 100) <= 1 && dualSplits.every((s) => s.ratio > 0);
+  // 追加候補（未使用の店舗）
+  const dualAvailable = ALL_STORES.filter(
+    (s) => !dualSplits.some((d) => d.storeName === s),
+  );
 
   async function handleAddEmployee() {
     setSaving(true);
@@ -500,20 +506,34 @@ export default function OverridesTab() {
                       />
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {!hasDual(o.employeeId) && (
-                        <button
-                          onClick={() => {
-                            setDualTarget(o);
-                            setDualStore(
-                              STORES.find((s) => s !== o.storeName) || STORES[0],
+                      <button
+                        onClick={() => {
+                          setDualTarget(o);
+                          // 既に複数店舗なら現在の割当で初期化（3店舗目以降の追加が可能）。
+                          // 単一店舗なら 50/50 の2店舗で初期化。
+                          const current = overrides.filter(
+                            (x) => x.employeeId === o.employeeId,
+                          );
+                          if (current.length >= 2) {
+                            setDualSplits(
+                              current.map((c) => ({
+                                storeName: c.storeName,
+                                ratio: c.ratio,
+                              })),
                             );
-                            setDualRatio(50);
-                          }}
-                          className="text-xs text-blue-600 hover:text-blue-800 underline"
-                        >
-                          兼務
-                        </button>
-                      )}
+                          } else {
+                            const other =
+                              STORES.find((s) => s !== o.storeName) || STORES[0];
+                            setDualSplits([
+                              { storeName: o.storeName, ratio: 50 },
+                              { storeName: other, ratio: 50 },
+                            ]);
+                          }
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 underline"
+                      >
+                        {hasDual(o.employeeId) ? "兼務編集" : "兼務"}
+                      </button>
                     </td>
                     <td className="px-3 py-2 text-center">
                       <input
@@ -554,37 +574,62 @@ export default function OverridesTab() {
                   兼務登録
                 </h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  {dualTarget.employeeName}（{dualTarget.employeeId}）を2店舗に割り当てます
+                  {dualTarget.employeeName}（{dualTarget.employeeId}）を{dualSplits.length}店舗に割り当てます（合計100%）
                 </p>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded">
-                    <span className="text-sm font-medium w-16">店舗1</span>
-                    <span className="text-sm flex-1">{dualTarget.storeName}</span>
-                    <span className="text-sm font-bold text-blue-700">{100 - dualRatio}%</span>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-blue-50 rounded">
-                    <span className="text-sm font-medium w-16">店舗2</span>
-                    <select
-                      value={dualStore}
-                      onChange={(e) => setDualStore(e.target.value)}
-                      className="border border-gray-300 rounded px-2 py-1 text-sm flex-1"
+                <div className="space-y-2">
+                  {dualSplits.map((sp, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                      <span className="text-xs font-medium text-gray-500 w-12">店舗{idx + 1}</span>
+                      <select
+                        value={sp.storeName}
+                        onChange={(e) => {
+                          const next = [...dualSplits];
+                          next[idx] = { ...next[idx], storeName: e.target.value };
+                          setDualSplits(next);
+                        }}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm flex-1"
+                      >
+                        <option value={sp.storeName}>{sp.storeName}</option>
+                        {dualAvailable.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={sp.ratio}
+                        onChange={(e) => {
+                          const next = [...dualSplits];
+                          next[idx] = { ...next[idx], ratio: parseInt(e.target.value, 10) || 0 };
+                          setDualSplits(next);
+                        }}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm w-16 text-right"
+                      />
+                      <span className="text-sm">%</span>
+                      {dualSplits.length > 2 && (
+                        <button
+                          onClick={() => setDualSplits(dualSplits.filter((_, i) => i !== idx))}
+                          className="text-gray-400 hover:text-red-500 text-sm px-1"
+                          aria-label="この店舗を削除"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {dualAvailable.length > 0 && (
+                    <button
+                      onClick={() =>
+                        setDualSplits([...dualSplits, { storeName: dualAvailable[0], ratio: 0 }])
+                      }
+                      className="text-xs text-blue-600 hover:underline"
                     >
-                      {ALL_STORES.filter((s) => s !== dualTarget.storeName).map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min={1}
-                      max={99}
-                      value={dualRatio}
-                      onChange={(e) => setDualRatio(parseInt(e.target.value, 10) || 0)}
-                      className="border border-gray-300 rounded px-2 py-1 text-sm w-16 text-right"
-                    />
-                    <span className="text-sm">%</span>
-                  </div>
-                  <p className="text-xs text-gray-500 text-right">
-                    合計: {100 - dualRatio} + {dualRatio} = 100%
+                      ＋ 店舗を追加
+                    </button>
+                  )}
+                  <p className={`text-xs text-right ${dualValid ? "text-green-600" : "text-amber-600"}`}>
+                    合計: {dualTotal}%{dualValid ? "" : "（100%になるよう調整してください）"}
                   </p>
                 </div>
                 <div className="flex gap-2 justify-end mt-4">
@@ -596,7 +641,7 @@ export default function OverridesTab() {
                   </button>
                   <button
                     onClick={handleDualRegister}
-                    disabled={saving || dualRatio <= 0 || dualRatio >= 100}
+                    disabled={saving || !dualValid}
                     className="text-sm bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
                   >
                     {saving ? "登録中..." : "兼務登録する"}

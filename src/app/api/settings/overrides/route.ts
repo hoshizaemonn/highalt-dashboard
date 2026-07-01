@@ -107,6 +107,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ created }, { status: 201 });
     }
 
+    // Multi assignment (兼務・N店舗): replace all overrides with N new ones
+    // body.stores = [{ storeName, ratio }, ...]（3店舗以上対応）
+    if (body.action === "multi") {
+      const empId = typeof body.employeeId === "string" ? parseInt(body.employeeId, 10) : body.employeeId;
+      const empName = body.employeeName || "";
+      const stores = Array.isArray(body.stores) ? body.stores : [];
+      const valid = stores.filter(
+        (s: { storeName?: string; ratio?: number }) =>
+          s && s.storeName && Number(s.ratio) > 0,
+      );
+      if (isNaN(empId) || valid.length === 0) {
+        return NextResponse.json({ error: "Invalid multi params" }, { status: 400 });
+      }
+      // 店舗の重複は不可（unique制約）
+      const uniqStores = new Set(valid.map((s: { storeName: string }) => s.storeName));
+      if (uniqStores.size !== valid.length) {
+        return NextResponse.json({ error: "店舗が重複しています" }, { status: 400 });
+      }
+      await prisma.$transaction(async (tx) => {
+        await tx.storeOverride.deleteMany({ where: { employeeId: empId } });
+        for (const s of valid) {
+          await tx.storeOverride.create({
+            data: {
+              employeeId: empId,
+              storeName: s.storeName,
+              ratio: Math.round(Number(s.ratio)),
+              employeeName: empName,
+            },
+          });
+        }
+      });
+      return NextResponse.json({ ok: true, count: valid.length }, { status: 201 });
+    }
+
     // Dual assignment (兼務): replace all overrides with 2 new ones
     if (body.action === "dual") {
       const empId = typeof body.employeeId === "string" ? parseInt(body.employeeId, 10) : body.employeeId;
