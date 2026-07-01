@@ -249,6 +249,12 @@ export async function GET(request: NextRequest) {
       );
       const newSignups = msList.reduce((s, r) => s + r.newPlanSignups, 0);
       const cancellations = msList.reduce((s, r) => s + r.cancellations, 0);
+      // 退会率: 単月レコードの文字列ではなく、期間の退会数合計÷在籍(プラン契約者)合計で算出。
+      // （従来は ms 1件の cancellation_rate 文字列を使っており、春日のように該当月が0%だと
+      //   退会数があるのに0%表示になる不具合があった）
+      const subscribersSum = msList.reduce((s, r) => s + r.planSubscribers, 0);
+      const periodCancelRate =
+        subscribersSum > 0 ? (cancellations / subscribersSum) * 100 : 0;
 
       // 体験者数: 期間内の各月で manualEntry.trialCount > 0 なら採用、
       // 無ければ MemberData の trialDate/firstTrialDate を月マッチで自動カウント
@@ -292,7 +298,7 @@ export async function GET(request: NextRequest) {
         expense: Math.round(totalExpense),
         profit: Math.round(totalRevenue - totalLabor - totalExpense),
         plan_subscribers: ms?.planSubscribers ?? 0,
-        cancellation_rate: ms?.cancellationRate ?? "",
+        cancellation_rate: `${periodCancelRate.toFixed(1)}%`,
         trial_count: trialCount,
         new_signups: newSignups,
         cancellations,
