@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const ip = getClientIp(request);
 
     // Check rate limit before processing
-    const lockoutSeconds = checkRateLimit(ip);
+    const lockoutSeconds = await checkRateLimit(ip);
     if (lockoutSeconds > 0) {
       return NextResponse.json(
         {
@@ -135,7 +135,7 @@ export async function POST(request: Request) {
     }
 
     if (!user) {
-      recordFailedAttempt(ip);
+      await recordFailedAttempt(ip);
       return NextResponse.json(
         { error: "ユーザー名またはパスワードが正しくありません" },
         { status: 401 }
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
     const valid = await verifyPassword(password, user.password);
 
     if (!valid) {
-      const locked = recordFailedAttempt(ip);
+      const locked = await recordFailedAttempt(ip);
       if (locked) {
         return NextResponse.json(
           {
@@ -161,7 +161,7 @@ export async function POST(request: Request) {
     }
 
     // Success — clear failed attempts
-    clearAttempts(ip);
+    await clearAttempts(ip);
 
     await createSession(user.id, user.role, user.storeName, user.displayName);
 
@@ -175,7 +175,12 @@ export async function POST(request: Request) {
       },
     });
   } catch (e) {
-    console.error("Login error:", e);
+    // セキュリティ強化(2026-07): スタックトレースやクエリ詳細（PIIを含み得る）を
+    // ログに残さないよう、エラー種別とメッセージのみ出力する。
+    console.error(
+      "Login error:",
+      e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+    );
     return NextResponse.json(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }

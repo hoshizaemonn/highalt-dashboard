@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
       categories,
     });
   } catch (error) {
-    console.error("PL comparison API error:", error);
+    logError("PL comparison API error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

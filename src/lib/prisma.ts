@@ -2,14 +2,12 @@ import { PrismaClient } from "../generated/prisma/client";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-// NODE_TLS_REJECT_UNAUTHORIZED=0 is required because Supabase's PostgreSQL
-// connection uses a self-signed SSL certificate. Without this, Node.js rejects
-// the TLS handshake with "UNABLE_TO_VERIFY_LEAF_SIGNATURE". In production the
-// Pool-level `ssl: { rejectUnauthorized: false }` handles it, but during local
-// development / Vercel serverless cold-starts the global flag is also needed to
-// cover any connection attempt that bypasses the Pool (e.g. Prisma internals).
-// Required for Supabase self-signed SSL certificates
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+// セキュリティ強化(2026-07): NODE_TLS_REJECT_UNAUTHORIZED=0 のグローバル設定を廃止。
+// この設定はDB接続だけでなくNode.jsプロセスの「全ての」外向きTLS通信の証明書検証を
+// 無効化してしまうため危険（中間者攻撃を検出できない）。
+// Supabaseの自己署名証明書への対応は、下の Pool レベルの
+// `ssl: { rejectUnauthorized: false }` だけで足りる
+// （driver adapter 経由の接続は全てこの Pool を通る）。
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -20,12 +18,27 @@ function createPrismaClient() {
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set");
   }
+  // 接続文字列の sslmode パラメータを除去し、SSL設定は下の Pool の ssl オプションに
+  // 一本化する。pg 8.x では URL 側の sslmode=require が Pool の ssl 設定より優先され、
+  // Supabase の自己署名証明書が検証エラー（self-signed certificate in certificate
+  // chain）になるため。従来はプロセス全体の NODE_TLS_REJECT_UNAUTHORIZED=0 で
+  // 隠れていた問題で、除去により「検証緩和はDB接続のみ」に限定される。
+  let poolConnectionString = connectionString;
+  try {
+    const u = new URL(connectionString);
+    if (u.searchParams.has("sslmode")) {
+      u.searchParams.delete("sslmode");
+      poolConnectionString = u.toString();
+    }
+  } catch {
+    // URLとして解釈できない形式ならそのまま使う
+  }
   // Supabase Supavisor pooler port 5432 = session mode（max 15 接続上限）
   // Vercel サーバーレスは関数インスタンスごとに pg Pool を持つため、
   // インスタンス × max が Supavisor 上限を超えると EMAXCONNSESSION エラーになる。
   // max を低めに抑えて、複数インスタンス同時起動でも上限内に収まるようにする。
   const pool = new Pool({
-    connectionString,
+    connectionString: poolConnectionString,
     ssl: { rejectUnauthorized: false },
     max: 3,
     idleTimeoutMillis: 5000,
@@ -35,8 +48,23 @@ function createPrismaClient() {
   return new PrismaClient({ adapter });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+// 遅延初期化(2026-07): モジュール読み込み時ではなく、最初にDBアクセスした時に
+// クライアントを生成する。Next.jsのビルド（Collecting page data）はAPIルートを
+// importするだけでDBに触らないため、DATABASE_URL が無い環境（Vercelプレビュー等）
+// でもビルドが通る。実行時の挙動は従来と同一。
+function getPrismaClient(): PrismaClient {
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = createPrismaClient();
+  }
+  return globalForPrisma.prisma;
 }
+
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, prop, client);
+    return typeof value === "function"
+      ? (value as (...args: unknown[]) => unknown).bind(client)
+      : value;
+  },
+});

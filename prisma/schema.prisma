@@ -594,3 +594,16 @@ model PlActual {
   @@unique([storeName, year, month, category])
   @@map("pl_actuals")
 }
+
+// ─── Login Rate Limit（ブルートフォース対策）────────────────────────
+// Vercelサーバーレスではインメモリ状態がインスタンス間で共有されないため、
+// ログイン失敗回数をDBで永続化する。テーブル未作成時はコード側で
+// インメモリ方式にフォールバックする（scripts/sql/2026-07_login_attempts.sql 参照）。
+model LoginAttempt {
+  ip           String    @id
+  count        Int       @default(0)
+  firstAttempt DateTime  @map("first_attempt")
+  lockedUntil  DateTime? @map("locked_until")
+
+  @@map("login_attempts")
+}

@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
@@ -220,7 +221,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ expenses: enriched });
   } catch (err) {
-    console.error("GET /api/dashboard/expenses error:", err);
+    logError("GET /api/dashboard/expenses error:", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -414,7 +415,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ updated: results.length });
   } catch (err) {
-    console.error("PUT /api/dashboard/expenses error:", err);
+    logError("PUT /api/dashboard/expenses error:", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

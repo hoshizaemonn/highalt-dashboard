@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
       total: members.length,
     });
   } catch (error) {
-    console.error("Plan breakdown API error:", error);
+    logError("Plan breakdown API error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

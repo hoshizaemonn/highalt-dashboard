@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStoreUploadAccess } from "@/lib/auth";
@@ -122,7 +123,7 @@ export async function POST(request: NextRequest) {
       yearRange: `${years[0]}〜${years[years.length - 1]}`,
     });
   } catch (error) {
-    console.error("PL actual upload error:", error);
+    logError("PL actual upload error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

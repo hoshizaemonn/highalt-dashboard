@@ -1,9 +1,14 @@
 import bcrypt from "bcryptjs";
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual, randomBytes } from "crypto";
 import { cookies } from "next/headers";
 
 const SESSION_COOKIE = "highalt_session";
 const SESSION_MAX_AGE = 60 * 60 * 24; // 24 hours in seconds
+
+// 開発環境用フォールバック: 固定文字列ではなくプロセス起動ごとのランダム値。
+// 固定のdevシークレットはコード流出時にセッション偽造に悪用できるため廃止。
+// （開発サーバ再起動でセッションが切れるが、開発用途では問題ない）
+let devFallbackSecret: string | null = null;
 
 function getSessionSecret(): string {
   const secret = process.env.SESSION_SECRET;
@@ -11,7 +16,10 @@ function getSessionSecret(): string {
     if (process.env.NODE_ENV === "production") {
       throw new Error("SESSION_SECRET environment variable is required in production");
     }
-    return "dev-secret-do-not-use-in-production";
+    if (!devFallbackSecret) {
+      devFallbackSecret = randomBytes(48).toString("base64url");
+    }
+    return devFallbackSecret;
   }
   return secret;
 }

@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
       employees: empMonthGroups.size,
     });
   } catch (error) {
-    console.error("Recalculate store error:", error);
+    logError("Recalculate store error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

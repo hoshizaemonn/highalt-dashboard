@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STORES, HQ_STORE } from "@/lib/constants";
@@ -325,7 +326,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(responseData);
   } catch (error) {
-    console.error("Store compare API error:", error);
+    logError("Store compare API error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

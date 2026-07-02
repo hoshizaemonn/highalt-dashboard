@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
@@ -339,7 +340,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("GET /api/download/expense-csv error:", err);
+    logError("GET /api/download/expense-csv error:", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

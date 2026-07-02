@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
       splits: validSplits,
     });
   } catch (err) {
-    console.error("payroll-ratio-adjust error:", err);
+    logError("payroll-ratio-adjust error:", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

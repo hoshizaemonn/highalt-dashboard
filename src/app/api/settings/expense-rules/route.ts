@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireAdmin } from "@/lib/auth";
@@ -15,7 +16,7 @@ export async function GET() {
 
     return NextResponse.json({ rules });
   } catch (error) {
-    console.error("Expense rules GET error:", error);
+    logError("Expense rules GET error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ rule }, { status: 201 });
   } catch (error) {
-    console.error("Expense rules POST error:", error);
+    logError("Expense rules POST error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -72,7 +73,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Expense rules DELETE error:", error);
+    logError("Expense rules DELETE error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

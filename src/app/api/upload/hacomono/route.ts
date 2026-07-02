@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStoreUploadAccess } from "@/lib/auth";
@@ -113,7 +114,7 @@ export async function GET(request: NextRequest) {
       count,
     });
   } catch (error) {
-    console.error("Hacomono check error:", error);
+    logError("Hacomono check error:", error);
     return NextResponse.json(
       {
         error: "Internal server error",
@@ -1014,7 +1015,7 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   } catch (error) {
-    console.error("Hacomono upload error:", error);
+    logError("Hacomono upload error:", error);
     return NextResponse.json(
       {
         error: "Internal server error",

@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -335,7 +336,7 @@ export async function POST(request: NextRequest) {
       autoClassified,
     });
   } catch (error) {
-    console.error("Amazon upload error:", error);
+    logError("Amazon upload error:", error);
     return NextResponse.json(
       {
         error: "Internal server error",

@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireStoreUploadAccess } from "@/lib/auth";
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ exists: count > 0, count });
   } catch (error) {
-    console.error("Promotion budget check error:", error);
+    logError("Promotion budget check error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -133,7 +134,7 @@ export async function POST(request: NextRequest) {
       categories: [...new Set(records.map((r) => r.category))],
     });
   } catch (error) {
-    console.error("Promotion budget upload error:", error);
+    logError("Promotion budget upload error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
