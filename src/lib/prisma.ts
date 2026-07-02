@@ -18,12 +18,27 @@ function createPrismaClient() {
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set");
   }
+  // 接続文字列の sslmode パラメータを除去し、SSL設定は下の Pool の ssl オプションに
+  // 一本化する。pg 8.x では URL 側の sslmode=require が Pool の ssl 設定より優先され、
+  // Supabase の自己署名証明書が検証エラー（self-signed certificate in certificate
+  // chain）になるため。従来はプロセス全体の NODE_TLS_REJECT_UNAUTHORIZED=0 で
+  // 隠れていた問題で、除去により「検証緩和はDB接続のみ」に限定される。
+  let poolConnectionString = connectionString;
+  try {
+    const u = new URL(connectionString);
+    if (u.searchParams.has("sslmode")) {
+      u.searchParams.delete("sslmode");
+      poolConnectionString = u.toString();
+    }
+  } catch {
+    // URLとして解釈できない形式ならそのまま使う
+  }
   // Supabase Supavisor pooler port 5432 = session mode（max 15 接続上限）
   // Vercel サーバーレスは関数インスタンスごとに pg Pool を持つため、
   // インスタンス × max が Supavisor 上限を超えると EMAXCONNSESSION エラーになる。
   // max を低めに抑えて、複数インスタンス同時起動でも上限内に収まるようにする。
   const pool = new Pool({
-    connectionString,
+    connectionString: poolConnectionString,
     ssl: { rejectUnauthorized: false },
     max: 3,
     idleTimeoutMillis: 5000,
