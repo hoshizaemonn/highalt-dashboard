@@ -33,8 +33,23 @@ function createPrismaClient() {
   return new PrismaClient({ adapter });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+// 遅延初期化(2026-07): モジュール読み込み時ではなく、最初にDBアクセスした時に
+// クライアントを生成する。Next.jsのビルド（Collecting page data）はAPIルートを
+// importするだけでDBに触らないため、DATABASE_URL が無い環境（Vercelプレビュー等）
+// でもビルドが通る。実行時の挙動は従来と同一。
+function getPrismaClient(): PrismaClient {
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = createPrismaClient();
+  }
+  return globalForPrisma.prisma;
 }
+
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, prop, client);
+    return typeof value === "function"
+      ? (value as (...args: unknown[]) => unknown).bind(client)
+      : value;
+  },
+});
