@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireAdmin } from "@/lib/auth";
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
       count,
     });
   } catch (error) {
-    console.error("Payroll check error:", error);
+    logError("Payroll check error:", error);
     return NextResponse.json(
       {
         error: "Internal server error",
@@ -406,7 +407,7 @@ export async function POST(request: NextRequest) {
       nameConflicts: [],
     });
   } catch (error) {
-    console.error("Payroll upload error:", error);
+    logError("Payroll upload error:", error);
     return NextResponse.json(
       {
         error: "Internal server error",

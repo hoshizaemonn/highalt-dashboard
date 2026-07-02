@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStoreUploadAccess } from "@/lib/auth";
@@ -71,7 +72,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("Member summary update error:", error);
+    logError("Member summary update error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

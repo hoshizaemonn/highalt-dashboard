@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireAdmin } from "@/lib/auth";
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ entries });
   } catch (error) {
-    console.error("Amazon master GET error:", error);
+    logError("Amazon master GET error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ entry }, { status: 201 });
   } catch (error) {
-    console.error("Amazon master POST error:", error);
+    logError("Amazon master POST error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -169,7 +170,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Amazon master DELETE error:", error);
+    logError("Amazon master DELETE error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

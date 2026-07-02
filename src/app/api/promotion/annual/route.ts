@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
@@ -158,7 +159,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ monthly: results });
   } catch (err) {
-    console.error("GET /api/promotion/annual error:", err);
+    logError("GET /api/promotion/annual error:", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

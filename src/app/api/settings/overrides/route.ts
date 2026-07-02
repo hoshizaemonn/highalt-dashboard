@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireAdmin } from "@/lib/auth";
@@ -37,7 +38,7 @@ export async function GET() {
 
     return NextResponse.json({ overrides });
   } catch (error) {
-    console.error("Overrides GET error:", error);
+    logError("Overrides GET error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -198,7 +199,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ override }, { status: 201 });
   } catch (error) {
-    console.error("Overrides POST error:", error);
+    logError("Overrides POST error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -224,7 +225,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Overrides DELETE error:", error);
+    logError("Overrides DELETE error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

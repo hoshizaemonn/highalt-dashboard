@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ employees });
   } catch (error) {
-    console.error("Payroll detail API error:", error);
+    logError("Payroll detail API error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

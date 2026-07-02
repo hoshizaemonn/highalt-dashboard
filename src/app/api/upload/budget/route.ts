@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireStoreUploadAccess } from "@/lib/auth";
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
       count,
     });
   } catch (error) {
-    console.error("Budget check error:", error);
+    logError("Budget check error:", error);
     return NextResponse.json(
       {
         error: "Internal server error",
@@ -284,7 +285,7 @@ export async function POST(request: NextRequest) {
       period,
     });
   } catch (error) {
-    console.error("Budget upload error:", error);
+    logError("Budget upload error:", error);
     return NextResponse.json(
       {
         error: "Internal server error",

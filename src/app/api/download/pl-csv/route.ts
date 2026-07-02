@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { aggregatePlForFiscalYear, yenToThousand } from "@/lib/pl-data";
@@ -235,7 +236,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("GET /api/download/pl-csv error:", err);
+    logError("GET /api/download/pl-csv error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Internal server error" },
       { status: 500 },

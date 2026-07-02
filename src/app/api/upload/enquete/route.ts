@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
@@ -169,7 +170,7 @@ export async function GET(request: NextRequest) {
     const count = await prisma.enqueteAnswer.count({ where });
     return NextResponse.json({ count });
   } catch (e) {
-    console.error("Enquete check error:", e);
+    logError("Enquete check error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -382,7 +383,7 @@ export async function POST(request: NextRequest) {
       skippedNoMember,
     });
   } catch (e) {
-    console.error("Enquete upload error:", e);
+    logError("Enquete upload error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

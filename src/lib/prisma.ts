@@ -2,14 +2,12 @@ import { PrismaClient } from "../generated/prisma/client";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-// NODE_TLS_REJECT_UNAUTHORIZED=0 is required because Supabase's PostgreSQL
-// connection uses a self-signed SSL certificate. Without this, Node.js rejects
-// the TLS handshake with "UNABLE_TO_VERIFY_LEAF_SIGNATURE". In production the
-// Pool-level `ssl: { rejectUnauthorized: false }` handles it, but during local
-// development / Vercel serverless cold-starts the global flag is also needed to
-// cover any connection attempt that bypasses the Pool (e.g. Prisma internals).
-// Required for Supabase self-signed SSL certificates
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+// セキュリティ強化(2026-07): NODE_TLS_REJECT_UNAUTHORIZED=0 のグローバル設定を廃止。
+// この設定はDB接続だけでなくNode.jsプロセスの「全ての」外向きTLS通信の証明書検証を
+// 無効化してしまうため危険（中間者攻撃を検出できない）。
+// Supabaseの自己署名証明書への対応は、下の Pool レベルの
+// `ssl: { rejectUnauthorized: false }` だけで足りる
+// （driver adapter 経由の接続は全てこの Pool を通る）。
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;

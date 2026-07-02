@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, effectiveStoreScope, requireStoreUploadAccess } from "@/lib/auth";
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ reports });
   } catch (err) {
-    console.error("GET /api/promotion error:", err);
+    logError("GET /api/promotion error:", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ report });
   } catch (err) {
-    console.error("POST /api/promotion error:", err);
+    logError("POST /api/promotion error:", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

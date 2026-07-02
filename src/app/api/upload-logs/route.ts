@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
@@ -21,7 +22,7 @@ export async function GET() {
 
     return NextResponse.json({ logs });
   } catch (error) {
-    console.error("Upload logs GET error:", error);
+    logError("Upload logs GET error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ log }, { status: 201 });
   } catch (error) {
-    console.error("Upload logs POST error:", error);
+    logError("Upload logs POST error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

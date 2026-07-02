@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE, STORES } from "@/lib/constants";
@@ -597,7 +598,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(responseData);
   } catch (error) {
-    console.error("Dashboard API error:", error);
+    logError("Dashboard API error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
