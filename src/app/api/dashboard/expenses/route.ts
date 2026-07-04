@@ -1,7 +1,11 @@
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession, effectiveStoreScope } from "@/lib/auth";
+import {
+  requireSession,
+  effectiveStoreScope,
+  getSessionAllowedStores,
+} from "@/lib/auth";
 import { parseAccrualMonth } from "@/lib/accrual";
 import { REVENUE_CATEGORIES } from "@/lib/constants";
 
@@ -262,6 +266,44 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // 非adminの書込スコープ = GETの可視条件と一致させる（自店舗 or 按分に自店を含む共有行）。
+    // session.storeName は複数店舗担当だとカンマ区切りになるため、完全一致ではなく担当店舗リストで判定する。
+    const isAdmin = auth.session.role === "admin";
+    const allowedStores = isAdmin
+      ? []
+      : getSessionAllowedStores(auth.session);
+
+    // 按分（splitRatios / categorySplits）に担当店舗が含まれるか（＝店長が閲覧・編集してよい共有行か）
+    const splitIncludesAllowedStore = (row: {
+      storeName: string | null;
+      splitRatios: string | null;
+      categorySplits: string | null;
+    }): boolean => {
+      if (row.storeName && allowedStores.includes(row.storeName)) return true;
+      const inObj = (raw: string | null): boolean => {
+        if (!raw) return false;
+        try {
+          const o = JSON.parse(raw);
+          if (o && typeof o === "object" && !Array.isArray(o)) {
+            return allowedStores.some((s) => s in o);
+          }
+          if (Array.isArray(o)) {
+            for (const item of o) {
+              if (
+                item?.splitRatios &&
+                typeof item.splitRatios === "object" &&
+                allowedStores.some((s) => s in item.splitRatios)
+              ) {
+                return true;
+              }
+            }
+          }
+        } catch {}
+        return false;
+      };
+      return inObj(row.splitRatios) || inObj(row.categorySplits);
+    };
+
     // Run updates sequentially (Supabase connection pool limit)
     const results = [];
     for (const update of updates) {
@@ -337,13 +379,13 @@ export async function PUT(request: NextRequest) {
 
       if (Object.keys(data).length === 0) continue;
 
-      // 非adminは自店舗のレコードのみ更新可
-      if (auth.session.role !== "admin") {
+      // 非adminは、自店舗の行 または 按分に自店を含む共有行のみ更新可（GETの可視条件と一致）
+      if (!isAdmin) {
         const existing = await prisma.expenseData.findUnique({
           where: { id: update.id },
-          select: { storeName: true },
+          select: { storeName: true, splitRatios: true, categorySplits: true },
         });
-        if (!existing || existing.storeName !== auth.session.storeName) {
+        if (!existing || !splitIncludesAllowedStore(existing)) {
           return NextResponse.json(
             { error: "他店舗のデータは編集できません" },
             { status: 403 },
