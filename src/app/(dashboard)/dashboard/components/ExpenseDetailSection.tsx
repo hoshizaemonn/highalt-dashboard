@@ -16,6 +16,7 @@ interface CategorySplitItem {
 
 interface ExpenseRecord {
   id: number;
+  month: number;
   day: number;
   description: string | null;
   amount: number;
@@ -242,7 +243,7 @@ export default function ExpenseDetailSection({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-gray-50">
-              <th className="text-left px-3 py-2 font-medium text-gray-600 w-12">日</th>
+              <th className="text-left px-3 py-2 font-medium text-gray-600 w-16">月/日</th>
               <th className="text-left px-3 py-2 font-medium text-gray-600 min-w-[160px]">摘要</th>
               <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">出金</th>
               <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">入金</th>
@@ -275,7 +276,7 @@ export default function ExpenseDetailSection({
               return (
                 <React.Fragment key={e.id}>
                 <tr className={`border-b hover:bg-gray-50/50 ${rowBg}`}>
-                  <td className="px-3 py-1.5 text-gray-600">{e.day}</td>
+                  <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{e.month}/{e.day}</td>
                   <td className="px-3 py-1.5 text-gray-700">{e.description ?? ""}</td>
                   <td className="px-3 py-1.5 text-right">
                     <input
