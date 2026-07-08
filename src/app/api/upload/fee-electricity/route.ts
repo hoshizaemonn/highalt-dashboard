@@ -171,30 +171,35 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // upsert（既存キーは上書き・idempotent）
+    // 既存の同月・同店舗・同科目の自動取込行を上書き（idempotent）。
+    // manual_expense_entry はユニーク制約なし（依頼#3で撤廃）のため、
+    // findFirst で既存行を引いて update、無ければ create する。
+    // 店舗別の支払手数料/電気料は本自動取込のみが作る想定なので、これで二重登録しない。
     const updatedByName = session.displayName || session.storeName || "admin";
     await prisma.$transaction(async (tx) => {
       for (const e of entries) {
-        await tx.manualExpenseEntry.upsert({
-          where: {
-            year_month_category_storeName: {
+        const existingRow = await tx.manualExpenseEntry.findFirst({
+          where: { year, month, category: e.category, storeName: e.store },
+          select: { id: true },
+        });
+        if (existingRow) {
+          await tx.manualExpenseEntry.update({
+            where: { id: existingRow.id },
+            data: { totalAmount: e.amount, note: e.note, updatedByName },
+          });
+        } else {
+          await tx.manualExpenseEntry.create({
+            data: {
               year,
               month,
               category: e.category,
               storeName: e.store,
+              totalAmount: e.amount,
+              note: e.note,
+              updatedByName,
             },
-          },
-          create: {
-            year,
-            month,
-            category: e.category,
-            storeName: e.store,
-            totalAmount: e.amount,
-            note: e.note,
-            updatedByName,
-          },
-          update: { totalAmount: e.amount, note: e.note, updatedByName },
-        });
+          });
+        }
       }
       await tx.uploadLog.create({
         data: {

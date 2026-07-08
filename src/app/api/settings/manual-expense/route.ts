@@ -117,63 +117,38 @@ export async function PUT(request: NextRequest) {
 
   await prisma.$transaction(async (tx) => {
     for (const r of cleaned) {
+      // 金額0は「その行を削除」の意味。既存行(id有)は削除、未保存の新規空行(id無)は無視。
+      // ※ ユニーク制約撤廃(依頼#3)に伴い、キー一括削除はしない（同一キーの別行を巻き込むため）。
       if (r.totalAmount === 0) {
         if (r.id !== undefined) {
           await tx.manualExpenseEntry.deleteMany({ where: { id: r.id } });
-        } else {
-          await tx.manualExpenseEntry.deleteMany({
-            where: {
-              year: r.year,
-              month: r.month,
-              category: r.category,
-              storeName: r.storeName,
-            },
-          });
         }
         continue;
       }
-      // 既存ID指定時: 必ずそのレコードを id ベースで update（カテゴリ等の主キー変更も同一レコードで反映）
-      // これにより、ユーザーがカテゴリや月を変更した際に「新規追加されてしまうバグ」を回避。
+      // 既存行(id有)は必ず id ベースで更新（カテゴリ・月・計上先の変更も同一行に反映）。
       if (r.id !== undefined) {
-        try {
-          await tx.manualExpenseEntry.update({
-            where: { id: r.id },
-            data: {
-              year: r.year,
-              month: r.month,
-              category: r.category,
-              storeName: r.storeName,
-              totalAmount: r.totalAmount,
-              splitRatios: r.splitRatios,
-              note: r.note,
-              updatedByName,
-            },
-          });
-          continue;
-        } catch {
-          // unique制約違反（移動先キーに既存行あり）等は fall-through で upsert に任せる
-        }
-      }
-      await tx.manualExpenseEntry.upsert({
-        where: {
-          year_month_category_storeName: {
+        await tx.manualExpenseEntry.updateMany({
+          where: { id: r.id },
+          data: {
             year: r.year,
             month: r.month,
             category: r.category,
             storeName: r.storeName,
+            totalAmount: r.totalAmount,
+            splitRatios: r.splitRatios,
+            note: r.note,
+            updatedByName,
           },
-        },
-        create: {
+        });
+        continue;
+      }
+      // 新規行(id無)は常に新規作成 → 同一(年/月/カテゴリ/計上先)でも複数行を登録できる（依頼#3）。
+      await tx.manualExpenseEntry.create({
+        data: {
           year: r.year,
           month: r.month,
           category: r.category,
           storeName: r.storeName,
-          totalAmount: r.totalAmount,
-          splitRatios: r.splitRatios,
-          note: r.note,
-          updatedByName,
-        },
-        update: {
           totalAmount: r.totalAmount,
           splitRatios: r.splitRatios,
           note: r.note,
