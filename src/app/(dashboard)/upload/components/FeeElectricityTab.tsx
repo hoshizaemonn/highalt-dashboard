@@ -12,7 +12,8 @@ import {
 
 /**
  * 決済手数料（PAY.JP + fincode 合算）・電気料（シンエナジー）の一括取込タブ（admin限定）。
- * 対象年月と各ファイル（任意）を選び、店舗別・月次で本部一括経費に反映する。
+ * ファイルは1つのドロップゾーンにまとめて入れ、サーバー側が中身から
+ * PAY.JP / fincode / シンエナジー を自動判別する。
  */
 interface PreviewRow {
   store: string;
@@ -20,33 +21,48 @@ interface PreviewRow {
   amount: number;
   existing: number | null;
 }
+interface Detected {
+  name: string;
+  type: string;
+}
 
 const now = new Date();
 
 export function FeeElectricityTab({ onSuccess }: { onSuccess: () => void }) {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1); // 前月運用が多いが既定は当月
-  const [payjp, setPayjp] = useState<File | null>(null);
-  const [fincode, setFincode] = useState<File | null>(null);
-  const [sinenergy, setSinenergy] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
+  const [detected, setDetected] = useState<Detected[]>([]);
+
+  // 同名ファイルの重複を避けつつ追加
+  const addFiles = (incoming: File[]) => {
+    setPreview(null);
+    setFiles((prev) => {
+      const map = new Map(prev.map((f) => [f.name, f]));
+      for (const f of incoming) map.set(f.name, f);
+      return [...map.values()];
+    });
+  };
+  const removeFile = (idx: number) => {
+    setPreview(null);
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const buildForm = (dryRun: boolean) => {
     const fd = new FormData();
     fd.append("year", String(year));
     fd.append("month", String(month));
     if (dryRun) fd.append("dryRun", "true");
-    if (payjp) fd.append("payjp", payjp);
-    if (fincode) fd.append("fincode", fincode);
-    if (sinenergy) fd.append("sinenergy", sinenergy);
+    for (const f of files) fd.append("files", f);
     return fd;
   };
 
   const handlePreview = async () => {
-    if (!payjp && !fincode && !sinenergy) {
-      setStatus({ type: "error", text: "いずれかのファイルを選択してください" });
+    if (files.length === 0) {
+      setStatus({ type: "error", text: "ファイルを1つ以上選択してください" });
       return;
     }
     setLoading(true);
@@ -60,6 +76,7 @@ export function FeeElectricityTab({ onSuccess }: { onSuccess: () => void }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "解析に失敗しました");
       setPreview(data.preview as PreviewRow[]);
+      setDetected((data.detected as Detected[]) ?? []);
       setStatus(null);
     } catch (e) {
       setStatus({ type: "error", text: e instanceof Error ? e.message : "エラーが発生しました" });
@@ -83,9 +100,8 @@ export function FeeElectricityTab({ onSuccess }: { onSuccess: () => void }) {
         text: `${year}年${month}月：${data.recordCount}件を取り込みました。`,
       });
       setPreview(null);
-      setPayjp(null);
-      setFincode(null);
-      setSinenergy(null);
+      setDetected([]);
+      setFiles([]);
       onSuccess();
     } catch (e) {
       setStatus({ type: "error", text: e instanceof Error ? e.message : "エラーが発生しました" });
@@ -106,7 +122,8 @@ export function FeeElectricityTab({ onSuccess }: { onSuccess: () => void }) {
           毎月の <strong>PAY.JP</strong>・<strong>fincode</strong> の決済手数料（合算して「支払手数料」）と、
           <strong>シンエナジー</strong>の電気料金明細（「電気料」）を、店舗別・月次でまとめて取り込みます。
           <br />
-          対象年月を選び、お持ちのファイルを入れて「内容を確認」→ プレビューを見て「取り込む」。
+          対象年月を選び、<strong>3ファイルをまとめて</strong>下の枠に入れてください（PAY.JP・fincodeのCSV、シンエナジーのExcel）。
+          種類は自動で判別します。「内容を確認」→ プレビューを見て「取り込む」。
           <br />
           <span className="text-amber-700">
             ※ 既に同じ月・店舗の手数料/電気料が入っている場合は上書きされます（プレビューで既存額を表示）。
@@ -119,70 +136,88 @@ export function FeeElectricityTab({ onSuccess }: { onSuccess: () => void }) {
         <MonthSelect value={month} onChange={setMonth} />
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">PAY.JP 決済手数料（CSV）</label>
-          <FileDropzone accept=".csv" file={payjp} onFileSelect={(f) => { setPayjp(f); setPreview(null); }} onClear={() => setPayjp(null)} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">fincode 決済手数料（CSV）</label>
-          <FileDropzone accept=".csv" file={fincode} onFileSelect={(f) => { setFincode(f); setPreview(null); }} onClear={() => setFincode(null)} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">シンエナジー 電気料（Excel）</label>
-          <FileDropzone accept=".xlsx" file={sinenergy} onFileSelect={(f) => { setSinenergy(f); setPreview(null); }} onClear={() => setSinenergy(null)} />
-        </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          ファイル（PAY.JP / fincode の .csv、シンエナジーの .xlsx をまとめて）
+        </label>
+        <FileDropzone
+          accept=".csv,.xlsx,.xls"
+          multiple
+          files={files}
+          onFilesSelect={addFiles}
+          onRemoveFile={removeFile}
+        />
       </div>
 
       <StatusBanner status={status} />
 
-      {preview && preview.length > 0 && (
-        <div className="bg-white border rounded-lg overflow-hidden">
-          <div className="px-3 py-2 bg-gray-50 border-b text-sm font-medium text-gray-700">
-            取り込みプレビュー（{year}年{month}月）
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50 text-gray-600">
-                <th className="text-left px-3 py-1.5 font-medium">勘定科目</th>
-                <th className="text-left px-3 py-1.5 font-medium">店舗</th>
-                <th className="text-right px-3 py-1.5 font-medium">取込額</th>
-                <th className="text-right px-3 py-1.5 font-medium">既存（上書き前）</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.map((r, i) => (
-                <tr key={i} className="border-b last:border-0">
-                  <td className="px-3 py-1.5">{r.category}</td>
-                  <td className="px-3 py-1.5">{r.store}</td>
-                  <td className="px-3 py-1.5 text-right font-medium">{yen(r.amount)}</td>
-                  <td className="px-3 py-1.5 text-right text-gray-500">
-                    {r.existing != null ? (
-                      <span className="text-amber-600">{yen(r.existing)} → 上書き</span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="p-3 flex gap-2">
-            <ActionButton onClick={handleCommit} loading={loading}>
-              この内容で取り込む
-            </ActionButton>
-            <button
-              onClick={() => setPreview(null)}
-              className="text-sm px-4 py-2 rounded-md border text-gray-600 hover:bg-gray-50"
-            >
-              やめる
-            </button>
-          </div>
+      {preview && (
+        <div className="space-y-3">
+          {detected.length > 0 && (
+            <div className="text-xs text-gray-600 bg-gray-50 border rounded-lg p-3">
+              <span className="font-medium text-gray-700">判別結果：</span>
+              <ul className="mt-1 space-y-0.5">
+                {detected.map((d, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="inline-block px-1.5 rounded bg-blue-100 text-blue-700">
+                      {d.type}
+                    </span>
+                    <span className="text-gray-500 truncate">{d.name}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {preview.length > 0 && (
+            <div className="bg-white border rounded-lg overflow-hidden">
+              <div className="px-3 py-2 bg-gray-50 border-b text-sm font-medium text-gray-700">
+                取り込みプレビュー（{year}年{month}月）
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50 text-gray-600">
+                    <th className="text-left px-3 py-1.5 font-medium">勘定科目</th>
+                    <th className="text-left px-3 py-1.5 font-medium">店舗</th>
+                    <th className="text-right px-3 py-1.5 font-medium">取込額</th>
+                    <th className="text-right px-3 py-1.5 font-medium">既存（上書き前）</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.map((r, i) => (
+                    <tr key={i} className="border-b last:border-0">
+                      <td className="px-3 py-1.5">{r.category}</td>
+                      <td className="px-3 py-1.5">{r.store}</td>
+                      <td className="px-3 py-1.5 text-right font-medium">{yen(r.amount)}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-500">
+                        {r.existing != null ? (
+                          <span className="text-amber-600">{yen(r.existing)} → 上書き</span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="p-3 flex gap-2">
+                <ActionButton onClick={handleCommit} loading={loading}>
+                  この内容で取り込む
+                </ActionButton>
+                <button
+                  onClick={() => setPreview(null)}
+                  className="text-sm px-4 py-2 rounded-md border text-gray-600 hover:bg-gray-50"
+                >
+                  やめる
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {!preview && (
-        <ActionButton onClick={handlePreview} loading={loading} disabled={!payjp && !fincode && !sinenergy}>
+        <ActionButton onClick={handlePreview} loading={loading} disabled={files.length === 0}>
           内容を確認
         </ActionButton>
       )}

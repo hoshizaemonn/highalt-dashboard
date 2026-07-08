@@ -73,59 +73,86 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "対象年月を指定してください" }, { status: 400 });
     }
 
-    const payjpFile = formData.get("payjp") as File | null;
-    const fincodeFile = formData.get("fincode") as File | null;
-    const sinenergyFile = formData.get("sinenergy") as File | null;
-    if (!payjpFile && !fincodeFile && !sinenergyFile) {
+    // ファイルは1つのドロップゾーンにまとめて受け取り、中身から自動判別する。
+    const files = formData
+      .getAll("files")
+      .filter((f): f is File => f instanceof File);
+    if (files.length === 0) {
       return NextResponse.json(
-        { error: "PAY.JP / fincode / シンエナジー のいずれかのファイルを選択してください" },
+        { error: "ファイルを1つ以上選択してください（PAY.JP/fincodeのCSV、シンエナジーのExcel）" },
         { status: 400 },
       );
     }
 
     const { validateUploadedFile } = await import("@/lib/upload-validation");
-    for (const f of [payjpFile, fincodeFile, sinenergyFile]) {
-      if (f) {
-        const e = validateUploadedFile(f);
-        if (e) return NextResponse.json({ error: e }, { status: 400 });
-      }
+    for (const f of files) {
+      const e = validateUploadedFile(f);
+      if (e) return NextResponse.json({ error: `${f.name}: ${e}` }, { status: 400 });
     }
 
-    // 支払手数料（PAY.JP + fincode 合算）
+    // 各ファイルを中身（拡張子＋ヘッダ）から PAY.JP / fincode / シンエナジー に自動判別。
+    // 支払手数料 = PAY.JP + fincode（合算）、電気料 = シンエナジー。
     const feeByStore = new Map<string, number>();
+    const elecByStore = new Map<string, number>();
     const sources: Record<string, number> = {};
-    try {
-      if (payjpFile) {
-        const rows = parseCSV(decodeFileBuffer(await payjpFile.arrayBuffer()));
-        const list = parsePayjpFee(rows);
-        mapPlus(feeByStore, list);
-        sources.payjp = list.reduce((s, x) => s + x.amount, 0);
+    const detected: Array<{ name: string; type: string }> = [];
+    const unknown: string[] = [];
+
+    for (const f of files) {
+      const lower = f.name.toLowerCase();
+      const isExcel = lower.endsWith(".xlsx") || lower.endsWith(".xls");
+      try {
+        if (isExcel) {
+          // Excel はシンエナジー電気料金明細
+          const rows = await xlsxToRows(await f.arrayBuffer());
+          const list = parseSinenergyElectricity(rows);
+          mapPlus(elecByStore, list);
+          sources.sinenergy =
+            (sources.sinenergy ?? 0) + list.reduce((s, x) => s + x.amount, 0);
+          detected.push({ name: f.name, type: "シンエナジー 電気料" });
+          continue;
+        }
+        // CSV: ヘッダを見て PAY.JP か fincode かを判別
+        const rows = parseCSV(decodeFileBuffer(await f.arrayBuffer()));
+        const header = (rows[0] ?? []).join("").replace(/\s/g, "");
+        if (header.includes("PAY.JP") || header.includes("PAYJP")) {
+          const list = parsePayjpFee(rows);
+          mapPlus(feeByStore, list);
+          sources.payjp =
+            (sources.payjp ?? 0) + list.reduce((s, x) => s + x.amount, 0);
+          detected.push({ name: f.name, type: "PAY.JP 決済手数料" });
+        } else if (
+          header.includes("参考値") ||
+          header.includes("メンバー所属店舗") ||
+          (header.includes("店舗") && header.includes("決済手数料"))
+        ) {
+          const list = parseFincodeFee(rows);
+          mapPlus(feeByStore, list);
+          sources.fincode =
+            (sources.fincode ?? 0) + list.reduce((s, x) => s + x.amount, 0);
+          detected.push({ name: f.name, type: "fincode 決済手数料" });
+        } else {
+          unknown.push(f.name);
+        }
+      } catch (e) {
+        return NextResponse.json(
+          {
+            error: `${f.name} の解析に失敗しました${
+              e instanceof Error ? "：" + e.message : ""
+            }`,
+          },
+          { status: 400 },
+        );
       }
-      if (fincodeFile) {
-        const rows = parseCSV(decodeFileBuffer(await fincodeFile.arrayBuffer()));
-        const list = parseFincodeFee(rows);
-        mapPlus(feeByStore, list);
-        sources.fincode = list.reduce((s, x) => s + x.amount, 0);
-      }
-    } catch (e) {
-      return NextResponse.json(
-        { error: e instanceof Error ? e.message : "手数料CSVの解析に失敗しました" },
-        { status: 400 },
-      );
     }
 
-    // 電気料（シンエナジー）
-    const elecByStore = new Map<string, number>();
-    try {
-      if (sinenergyFile) {
-        const rows = await xlsxToRows(await sinenergyFile.arrayBuffer());
-        const list = parseSinenergyElectricity(rows);
-        mapPlus(elecByStore, list);
-        sources.sinenergy = list.reduce((s, x) => s + x.amount, 0);
-      }
-    } catch (e) {
+    if (unknown.length > 0) {
       return NextResponse.json(
-        { error: e instanceof Error ? e.message : "シンエナジーExcelの解析に失敗しました" },
+        {
+          error: `ファイルの種類を判別できませんでした：${unknown.join(
+            " / ",
+          )}。PAY.JP・fincode の決済手数料CSV、またはシンエナジーの電気料Excel(.xlsx)を入れてください。`,
+        },
         { status: 400 },
       );
     }
@@ -162,6 +189,7 @@ export async function POST(request: NextRequest) {
         year,
         month,
         sources,
+        detected,
         preview: entries.map((e) => ({
           store: e.store,
           category: e.category,
@@ -209,9 +237,7 @@ export async function POST(request: NextRequest) {
           storeName: null,
           year,
           month,
-          fileName: [payjpFile?.name, fincodeFile?.name, sinenergyFile?.name]
-            .filter(Boolean)
-            .join(", "),
+          fileName: files.map((f) => f.name).join(", "),
           recordCount: entries.length,
           note: `手数料/電気料 自動取込 ${year}/${month}`,
         },
@@ -223,6 +249,7 @@ export async function POST(request: NextRequest) {
       year,
       month,
       sources,
+      detected,
       recordCount: entries.length,
       entries,
     });
