@@ -335,7 +335,10 @@ model ManualExpenseEntry {
   updatedByName   String?  @map("updated_by_name")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  @@unique([year, month, category, storeName])
+  // 同一（年/月/カテゴリ/計上先）でも複数行を保存できるよう、ユニーク制約は付けない。
+  // （本部一括経費で同じ費目を明細分けて複数登録したい要望に対応・松尾さん依頼#3）
+  // 参照性能のため複合インデックスは維持する。
+  @@index([year, month, category, storeName])
   @@index([year, month])
   @@map("manual_expense_entry")
 }

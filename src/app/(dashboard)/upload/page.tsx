@@ -7,6 +7,7 @@ import { AmazonExpenseTab, PayPayExpenseTab } from "./components/ExpenseTab";
 import { HacomonoTab } from "./components/HacomonoTab";
 import { BudgetTab, UploadHistory } from "./components/BudgetTab";
 import { PlActualTab } from "./components/PlActualTab";
+import { FeeElectricityTab } from "./components/FeeElectricityTab";
 
 // ─── Types ──────────────────────────────────────────────────
 //   amazon-expense: Amazon 注文履歴（店長/admin両対応）
@@ -18,7 +19,8 @@ type TabId =
   | "paypay-expense"
   | "hacomono"
   | "budget"
-  | "pl-actual";
+  | "pl-actual"
+  | "fee-electricity";
 
 // ─── Main Upload Page ───────────────────────────────────────
 
@@ -58,10 +60,16 @@ export default function UploadPage() {
     { id: "paypay-expense", label: "PayPay銀行（経費）" },
     { id: "budget", label: "予算" },
     { id: "pl-actual", label: "前年比PL" },
+    { id: "fee-electricity", label: "手数料・電気料" },
   ];
-  // 店長は PayPay銀行 / 前年比PL（全社会計）タブを非表示
+  // 店長は PayPay銀行 / 前年比PL / 手数料・電気料（全社会計）タブを非表示
   const tabs = lockedStore
-    ? allTabs.filter((t) => t.id !== "paypay-expense" && t.id !== "pl-actual")
+    ? allTabs.filter(
+        (t) =>
+          t.id !== "paypay-expense" &&
+          t.id !== "pl-actual" &&
+          t.id !== "fee-electricity",
+      )
     : allTabs;
 
   return (
@@ -113,6 +121,9 @@ export default function UploadPage() {
         )}
         {activeTab === "pl-actual" && (
           <PlActualTab onSuccess={refreshHistory} lockedStore={lockedStore} />
+        )}
+        {activeTab === "fee-electricity" && (
+          <FeeElectricityTab onSuccess={refreshHistory} />
         )}
       </div>
 

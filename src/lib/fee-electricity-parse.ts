@@ -1,0 +1,148 @@
+// 決済手数料（PAY.JP / fincode）・電気料（シンエナジー）の一括取込パーサ。
+//
+// クライアント（ハイアルチ）が毎月受領する以下3種を店舗別・月次の経費に変換する:
+//   - PAY.JP 決済手数料（店舗別サマリCSV）      → 支払手数料
+//   - fincode 決済手数料（取引明細CSV・要合算） → 支払手数料
+//   - シンエナジー 電気料金明細（Excel）        → 電気料
+//
+// 支払手数料は「PAY.JP + fincode の合算」で1店舗1値（松尾さん/星﨑さん確定 2026-07）。
+// 保存先は本部一括経費と同じ manual_expense_entry（店舗別・月次）。
+
+import { STORES } from "@/lib/constants";
+
+export interface StoreAmount {
+  store: string;
+  amount: number; // 円
+}
+
+/** 店舗名/住所などの文字列を STORES のいずれかに解決する（該当なしは null）。 */
+export function resolveStore(raw: unknown): string | null {
+  const s = String(raw ?? "").replace(/\s/g, "");
+  if (!s) return null;
+  for (const st of STORES) {
+    if (s.includes(st)) return st;
+  }
+  // シンエナジー電気: 船橋は「相互住宅（プライマル船橋）」名義で請求される
+  if (s.includes("相互住宅") || s.includes("プライマル船橋") || s.includes("船橋市")) {
+    return "船橋";
+  }
+  return null;
+}
+
+/** "1,234" / "¥1,234" / "(516)" / 数値 などを数値化。 */
+function num(v: unknown): number {
+  if (v == null) return 0;
+  if (typeof v === "number") return v;
+  let t = String(v).trim();
+  if (!t) return 0;
+  const neg = /^\(.*\)$/.test(t);
+  t = t.replace(/[¥,()"]/g, "").replace(/\s/g, "");
+  const n = parseFloat(t);
+  if (isNaN(n)) return 0;
+  return neg ? -n : n;
+}
+
+/** ヘッダ行から列indexを探す（まず完全一致、無ければ部分一致）。 */
+function findCol(header: unknown[], names: string[]): number {
+  const norm = (h: unknown) => String(h ?? "").replace(/\s/g, "");
+  // 完全一致優先
+  for (const nm of names) {
+    const i = header.findIndex((h) => norm(h) === nm.replace(/\s/g, ""));
+    if (i >= 0) return i;
+  }
+  // 部分一致
+  for (const nm of names) {
+    const key = nm.replace(/\s/g, "");
+    const i = header.findIndex((h) => norm(h).includes(key));
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+function aggregate(pairs: Array<{ store: string | null; amount: number }>): StoreAmount[] {
+  const map = new Map<string, number>();
+  for (const p of pairs) {
+    if (!p.store) continue;
+    map.set(p.store, (map.get(p.store) ?? 0) + p.amount);
+  }
+  return [...map.entries()]
+    .map(([store, amount]) => ({ store, amount: Math.round(amount) }))
+    .filter((r) => r.amount !== 0);
+}
+
+/**
+ * PAY.JP 決済手数料 CSV（店舗別サマリ）。
+ * 列: 店舗名 / … / PAY.JP決済手数料 / 入金額。店舗別に手数料を返す。
+ */
+export function parsePayjpFee(rows: string[][]): StoreAmount[] {
+  if (rows.length < 2) return [];
+  const header = rows[0];
+  const storeCol = findCol(header, ["店舗名", "店舗"]);
+  const feeCol = findCol(header, ["PAY.JP決済手数料", "決済手数料"]);
+  if (storeCol < 0 || feeCol < 0) {
+    throw new Error(
+      "PAY.JP CSVの列（店舗名 / PAY.JP決済手数料）が見つかりません。正しいファイルか確認してください。",
+    );
+  }
+  return aggregate(
+    rows.slice(1).map((r) => ({
+      store: resolveStore(r[storeCol]),
+      amount: num(r[feeCol]),
+    })),
+  );
+}
+
+/**
+ * fincode 決済手数料 CSV（取引明細）。
+ * 取引単位の「決済手数料（税込）（参考値）」を店舗別に合算して返す。
+ * ヘッダに「店舗」と「メンバー所属店舗」が両方あるため、完全一致で「店舗」列を取る。
+ */
+export function parseFincodeFee(rows: string[][]): StoreAmount[] {
+  if (rows.length < 2) return [];
+  const header = rows[0];
+  const storeCol = findCol(header, ["店舗"]); // 完全一致優先（"店舗ID"等を避ける）
+  const feeCol = findCol(header, [
+    "決済手数料（税込）（参考値）",
+    "決済手数料(税込)(参考値)",
+    "決済手数料（税込）",
+  ]);
+  if (storeCol < 0 || feeCol < 0) {
+    throw new Error(
+      "fincode CSVの列（店舗 / 決済手数料（税込）（参考値））が見つかりません。正しいファイルか確認してください。",
+    );
+  }
+  return aggregate(
+    rows.slice(1).map((r) => ({
+      store: resolveStore(r[storeCol]),
+      amount: num(r[feeCol]),
+    })),
+  );
+}
+
+/**
+ * シンエナジー 電気料金明細（Excel を2次元配列にしたもの）。
+ * 「№」で始まるヘッダ行を探し、「電気のご使用場所表示名」「…住所」から店舗を判定、
+ * 「請求金額合計（円）」を店舗別に合算して返す。
+ */
+export function parseSinenergyElectricity(rows: unknown[][]): StoreAmount[] {
+  const norm = (v: unknown) => String(v ?? "").replace(/\s/g, "");
+  const headerIdx = rows.findIndex((r) => r.some((c) => norm(c) === "№" || norm(c) === "No" || norm(c) === "NO"));
+  if (headerIdx < 0) {
+    throw new Error("電気料金明細（シンエナジー）のヘッダ行（№）が見つかりません。正しいファイルか確認してください。");
+  }
+  const header = rows[headerIdx];
+  const dispCol = findCol(header, ["電気のご使用場所表示名", "使用場所表示名", "表示名"]);
+  const addrCol = findCol(header, ["電気のご使用場所住所", "使用場所住所", "住所"]);
+  const amtCol = findCol(header, ["請求金額合計（円）", "請求金額合計", "請求金額"]);
+  if (amtCol < 0 || (dispCol < 0 && addrCol < 0)) {
+    throw new Error("電気料金明細の列（表示名/住所・請求金額合計）が見つかりません。");
+  }
+  const pairs: Array<{ store: string | null; amount: number }> = [];
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r[0] == null || String(r[0]).trim() === "") continue;
+    const key = `${dispCol >= 0 ? String(r[dispCol] ?? "") : ""} ${addrCol >= 0 ? String(r[addrCol] ?? "") : ""}`;
+    pairs.push({ store: resolveStore(key), amount: num(r[amtCol]) });
+  }
+  return aggregate(pairs);
+}
