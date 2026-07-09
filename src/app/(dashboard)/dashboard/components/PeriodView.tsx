@@ -205,6 +205,13 @@ export default function PeriodView({
           休会数予算: m.budget_suspensions,
           退会率予算: m.budget_cancellation_rate,
           体験者数予算: m.budget_trial_count,
+          // 在籍会員数予算 = 販促報告の「有効在籍数(予算)」（松尾さん確定 2026-07）
+          在籍会員数予算: m.budget_active_members,
+          // 入会率予算 = 新規入会数予算 ÷ 体験者数予算（既存予算から算出）
+          入会率予算:
+            m.budget_trial_count > 0
+              ? (m.budget_new_signups / m.budget_trial_count) * 100
+              : 0,
           // 売上4分類の予算
           会費売上予算: m.budget_sales_membership,
           パーソナル売上予算: m.budget_sales_personal,
@@ -453,6 +460,16 @@ export default function PeriodView({
                 strokeWidth={2}
                 dot={{ r: 4 }}
               />
+              {/* 予算線（販促報告の有効在籍数〈予算〉・松尾さん確定 2026-07） */}
+              <Line
+                type="monotone"
+                dataKey="在籍会員数予算"
+                name="在籍会員数予算"
+                stroke="#374151"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                dot={{ r: 3, fill: "#374151" }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -677,6 +694,16 @@ export default function PeriodView({
                 stroke={COLORS.green}
                 strokeWidth={2}
                 dot={{ r: 4 }}
+              />
+              {/* 予算線（入会率予算 = 新規入会数予算 ÷ 体験者数予算） */}
+              <Line
+                type="monotone"
+                dataKey="入会率予算"
+                name="入会率予算"
+                stroke="#374151"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                dot={{ r: 3, fill: "#374151" }}
               />
             </LineChart>
           </ResponsiveContainer>
