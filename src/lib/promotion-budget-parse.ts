@@ -6,6 +6,7 @@ export const PROMOTION_BUDGET_CATEGORIES = [
   "体験者数",
   "新規入会数",
   "退会数",
+  "有効在籍数",
 ] as const;
 
 export type PromotionBudgetCategory =
@@ -44,6 +45,9 @@ function classify(labelRaw: string): PromotionBudgetCategory | null {
   // 入会数（予算）。「6ヶ月内の入会者数」など別語は除外
   if (l.startsWith("入会数(予算)")) return "新規入会数";
   if (l.startsWith("退会数(予算)")) return "退会数";
+  // 有効在籍数（予算）→ 在籍会員数チャートの予算線に使う（松尾さん確定 2026-07）。
+  // 「在籍数(実績)」「有効在籍数(実績)」「有効在籍数(予実差)」は (予算) を含まないので除外される。
+  if (l.startsWith("有効在籍数(予算)")) return "有効在籍数";
   return null;
 }
 

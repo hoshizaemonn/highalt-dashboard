@@ -80,6 +80,8 @@ interface MonthlyEntry {
   budget_suspensions: number;
   budget_cancellation_rate: number;
   budget_trial_count: number;
+  /** 有効在籍数（予算）＝在籍会員数チャートの予算線（販促報告由来） */
+  budget_active_members: number;
   /** 売上4分類の各予算（坪井さん要望: 売上内訳推移にも予算折れ線重ね） */
   budget_sales_membership: number;
   budget_sales_personal: number;
@@ -380,12 +382,20 @@ export async function GET(request: NextRequest) {
 
       const budgetRevenue = REV_ITEMS.reduce((s, k) => s + (budgetMap[k] ?? 0), 0);
       const budgetLabor = LABOR_ITEMS.reduce((s, k) => s + (budgetMap[k] ?? 0), 0);
+      // 会員系KPIの予算（件数・率）は金額ではないので経費バケツに混ぜない。
+      // （販促報告由来の 体験者数/新規入会数/退会数/有効在籍数 等が budget_expense に
+      //   件数のまま合算されるのを防ぐ）
+      const KPI_BUDGET_CATEGORIES = [
+        "新規入会数", "新規入会", "退会数", "退会",
+        "休会数", "休会", "退会率", "体験者数", "新規体験者数", "有効在籍数",
+      ];
       // Non-monetary KPI budgets must not roll up into the expense bucket
       const budgetExpense = Object.entries(budgetMap)
         .filter(
           ([k]) =>
             !REV_ITEMS.includes(k) &&
             !LABOR_ITEMS.includes(k) &&
+            !KPI_BUDGET_CATEGORIES.includes(k) &&
             k !== BUDGET_CATEGORY_UNIT_PRICE,
         )
         .reduce((s, [, v]) => s + v, 0);
@@ -406,6 +416,9 @@ export async function GET(request: NextRequest) {
         budgetMap["退会率"] ?? 0; // 例: 8 = 8%
       const budgetTrialCount =
         budgetMap["体験者数"] ?? budgetMap["新規体験者数"] ?? 0;
+      // 有効在籍数（予算）→ 在籍会員数チャートの予算線（販促報告由来）
+      const budgetActiveMembers =
+        budgetMap["有効在籍数"] ?? budgetMap["在籍会員数"] ?? 0;
       // 売上4分類の予算（複数キー候補対応。CSV予算カテゴリの呼び方差異を吸収）
       const budgetSalesMembership =
         budgetMap["会費売上"] ??
@@ -471,6 +484,7 @@ export async function GET(request: NextRequest) {
         budget_suspensions: budgetSuspensions,
         budget_cancellation_rate: budgetCancellationRate,
         budget_trial_count: budgetTrialCount,
+        budget_active_members: budgetActiveMembers,
         budget_sales_membership: budgetSalesMembership,
         budget_sales_personal: budgetSalesPersonal,
         budget_sales_product: budgetSalesProduct,
