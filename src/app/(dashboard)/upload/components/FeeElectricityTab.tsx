@@ -20,6 +20,8 @@ interface PreviewRow {
   category: string;
   amount: number;
   existing: number | null;
+  after: number;
+  mode: "add" | "update";
 }
 interface Detected {
   name: string;
@@ -126,7 +128,7 @@ export function FeeElectricityTab({ onSuccess }: { onSuccess: () => void }) {
           種類は自動で判別します。「内容を確認」→ プレビューを見て「取り込む」。
           <br />
           <span className="text-amber-700">
-            ※ 既に同じ月・店舗の手数料/電気料が入っている場合は上書きされます（プレビューで既存額を表示）。
+            ※ 月2回の入金など、分けて取り込んでも<strong>合算</strong>されます（別ファイルは加算、同じファイルの再取込は更新）。プレビューで現在額・取込後の合計を確認できます。
           </span>
         </p>
       </div>
@@ -179,8 +181,9 @@ export function FeeElectricityTab({ onSuccess }: { onSuccess: () => void }) {
                   <tr className="border-b bg-gray-50 text-gray-600">
                     <th className="text-left px-3 py-1.5 font-medium">勘定科目</th>
                     <th className="text-left px-3 py-1.5 font-medium">店舗</th>
-                    <th className="text-right px-3 py-1.5 font-medium">取込額</th>
-                    <th className="text-right px-3 py-1.5 font-medium">既存（上書き前）</th>
+                    <th className="text-right px-3 py-1.5 font-medium">今回取込額</th>
+                    <th className="text-right px-3 py-1.5 font-medium">現在の登録額</th>
+                    <th className="text-right px-3 py-1.5 font-medium">取込後の合計</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -188,13 +191,23 @@ export function FeeElectricityTab({ onSuccess }: { onSuccess: () => void }) {
                     <tr key={i} className="border-b last:border-0">
                       <td className="px-3 py-1.5">{r.category}</td>
                       <td className="px-3 py-1.5">{r.store}</td>
-                      <td className="px-3 py-1.5 text-right font-medium">{yen(r.amount)}</td>
+                      <td className="px-3 py-1.5 text-right font-medium">
+                        {yen(r.amount)}
+                        <span
+                          className={`ml-1 text-[10px] px-1 rounded ${
+                            r.mode === "update"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-green-100 text-green-700"
+                          }`}
+                        >
+                          {r.mode === "update" ? "更新" : "加算"}
+                        </span>
+                      </td>
                       <td className="px-3 py-1.5 text-right text-gray-500">
-                        {r.existing != null ? (
-                          <span className="text-amber-600">{yen(r.existing)} → 上書き</span>
-                        ) : (
-                          "—"
-                        )}
+                        {r.existing != null ? yen(r.existing) : "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-medium text-gray-800">
+                        {yen(r.after)}
                       </td>
                     </tr>
                   ))}

@@ -97,6 +97,10 @@ export async function POST(request: NextRequest) {
     const sources: Record<string, number> = {};
     const detected: Array<{ name: string; type: string }> = [];
     const unknown: string[] = [];
+    // 手数料 / 電気料それぞれに寄与したファイル名（note に記録し、
+    // 同一ファイルの再取込＝更新／別の入金分ファイル＝加算行、の判定に使う）
+    const feeFiles: string[] = [];
+    const elecFiles: string[] = [];
 
     for (const f of files) {
       const lower = f.name.toLowerCase();
@@ -110,6 +114,7 @@ export async function POST(request: NextRequest) {
           sources.sinenergy =
             (sources.sinenergy ?? 0) + list.reduce((s, x) => s + x.amount, 0);
           detected.push({ name: f.name, type: "シンエナジー 電気料" });
+          elecFiles.push(f.name);
           continue;
         }
         // CSV: ヘッダを見て PAY.JP か fincode かを判別
@@ -121,6 +126,7 @@ export async function POST(request: NextRequest) {
           sources.payjp =
             (sources.payjp ?? 0) + list.reduce((s, x) => s + x.amount, 0);
           detected.push({ name: f.name, type: "PAY.JP 決済手数料" });
+          feeFiles.push(f.name);
         } else if (
           header.includes("参考値") ||
           header.includes("メンバー所属店舗") ||
@@ -131,6 +137,7 @@ export async function POST(request: NextRequest) {
           sources.fincode =
             (sources.fincode ?? 0) + list.reduce((s, x) => s + x.amount, 0);
           detected.push({ name: f.name, type: "fincode 決済手数料" });
+          feeFiles.push(f.name);
         } else {
           unknown.push(f.name);
         }
@@ -157,19 +164,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 書き込み対象エントリを構築
+    // 書き込み対象エントリを構築。
+    // note に「取込元ファイル名」を記録し、これを重複判定キーにする。
+    //  - 同じファイルを再取込 → 同じ note の行を update（二重計上しない）
+    //  - 別の入金分ファイル（別名）を取込 → 別 note の行を新規作成 → 月内で合算される
+    const feeNote = `決済手数料 自動取込（${feeFiles.join(" + ")}）`;
+    const elecNote = `シンエナジー 自動取込（${elecFiles.join(" + ")}）`;
     const entries: Array<{ store: string; category: string; amount: number; note: string }> = [];
     for (const [store, amount] of feeByStore) {
-      if (amount !== 0) entries.push({ store, category: FEE_CATEGORY, amount, note: "決済手数料 自動取込（PAY.JP+fincode）" });
+      if (amount !== 0) entries.push({ store, category: FEE_CATEGORY, amount, note: feeNote });
     }
     for (const [store, amount] of elecByStore) {
-      if (amount !== 0) entries.push({ store, category: ELEC_CATEGORY, amount, note: "シンエナジー 自動取込" });
+      if (amount !== 0) entries.push({ store, category: ELEC_CATEGORY, amount, note: elecNote });
     }
     if (entries.length === 0) {
       return NextResponse.json({ error: "取り込める店舗別データがありませんでした" }, { status: 400 });
     }
 
-    // 既存の同一キー（本部一括経費）を取得（上書き確認・二重計上注意の表示用）
+    // 既存の同月・同店舗・同科目の登録額（＝全行の合計）を取得。
+    // 加算方式のため「現在の登録合計」を表示し、今回分が上乗せされることを示す。
+    // ただし同一ファイル(note一致)が既にある場合は上書き扱いなので加算対象から除く。
     const existing = await prisma.manualExpenseEntry.findMany({
       where: {
         year,
@@ -177,11 +191,18 @@ export async function POST(request: NextRequest) {
         category: { in: [FEE_CATEGORY, ELEC_CATEGORY] },
         storeName: { in: entries.map((e) => e.store) },
       },
-      select: { storeName: true, category: true, totalAmount: true },
+      select: { storeName: true, category: true, totalAmount: true, note: true },
     });
-    const existingMap = new Map(
-      existing.map((r) => [`${r.category}:${r.storeName}`, r.totalAmount]),
-    );
+    // (category:store) → 現在の合計
+    const existingTotal = new Map<string, number>();
+    // (category:store) → 同一ファイル(note一致)の既存額（あれば上書き＝差し替え）
+    const sameFileAmount = new Map<string, number>();
+    for (const r of existing) {
+      const key = `${r.category}:${r.storeName}`;
+      existingTotal.set(key, (existingTotal.get(key) ?? 0) + r.totalAmount);
+      const note = r.category === FEE_CATEGORY ? feeNote : elecNote;
+      if (r.note === note) sameFileAmount.set(key, r.totalAmount);
+    }
 
     if (dryRun) {
       return NextResponse.json({
@@ -190,24 +211,32 @@ export async function POST(request: NextRequest) {
         month,
         sources,
         detected,
-        preview: entries.map((e) => ({
-          store: e.store,
-          category: e.category,
-          amount: e.amount,
-          existing: existingMap.get(`${e.category}:${e.store}`) ?? null,
-        })),
+        preview: entries.map((e) => {
+          const key = `${e.category}:${e.store}`;
+          const curTotal = existingTotal.get(key) ?? 0;
+          const same = sameFileAmount.get(key); // 同一ファイルの既存額（更新対象）
+          // 取込後の合計 = 現在合計 − 同一ファイル分 + 今回分
+          const after = curTotal - (same ?? 0) + e.amount;
+          return {
+            store: e.store,
+            category: e.category,
+            amount: e.amount,
+            existing: curTotal > 0 ? curTotal : null,
+            after,
+            mode: same != null ? "update" : "add",
+          };
+        }),
       });
     }
 
-    // 既存の同月・同店舗・同科目の自動取込行を上書き（idempotent）。
-    // manual_expense_entry はユニーク制約なし（依頼#3で撤廃）のため、
-    // findFirst で既存行を引いて update、無ければ create する。
-    // 店舗別の支払手数料/電気料は本自動取込のみが作る想定なので、これで二重登録しない。
+    // 加算方式で書き込む。manual_expense_entry はユニーク制約なし（依頼#3で撤廃）のため、
+    // 同一 note（＝同一取込元ファイル）の行だけを update、無ければ新規行を create する。
+    // これにより月2回入金など「別ファイルで分割取込」しても月内で合算される。
     const updatedByName = session.displayName || session.storeName || "admin";
     await prisma.$transaction(async (tx) => {
       for (const e of entries) {
         const existingRow = await tx.manualExpenseEntry.findFirst({
-          where: { year, month, category: e.category, storeName: e.store },
+          where: { year, month, category: e.category, storeName: e.store, note: e.note },
           select: { id: true },
         });
         if (existingRow) {
