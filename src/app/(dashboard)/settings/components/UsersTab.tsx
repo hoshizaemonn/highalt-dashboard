@@ -47,6 +47,10 @@ export default function UsersTab() {
   const [editDisplayName, setEditDisplayName] = useState("");
 
   // New user form
+  // 作成する役割（店長 / マネージャー）。マネージャーは権限が管理者と同等・全店舗対象
+  const [newRole, setNewRole] = useState<"store_manager" | "manager">(
+    "store_manager",
+  );
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
@@ -102,6 +106,8 @@ export default function UsersTab() {
     switch (role) {
       case "admin":
         return "管理者";
+      case "manager":
+        return "マネージャー";
       case "store_manager":
         return "店舗マネージャー";
       case "viewer":
@@ -145,8 +151,11 @@ export default function UsersTab() {
           username: newUsername,
           password: newPassword,
           displayName: newDisplayName || null,
+          role: newRole,
           // 担当店舗が複数の場合はカンマ区切りで送信（auth側でsplit）
-          storeName: newStoreNames.filter(Boolean).join(","),
+          // マネージャーは全店舗対象のため店舗は送らない
+          storeName:
+            newRole === "manager" ? "" : newStoreNames.filter(Boolean).join(","),
         }),
       });
       const data = await res.json();
@@ -398,21 +407,40 @@ export default function UsersTab() {
                   onChange={(e) => setNewDisplayName(e.target.value)}
                   className="border border-gray-300 rounded px-3 py-2 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
                 />
+                <select
+                  value={newRole}
+                  onChange={(e) =>
+                    setNewRole(e.target.value as "store_manager" | "manager")
+                  }
+                  className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+                >
+                  <option value="store_manager">店長</option>
+                  <option value="manager">マネージャー（管理者と同等）</option>
+                </select>
                 <button
                   onClick={handleCreateUser}
                   disabled={
                     saving ||
                     !newUsername ||
                     !newPassword ||
-                    newStoreNames.length === 0
+                    (newRole === "store_manager" && newStoreNames.length === 0)
                   }
                   className="bg-[#567FC0] hover:bg-[#4a6fa8] text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50 transition-colors"
                 >
                   作成
                 </button>
               </div>
-              {/* 担当店舗：複数選択可（チェックボックス） */}
-              <div className="bg-gray-50 border border-gray-200 rounded p-3">
+              {newRole === "manager" && (
+                <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-gray-700">
+                  <strong>マネージャー</strong>は<strong>管理者と同等の権限</strong>で、
+                  全店舗のデータ閲覧・アップロード・ユーザー管理ができます（担当店舗の指定は不要）。
+                </div>
+              )}
+              {/* 担当店舗：複数選択可（チェックボックス）。マネージャーは全店舗対象のため非表示 */}
+              <div
+                className="bg-gray-50 border border-gray-200 rounded p-3"
+                hidden={newRole === "manager"}
+              >
                 <p className="text-xs font-medium text-gray-700 mb-2">
                   担当店舗（複数選択可・チェックを入れた全店舗を1ユーザーで管理）
                 </p>

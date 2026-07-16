@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { username, password, displayName, storeName } = body;
+    const { username, password, displayName, storeName, role } = body;
 
     if (!username || !password) {
       return NextResponse.json(
@@ -47,6 +47,16 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // 作成できるのは 店長 / マネージャー のみ（admin はこの画面からは作らせない）。
+    // manager は権限が管理者と同等（松尾さん依頼 2026-07）。
+    const CREATABLE_ROLES = ["store_manager", "manager"];
+    const newRole =
+      typeof role === "string" && CREATABLE_ROLES.includes(role)
+        ? role
+        : "store_manager";
+    // マネージャーは全店舗を見るため店舗紐付けは持たせない
+    const newStoreName = newRole === "manager" ? null : storeName || null;
 
     // Check duplicate
     const existing = await prisma.user.findUnique({ where: { username } });
@@ -63,9 +73,9 @@ export async function POST(request: NextRequest) {
       data: {
         username,
         password: hashedPassword,
-        role: "store_manager",
+        role: newRole,
         displayName: displayName || null,
-        storeName: storeName || null,
+        storeName: newStoreName,
       },
     });
 
