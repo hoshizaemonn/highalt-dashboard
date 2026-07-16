@@ -2,6 +2,7 @@ import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
+import { fillAmazonBreakdown } from "@/lib/amazon-breakdown";
 import JSZip from "jszip";
 
 /**
@@ -204,7 +205,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 全期間の行を取得
-    const rows = await prisma.expenseData.findMany({
+    const rawRows = await prisma.expenseData.findMany({
       where: {
         OR: months.map((m) => ({ year: m.year, month: m.month })),
         storeName: store,
@@ -224,6 +225,11 @@ export async function GET(request: NextRequest) {
         sourceFile: true,
       },
     });
+
+    // Amazon注文と突合して「AMAZON」行の内訳を補完する。
+    // 画面（/api/dashboard/expenses）と同じロジックを共通化して使い、
+    // 画面に出ている内訳がCSVでは空になる不整合を防ぐ（松尾さん依頼 2026-07）。
+    const rows = await fillAmazonBreakdown(rawRows, months);
 
     // 月毎のヘッダ取得
     const headerRows = await prisma.expenseCsvHeader.findMany({
