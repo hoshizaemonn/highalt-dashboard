@@ -17,8 +17,10 @@ export interface StoreAmount {
 
 /** 店舗名/住所などの文字列を STORES のいずれかに解決する（該当なしは null）。 */
 export function resolveStore(raw: unknown): string | null {
-  const s = String(raw ?? "").replace(/\s/g, "");
+  let s = String(raw ?? "").replace(/\s/g, "");
   if (!s) return null;
+  // 「春日部」(埼玉)を「春日」(文京区)と誤判定しないよう、判定前に除去する
+  s = s.replace(/春日部/g, "");
   for (const st of STORES) {
     if (s.includes(st)) return st;
   }
