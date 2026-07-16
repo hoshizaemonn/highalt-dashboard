@@ -180,7 +180,11 @@ export default function PeriodView({
           獲得コスト: acquisitionCost,
           獲得コスト予算: acquisitionCostBudget,
           プラン契約者数: m.ma_plan_subscribers,
-          在籍会員数: m.ma_total_members,
+          // 在籍会員数はプラン契約者数の合計を使う。
+          // hacomono の「店舗全体会員数」(ma_total_members) は全店合計の総会員数が
+          // 各店舗行に同じ値で入っており、店舗横断で合算すると店舗数倍に膨らむため使わない
+          // （2026/5: 39,816人と表示される不具合。実数はプラン契約者数 1,657人・松尾さん指摘）
+          在籍会員数: m.ma_plan_subscribers,
           新規入会数: m.ma_new_signups,
           退会数: m.ma_cancellations,
           休会数: m.ma_suspensions,

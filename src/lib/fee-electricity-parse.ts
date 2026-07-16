@@ -138,11 +138,29 @@ export function parseSinenergyElectricity(rows: unknown[][]): StoreAmount[] {
     throw new Error("電気料金明細の列（表示名/住所・請求金額合計）が見つかりません。");
   }
   const pairs: Array<{ store: string | null; amount: number }> = [];
+  // どの店舗にも解決できなかった明細（原因調査用にエラーへ載せる）
+  const unresolved: string[] = [];
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r || r[0] == null || String(r[0]).trim() === "") continue;
-    const key = `${dispCol >= 0 ? String(r[dispCol] ?? "") : ""} ${addrCol >= 0 ? String(r[addrCol] ?? "") : ""}`;
-    pairs.push({ store: resolveStore(key), amount: num(r[amtCol]) });
+    const disp = dispCol >= 0 ? String(r[dispCol] ?? "") : "";
+    const addr = addrCol >= 0 ? String(r[addrCol] ?? "") : "";
+    const amount = num(r[amtCol]);
+    const store = resolveStore(`${disp} ${addr}`);
+    if (!store && amount !== 0) {
+      unresolved.push(`「${disp.trim()}」(${addr.trim()})`);
+    }
+    pairs.push({ store, amount });
   }
-  return aggregate(pairs);
+  const result = aggregate(pairs);
+  // 1件も店舗判定できなかった場合は、判定できなかった名義を提示する。
+  // （店舗名が契約名義で入っていると判定できないため。例: 船橋=「相互住宅（プライマル船橋）」）
+  if (result.length === 0 && unresolved.length > 0) {
+    throw new Error(
+      `電気料金明細から店舗を判定できませんでした。以下の名義が店舗名と一致しません: ${unresolved
+        .slice(0, 5)
+        .join(" / ")}。契約名義で請求されている場合は対応表への追加が必要です。`,
+    );
+  }
+  return result;
 }

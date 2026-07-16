@@ -420,7 +420,11 @@ export async function GET(request: NextRequest) {
             suspensions: memberRows.reduce((s, r) => s + r.suspensions, 0),
             cancellation_rate: memberRows[0].cancellationRate,
             plan_changes: memberRows.reduce((s, r) => s + r.planChanges, 0),
-            total_members: memberRows.reduce((s, r) => s + r.totalMembers, 0),
+            // 在籍会員数はプラン契約者数の合計を使う。
+            // hacomono の「店舗全体会員数」(totalMembers) は全店合計の総会員数が各店舗行に
+            // 同じ値で入っており、店舗横断で合算すると店舗数倍に膨らむため使わない
+            // （2026/5: 39,816人と表示。実数はプラン契約者数 1,657人・松尾さん指摘 2026-07）
+            total_members: memberRows.reduce((s, r) => s + r.planSubscribers, 0),
             // 体験者数（坪井さん要望: 店長手動追記）。入会率 = 新規入会÷体験者数 の分母。
             trial_count: effectiveTrialCount,
           }

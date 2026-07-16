@@ -64,9 +64,29 @@ function verifySignedPayload(value: string): string | null {
   return payload;
 }
 
+/**
+ * ロール定義。
+ * - admin        : 管理者
+ * - manager      : マネージャー（権限は管理者と同等・松尾さん依頼 2026-07）
+ * - store_manager: 店長（自店舗のみ）
+ *
+ * manager は「管理者と同等」のため、セッション上の実効ロール(role)は "admin" に
+ * 正規化する。これにより API 各所の `role === "admin"` 判定（多数）を書き換えずに済み、
+ * 判定漏れによる権限ホールを構造的に防ぐ。表示用の元ロールは rawRole に保持する。
+ */
+export const ADMIN_EQUIVALENT_ROLES = ["admin", "manager"] as const;
+
+/** DBロール → セッション上の実効ロール（manager は admin と同等に扱う） */
+export function toEffectiveRole(role: string): string {
+  return role === "manager" ? "admin" : role;
+}
+
 export interface SessionUser {
   userId: number;
+  /** 実効ロール（manager は "admin" に正規化済み）。権限判定はこれを使う */
   role: string;
+  /** DB上の元ロール（"manager" 等）。表示用 */
+  rawRole?: string;
   storeName: string | null;
   displayName: string | null;
   expiresAt: number;
@@ -92,7 +112,9 @@ export async function createSession(
   const cookieStore = await cookies();
   const session: SessionUser = {
     userId,
-    role,
+    // manager は admin と同等の実効ロールにする（権限判定は role を見る）
+    role: toEffectiveRole(role),
+    rawRole: role,
     storeName,
     displayName,
     expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
@@ -129,7 +151,12 @@ export async function getSession(): Promise<SessionUser | null> {
       return null;
     }
 
-    return session;
+    // 発行済みCookieに manager が入っている場合も admin 相当へ正規化（取りこぼし防止）
+    return {
+      ...session,
+      role: toEffectiveRole(session.role),
+      rawRole: session.rawRole ?? session.role,
+    };
   } catch {
     return null;
   }
