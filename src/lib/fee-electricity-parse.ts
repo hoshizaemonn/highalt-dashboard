@@ -15,18 +15,42 @@ export interface StoreAmount {
   amount: number; // 円
 }
 
+/**
+ * 店舗の別名義 → 店舗名 の対応表。
+ * 請求書は店舗名そのものではなく、契約名義・カナ表記で登録されていることがある。
+ *  - シンエナジー電気: 春日は「ハイアルチカスガスタジオ」＝カナ表記（松尾さん確認 2026-07）
+ *  - シンエナジー電気: 船橋は「相互住宅（プライマル船橋）」＝オーナー法人名義
+ * カナ表記は他店舗にも及ぶ可能性があるため、全店舗ぶん登録しておく。
+ */
+const STORE_ALIASES: Array<{ alias: string; store: string }> = [
+  // カナ表記（長い方から先に判定されるよう、より具体的なものを上に置く）
+  { alias: "ヒガシニホンバシ", store: "東日本橋" },
+  { alias: "ソシガヤオオクラ", store: "祖師ヶ谷大蔵" },
+  { alias: "ソシガヤ", store: "祖師ヶ谷大蔵" },
+  { alias: "シモキタザワ", store: "下北沢" },
+  { alias: "ナカメグロ", store: "中目黒" },
+  { alias: "カスガ", store: "春日" },
+  { alias: "フナバシ", store: "船橋" },
+  { alias: "スガモ", store: "巣鴨" },
+  // 契約名義
+  { alias: "相互住宅", store: "船橋" },
+  { alias: "プライマル船橋", store: "船橋" },
+  { alias: "船橋市", store: "船橋" },
+];
+
 /** 店舗名/住所などの文字列を STORES のいずれかに解決する（該当なしは null）。 */
 export function resolveStore(raw: unknown): string | null {
   let s = String(raw ?? "").replace(/\s/g, "");
   if (!s) return null;
-  // 「春日部」(埼玉)を「春日」(文京区)と誤判定しないよう、判定前に除去する
-  s = s.replace(/春日部/g, "");
+  // 「春日部」(埼玉)を「春日」(文京区)と誤判定しないよう、判定前に除去する（カナ表記も同様）
+  s = s.replace(/春日部/g, "").replace(/カスガベ/g, "");
+  // 1. 店舗名（漢字）で判定
   for (const st of STORES) {
     if (s.includes(st)) return st;
   }
-  // シンエナジー電気: 船橋は「相互住宅（プライマル船橋）」名義で請求される
-  if (s.includes("相互住宅") || s.includes("プライマル船橋") || s.includes("船橋市")) {
-    return "船橋";
+  // 2. 別名義（カナ表記・契約名義）で判定
+  for (const { alias, store } of STORE_ALIASES) {
+    if (s.includes(alias)) return store;
   }
   return null;
 }
