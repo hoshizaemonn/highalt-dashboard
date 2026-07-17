@@ -17,6 +17,9 @@ import {
   expenseRowShareWithCategorySplit,
   expenseRowSharesByCategory,
 } from "@/lib/manual-expense-split";
+import { isPlOverrideMonth, PL_OVERRIDE_CATEGORIES } from "@/lib/pl-override";
+
+const CALENDAR_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 export async function GET(request: NextRequest) {
   try {
@@ -174,13 +177,25 @@ export async function GET(request: NextRequest) {
     });
 
     const expenseByCategory: Record<string, number> = {};
+    // PL反映対象月（〜2026/4）ぶんだけの内訳。
+    // 年表示のとき「PL反映月だけを損益計算書で差し替え、2026/5以降の
+    // ダッシュボード実績はそのまま残す」ために、置き換える金額を控えておく。
+    const expenseInPlMonthsByCategory: Record<string, number> = {};
     let totalExpense = 0;
 
     for (const row of expenseRows) {
+      const inPlMonths = isPlOverrideMonth(
+        row.accrualYear ?? row.year,
+        row.accrualMonth ?? row.month,
+      );
       // categorySplits あれば科目別に分解、無ければ単一カテゴリで計上
       const sharesByCat = expenseRowSharesByCategory(row, expenseTarget);
       for (const [cat, share] of Object.entries(sharesByCat)) {
         expenseByCategory[cat] = (expenseByCategory[cat] || 0) + share;
+        if (inPlMonths) {
+          expenseInPlMonthsByCategory[cat] =
+            (expenseInPlMonthsByCategory[cat] || 0) + share;
+        }
         totalExpense += share;
       }
     }
@@ -232,31 +247,39 @@ export async function GET(request: NextRequest) {
         (expenseByCategory[row.category] || 0) + share;
       manualExpenseByCategory[row.category] =
         (manualExpenseByCategory[row.category] || 0) + share;
+      if (isPlOverrideMonth(row.year, row.month)) {
+        expenseInPlMonthsByCategory[row.category] =
+          (expenseInPlMonthsByCategory[row.category] || 0) + share;
+      }
       totalExpense += share;
     }
 
-    // 消耗品費・広告宣伝費はクライアント公式PL（pl_actuals）を正とする（坪井さん決定）。
-    // PayPay自動仕分けの誤分類（消耗品費が桁違い等）を避けるため、PLに該当月の値があれば上書き。
-    const PL_OVERRIDE_CATS = ["消耗品費", "広告宣伝費"];
-    const plExpRows = await prisma.plActual.findMany({
-      where: {
-        storeName: storeNameFilter,
-        category: { in: PL_OVERRIDE_CATS },
-        ...(month !== undefined ? { year, month } : { year }),
-      },
-      select: { category: true, amount: true },
-    });
-    if (plExpRows.length > 0) {
+    // ── クライアント公式PL（損益計算書 = pl_actuals）の反映 ──────────
+    //   〜2026/4 : 経費は損益計算書の数値を正とする（PayPay自動仕分けの誤分類を避ける）
+    //   2026/5〜 : 反映しない。ダッシュボード運用開始後は取り込んだ実データを正とする
+    // （松尾さん決定 2026-07-17。人件費は給与データを正とするため対象外）
+    const plMonths = (month !== undefined ? [month] : CALENDAR_MONTHS).filter(
+      (m) => isPlOverrideMonth(year, m),
+    );
+    if (plMonths.length > 0) {
+      const plExpRows = await prisma.plActual.findMany({
+        where: {
+          storeName: storeNameFilter,
+          category: { in: [...PL_OVERRIDE_CATEGORIES] },
+          year,
+          month: { in: plMonths },
+        },
+        select: { category: true, amount: true },
+      });
       const plByCat: Record<string, number> = {};
       for (const r of plExpRows) {
         plByCat[r.category] = (plByCat[r.category] || 0) + r.amount;
       }
-      for (const cat of PL_OVERRIDE_CATS) {
-        if (plByCat[cat] !== undefined) {
-          const old = expenseByCategory[cat] || 0;
-          expenseByCategory[cat] = plByCat[cat];
-          totalExpense += plByCat[cat] - old;
-        }
+      // PL反映月ぶんだけを差し替える（対象外の月の実績はそのまま残す）
+      for (const [cat, plAmount] of Object.entries(plByCat)) {
+        const replaced = expenseInPlMonthsByCategory[cat] || 0;
+        expenseByCategory[cat] = (expenseByCategory[cat] || 0) - replaced + plAmount;
+        totalExpense += plAmount - replaced;
       }
     }
 

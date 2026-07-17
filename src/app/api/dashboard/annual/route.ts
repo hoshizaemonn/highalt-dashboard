@@ -13,6 +13,7 @@ import {
   expenseRowShareWithCategorySplit,
   expenseRowSharesByCategory,
 } from "@/lib/manual-expense-split";
+import { isPlOverrideMonth, PL_OVERRIDE_CATEGORIES } from "@/lib/pl-override";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
@@ -209,12 +210,12 @@ export async function GET(request: NextRequest) {
       }),
       // 予算: 店舗指定があればその店舗、全体時は本部+非表示除外
       prisma.budgetData.findMany({ where: budgetWhere }),
-      // 消耗品費・広告宣伝費はクライアント公式PLを正とする（坪井さん決定）
+      // クライアント公式PL（損益計算書）を経費の正とする（〜2026/4のみ反映・松尾さん決定）
       prisma.plActual.findMany({
         where: {
           year: { in: years },
           ...storeWhere,
-          category: { in: ["消耗品費", "広告宣伝費"] },
+          category: { in: [...PL_OVERRIDE_CATEGORIES] },
         },
         select: { year: true, month: true, category: true, amount: true },
       }),
@@ -299,10 +300,12 @@ export async function GET(request: NextRequest) {
         totalExpense += share;
       }
 
-      // 消耗品費・広告宣伝費はクライアント公式PL（pl_actuals）を正に上書き（坪井さん決定）
-      for (const cat of ["消耗品費", "広告宣伝費"]) {
-        const plVal = plExpMap.get(`${y}-${m}-${cat}`);
-        if (plVal !== undefined) {
+      // クライアント公式PL（損益計算書）を経費の正として反映する（〜2026/4のみ）。
+      // 2026/5〜 はダッシュボード運用開始後のため反映しない（松尾さん決定 2026-07-17）。
+      if (isPlOverrideMonth(y, m)) {
+        for (const cat of PL_OVERRIDE_CATEGORIES) {
+          const plVal = plExpMap.get(`${y}-${m}-${cat}`);
+          if (plVal === undefined) continue;
           const old = expenseByCat[cat] || 0;
           expenseByCat[cat] = plVal;
           totalExpense += plVal - old;
