@@ -1,13 +1,19 @@
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession, effectiveStoreScope } from "@/lib/auth";
+import { requireSession, getEffectiveStoreFilter } from "@/lib/auth";
+import { HQ_STORE } from "@/lib/constants";
+import { getHiddenStores } from "@/lib/hidden-stores";
 import { PL_CATEGORIES } from "@/lib/pl-csv";
 
 // 前年比比較（人件費・消耗品費・広告宣伝費）— クライアント公式PL（pl_actuals）由来。
 // 当年 vs 前年を同一ソースで比較するため、ダッシュボードの granular（PayPay）とは別系統。
 //
 // fiscalYear: 会計年度の「年度末年」（例 2026 = 9期 2025/10〜2026/9）。
+//
+// 全体表示にも対応する（松尾さん報告 2026-07: 全体の前年比グラフで前期が0になる）。
+// getEffectiveStoreFilter で「全体=全店」「単店=その店」のフィルタを得て、
+// 対象店舗ぶんを (費目, 年, 月) で合算する。
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,17 +30,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 店舗スコープ（非adminは自店舗に強制）。全体集計は対象外（PLは店舗別なので単店で見る想定）。
-    const store = effectiveStoreScope(auth.session, requestedStore);
-    if (!store) {
-      // 全店指定時は、前年比比較は店舗を選んでもらう前提なので空を返す
-      return NextResponse.json({
-        fiscalYear,
-        store: null,
-        needsStore: true,
-        categories: [],
-      });
-    }
+    // 店舗スコープ: 全体=全店（本部・非表示除く）、単店=その店。非adminは担当店舗に制限。
+    const hiddenStores = await getHiddenStores();
+    const storeNameFilter = getEffectiveStoreFilter(auth.session, requestedStore, {
+      notIn: [HQ_STORE, ...hiddenStores],
+    });
+    const store = typeof storeNameFilter === "string" ? storeNameFilter : "全体";
 
     // 会計年度の月リスト（10月始まり）: 当年と前年
     const months: { y: number; m: number; label: string }[] = [];
@@ -56,13 +57,14 @@ export async function GET(request: NextRequest) {
     });
 
     const rows = await prisma.plActual.findMany({
-      where: { storeName: store, OR: orConds },
+      where: { storeName: storeNameFilter, OR: orConds },
     });
 
-    // (category, year, month) -> amount
+    // (category, year, month) -> amount（全体表示時は複数店舗ぶんを合算する）
     const map = new Map<string, number>();
     for (const r of rows) {
-      map.set(`${r.category}:${r.year}:${r.month}`, r.amount);
+      const k = `${r.category}:${r.year}:${r.month}`;
+      map.set(k, (map.get(k) ?? 0) + r.amount);
     }
     const get = (cat: string, y: number, m: number) =>
       map.get(`${cat}:${y}:${m}`) ?? 0;

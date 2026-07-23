@@ -92,12 +92,11 @@ export default function PeriodView({
     categories?: { category: string; monthly: { month: number; current: number; prev: number }[] }[];
   } | null>(null);
   useEffect(() => {
-    if (isAllStores) {
-      setPlComp(null);
-      return;
-    }
+    // 全体表示でも前年比PL（前期）を出す。pl-comparison が全店合算に対応済み。
+    // （松尾さん報告 2026-07: 全体だと前期の人件費・消耗品費・広告宣伝費が0になる）
     let cancelled = false;
-    fetch(`/api/dashboard/pl-comparison?fiscalYear=${fiscalYear}&store=${encodeURIComponent(store)}`)
+    const storeParam = isAllStores ? "全体" : store;
+    fetch(`/api/dashboard/pl-comparison?fiscalYear=${fiscalYear}&store=${encodeURIComponent(storeParam)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (!cancelled) setPlComp(d); })
       .catch(() => { if (!cancelled) setPlComp(null); });
@@ -162,7 +161,12 @@ export default function PeriodView({
             ? Math.round(m.budget_advertising / m.budget_new_signups)
             : 0;
         // 客単価 = 月会費売上 ÷ プラン契約者数（1人あたりの月会費収入）
-        const monthlyFee = m.monthly_fee_ps001 ?? m.sales_by_category["月会費"] ?? 0;
+        // monthly_fee_ps001（PS001）は東日本橋ぶんしか無いため、全体表示では分子が
+        // 東日本橋のみに偏り客単価が極端に低く出る。全体表示では全店集計の月会費
+        // （sales_by_category）を使う（松尾さん報告 2026-07・店舗別は従来どおりPS001優先）。
+        const monthlyFee = isAllStores
+          ? m.sales_by_category["月会費"] ?? m.monthly_fee_ps001 ?? 0
+          : m.monthly_fee_ps001 ?? m.sales_by_category["月会費"] ?? 0;
         const unitPrice =
           m.ma_plan_subscribers > 0 ? Math.round(monthlyFee / m.ma_plan_subscribers) : 0;
         return {
@@ -223,7 +227,7 @@ export default function PeriodView({
           その他売上予算: m.budget_sales_other,
         };
       }),
-    [monthly],
+    [monthly, isAllStores],
   );
 
   // 表示中の period に応じた経費CSV / PL CSV ダウンロード
@@ -366,6 +370,7 @@ export default function PeriodView({
                     前年比: d.前期 > 0 ? ((d.今期 / d.前期) * 100).toFixed(1) + "%" : "-",
                   }));
                 })()}
+                margin={{ top: 24, right: 8, left: 8, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="項目" fontSize={11} />
