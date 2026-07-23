@@ -1,1 +1,4 @@
-{ "ignoreCommand": "git diff --quiet HEAD^ HEAD -- ." }
+{
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- .",
+  "regions": ["hnd1"]
+}
