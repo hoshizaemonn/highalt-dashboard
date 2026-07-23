@@ -33,14 +33,22 @@ function createPrismaClient() {
   } catch {
     // URLとして解釈できない形式ならそのまま使う
   }
-  // Supabase Supavisor pooler port 5432 = session mode（max 15 接続上限）
-  // Vercel サーバーレスは関数インスタンスごとに pg Pool を持つため、
-  // インスタンス × max が Supavisor 上限を超えると EMAXCONNSESSION エラーになる。
-  // max を低めに抑えて、複数インスタンス同時起動でも上限内に収まるようにする。
+  // ★接続プーラーを transaction mode（port 6543）に統一する。
+  //   Supabase Supavisor の session pooler（port 5432）は同時接続が最大15と少なく、
+  //   Vercel サーバーレスで全体ダッシュボードのように複数APIを同時に叩くと
+  //   （インスタンス × pool.max が15を超えて）EMAXCONNSESSION で500になる。
+  //   transaction pooler（6543）は接続が各クエリ/トランザクション単位で短命に
+  //   使い回されるため同時接続上限に強く、サーバーレスではこちらが推奨構成。
+  //   （インタラクティブ・トランザクションが 6543 で動作することは検証済み・2026-07）
+  //   ※本番の DATABASE_URL が既に 6543 の場合はこの置換は no-op。
+  const pooledConnectionString = poolConnectionString.replace(
+    /:5432\b/,
+    ":6543",
+  );
   const pool = new Pool({
-    connectionString: poolConnectionString,
+    connectionString: pooledConnectionString,
     ssl: { rejectUnauthorized: false },
-    max: 3,
+    max: 5,
     idleTimeoutMillis: 5000,
     connectionTimeoutMillis: 10000,
   });
