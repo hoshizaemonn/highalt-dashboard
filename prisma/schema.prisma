@@ -343,6 +343,31 @@ model ManualExpenseEntry {
   @@map("manual_expense_entry")
 }
 
+// ─── Manual Payroll（人件費CSVに含まれない社員の手動追加） ──────
+// クラウド給与の支給控除一覧表（CSV）に載らない社員（役員・業務委託・
+// 未登録者など）の人件費を月次で手動追加する（松尾さん依頼⑥ 2026-07）。
+// 集計時は amount を該当店舗・月の人件費（給与総額）に加算する。
+model ManualPayrollEntry {
+  id            Int      @id @default(autoincrement())
+  year          Int
+  month         Int
+  /** 計上先店舗（必須。本部一括の概念は無く、必ずどこかの店舗に紐づく） */
+  storeName     String   @map("store_name")
+  /** 従業員名（表示用・任意） */
+  employeeName  String?  @map("employee_name")
+  /** 雇用区分（"正社員" / "アルバイト" 等・人数カウントの内訳表示用・任意） */
+  contractType  String?  @map("contract_type")
+  /** 給与総額（円）。人件費にそのまま加算する */
+  amount        Int      @default(0)
+  note          String?
+  updatedByName String?  @map("updated_by_name")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([year, month, storeName])
+  @@index([year, month])
+  @@map("manual_payroll_entry")
+}
+
 // ─── Budget Data ────────────────────────────────────────────
 
 model BudgetData {

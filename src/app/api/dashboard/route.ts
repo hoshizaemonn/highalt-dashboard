@@ -128,6 +128,27 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 手動人件費（人件費CSVに載らない社員・松尾さん依頼⑥）を該当店舗・月の人件費に加算。
+    const manualPayrollRows = await prisma.manualPayrollEntry.findMany({
+      where: {
+        year,
+        ...(month !== undefined && { month }),
+        storeName: storeNameFilter,
+      },
+    });
+    let manualFulltimeCount = 0;
+    let manualParttimeCount = 0;
+    for (const r of manualPayrollRows) {
+      totalLaborCost += r.amount;
+      if (r.contractType === "正社員") {
+        fulltimeGross += r.amount;
+        manualFulltimeCount++;
+      } else {
+        parttimeGross += r.amount;
+        manualParttimeCount++;
+      }
+    }
+
     const payrollSummary = {
       total_labor_cost: Math.round(totalLaborCost),
       fulltime_gross: Math.round(fulltimeGross),
@@ -140,9 +161,9 @@ export async function GET(request: NextRequest) {
       // （CSVの「課税支給合計」は通勤手当課税分を含むが、運用上は基本給+役職手当+残業代のみを表示したい）
       taxable_total: Math.round(totalTaxableTotal - totalCommuteTaxable),
       total_hours: Math.round(totalHours * 10) / 10,
-      employee_count: employeeIds.size,
-      fulltime_count: fulltimeCount,
-      parttime_count: parttimeCount,
+      employee_count: employeeIds.size + manualPayrollRows.length,
+      fulltime_count: fulltimeCount + manualFulltimeCount,
+      parttime_count: parttimeCount + manualParttimeCount,
       legal_welfare: Math.round(legalWelfare),
     };
 
