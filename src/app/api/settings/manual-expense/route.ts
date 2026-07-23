@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
+import { logError } from "@/lib/log";
 
 /**
  * 本部一括経費 API。電気代・水道代・家賃など本部で一括支払いし
@@ -115,48 +116,63 @@ export async function PUT(request: NextRequest) {
         !isNaN(r.totalAmount),
     );
 
-  await prisma.$transaction(async (tx) => {
-    for (const r of cleaned) {
-      // 金額0は「その行を削除」の意味。既存行(id有)は削除、未保存の新規空行(id無)は無視。
-      // ※ ユニーク制約撤廃(依頼#3)に伴い、キー一括削除はしない（同一キーの別行を巻き込むため）。
-      if (r.totalAmount === 0) {
-        if (r.id !== undefined) {
-          await tx.manualExpenseEntry.deleteMany({ where: { id: r.id } });
+  try {
+    // 1行ずつ create/update/delete するため、行数が多いと往復回数が増える。
+    // Vercel(海外リージョン)→Supabase(東京)の遅延下では既定の txタイムアウト(5秒)を
+    // 超えて毎回失敗していたため、タイムアウトを延長する（本部一括経費の行が増えると
+    // 発生・2026-07 松尾さん報告）。根本的な遅延短縮は vercel.json の regions=hnd1 で対応。
+    await prisma.$transaction(
+      async (tx) => {
+        for (const r of cleaned) {
+          // 金額0は「その行を削除」の意味。既存行(id有)は削除、未保存の新規空行(id無)は無視。
+          // ※ ユニーク制約撤廃(依頼#3)に伴い、キー一括削除はしない（同一キーの別行を巻き込むため）。
+          if (r.totalAmount === 0) {
+            if (r.id !== undefined) {
+              await tx.manualExpenseEntry.deleteMany({ where: { id: r.id } });
+            }
+            continue;
+          }
+          // 既存行(id有)は必ず id ベースで更新（カテゴリ・月・計上先の変更も同一行に反映）。
+          if (r.id !== undefined) {
+            await tx.manualExpenseEntry.updateMany({
+              where: { id: r.id },
+              data: {
+                year: r.year,
+                month: r.month,
+                category: r.category,
+                storeName: r.storeName,
+                totalAmount: r.totalAmount,
+                splitRatios: r.splitRatios,
+                note: r.note,
+                updatedByName,
+              },
+            });
+            continue;
+          }
+          // 新規行(id無)は常に新規作成 → 同一(年/月/カテゴリ/計上先)でも複数行を登録できる（依頼#3）。
+          await tx.manualExpenseEntry.create({
+            data: {
+              year: r.year,
+              month: r.month,
+              category: r.category,
+              storeName: r.storeName,
+              totalAmount: r.totalAmount,
+              splitRatios: r.splitRatios,
+              note: r.note,
+              updatedByName,
+            },
+          });
         }
-        continue;
-      }
-      // 既存行(id有)は必ず id ベースで更新（カテゴリ・月・計上先の変更も同一行に反映）。
-      if (r.id !== undefined) {
-        await tx.manualExpenseEntry.updateMany({
-          where: { id: r.id },
-          data: {
-            year: r.year,
-            month: r.month,
-            category: r.category,
-            storeName: r.storeName,
-            totalAmount: r.totalAmount,
-            splitRatios: r.splitRatios,
-            note: r.note,
-            updatedByName,
-          },
-        });
-        continue;
-      }
-      // 新規行(id無)は常に新規作成 → 同一(年/月/カテゴリ/計上先)でも複数行を登録できる（依頼#3）。
-      await tx.manualExpenseEntry.create({
-        data: {
-          year: r.year,
-          month: r.month,
-          category: r.category,
-          storeName: r.storeName,
-          totalAmount: r.totalAmount,
-          splitRatios: r.splitRatios,
-          note: r.note,
-          updatedByName,
-        },
-      });
-    }
-  });
+      },
+      { maxWait: 10_000, timeout: 60_000 },
+    );
+  } catch (e) {
+    logError("PUT /api/settings/manual-expense transaction error:", e);
+    return NextResponse.json(
+      { error: "保存に失敗しました（サーバー側でエラーが発生しました）" },
+      { status: 500 },
+    );
+  }
 
   const after = await prisma.manualExpenseEntry.findMany({
     orderBy: [{ year: "desc" }, { month: "desc" }, { category: "asc" }],
