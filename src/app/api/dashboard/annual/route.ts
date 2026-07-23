@@ -196,6 +196,7 @@ export async function GET(request: NextRequest) {
       allMember,
       allBudget,
       allPlActual,
+      allManualPayroll,
     ] = await Promise.all([
       // 本部一括経費（手動入力）
       prisma.manualExpenseEntry.findMany({ where: { year: { in: years } } }),
@@ -219,6 +220,8 @@ export async function GET(request: NextRequest) {
         },
         select: { year: true, month: true, category: true, amount: true },
       }),
+      // 手動人件費（人件費CSVに載らない社員・松尾さん依頼⑥）
+      prisma.manualPayrollEntry.findMany({ where: { year: { in: years }, ...storeWhere } }),
     ]);
     // PL上書き用マップ: `${year}-${month}-${category}` -> 金額（全体時は店舗合算）
     const plExpMap = new Map<string, number>();
@@ -267,6 +270,19 @@ export async function GET(request: NextRequest) {
         }
         if (row.contractType === "正社員") fulltimeGross += gross;
         else parttimeGross += gross;
+      }
+
+      // 手動人件費（人件費CSVに載らない社員・松尾さん依頼⑥）を加算
+      const manualPay = allManualPayroll.filter((r) => r.year === y && r.month === m);
+      for (const r of manualPay) {
+        totalLabor += r.amount;
+        if (r.contractType === "正社員") {
+          fulltimeGross += r.amount;
+          ftCount++;
+        } else {
+          parttimeGross += r.amount;
+          ptCount++;
+        }
       }
 
       // Expenses（依頼⑥: accrual を優先 / 依頼A: splitRatios+categorySplits 対応）
