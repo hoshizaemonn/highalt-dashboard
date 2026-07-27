@@ -42,6 +42,10 @@ export async function GET(request: NextRequest) {
     // 既存件数チェック（dryRun 用）も自店舗以外は拒否する
     const auth = await requireStoreUploadAccess(store);
     if (auth.error) return auth.error;
+    // hacomono（売上・アンケート）の取込は管理者のみ（松尾さん依頼 2026-07）
+    if (auth.session.role !== "admin") {
+      return NextResponse.json({ error: "admin only" }, { status: 403 });
+    }
 
     if (!type) {
       return NextResponse.json(
@@ -147,6 +151,10 @@ export async function POST(request: NextRequest) {
     const auth = await requireStoreUploadAccess(store);
     if (auth.error) return auth.error;
     const session = auth.session;
+    // hacomono（売上・アンケート）の取込は管理者のみ（松尾さん依頼 2026-07）
+    if (session.role !== "admin") {
+      return NextResponse.json({ error: "admin only" }, { status: 403 });
+    }
 
     const { validateUploadedFile } = await import("@/lib/upload-validation");
     const fileError = validateUploadedFile(file);
