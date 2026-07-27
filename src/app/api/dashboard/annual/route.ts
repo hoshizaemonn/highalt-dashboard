@@ -197,6 +197,7 @@ export async function GET(request: NextRequest) {
       allBudget,
       allPlActual,
       allManualPayroll,
+      allSquareItem,
     ] = await Promise.all([
       // 本部一括経費（手動入力）
       prisma.manualExpenseEntry.findMany({ where: { year: { in: years } } }),
@@ -222,6 +223,8 @@ export async function GET(request: NextRequest) {
       }),
       // 手動人件費（人件費CSVに載らない社員・松尾さん依頼⑥）
       prisma.manualPayrollEntry.findMany({ where: { year: { in: years }, ...storeWhere } }),
+      // Square アイテム別売上（パーソナル分を売上分類に合算・松尾さん依頼 2026-07）
+      prisma.squareItemSales.findMany({ where: { year: { in: years }, ...storeWhere } }),
     ]);
     // PL上書き用マップ: `${year}-${month}-${category}` -> 金額（全体時は店舗合算）
     const plExpMap = new Map<string, number>();
@@ -366,14 +369,28 @@ export async function GET(request: NextRequest) {
       const manualReferral = manualMonth.reduce((s, r) => s + r.trialReferralCount, 0);
       const trialNonReferral = Math.max(0, effectiveTrial - manualReferral);
 
-      const totalRevenue = salesTotal + squareTotal + manualOther;
+      // Square決済のパーソナル分（松尾さん依頼 2026-07・hacomono決済分と合算）。
+      // squareSales(物販のみ) には含まれないため、squareItemSales から個別集計する。
+      const sqItem = allSquareItem.filter((r) => r.year === y && r.month === m);
+      const squarePersonal = sqItem.reduce(
+        (s, r) => (r.classification === "パーソナル" ? s + r.grossSales : s),
+        0,
+      );
+
+      // 総売上: hacomono売上 + Square物販 + Squareパーソナル + 手動その他。
+      const totalRevenue =
+        salesTotal + squareTotal + squarePersonal + manualOther;
 
       // 売上4分類（坪井さん要望: 会費/パーソナル/物販/その他）
       const salesMembership =
         (salesByCat["月会費"] ?? 0) + (salesByCat["入会金"] ?? 0);
-      const salesPersonal = salesByCat["パーソナル"] ?? 0;
+      // パーソナル = hacomono売上明細のパーソナル分 + Square決済のパーソナル分
+      const hacomonoPersonal = salesByCat["パーソナル"] ?? 0;
+      const salesPersonal = hacomonoPersonal + squarePersonal;
       const salesProduct = squareTotal;
-      const salesOther = salesTotal - salesMembership - salesPersonal + manualOther;
+      // その他は salesTotal(hacomono) から hacomono由来分のみ差し引く
+      const salesOther =
+        salesTotal - salesMembership - hacomonoPersonal + manualOther;
 
       // 月会費 (PS001 商品別売上から正確に算出 — 取込時のみ)
       const productSalesMonth = allProductSales.filter(
@@ -601,6 +618,9 @@ export async function GET(request: NextRequest) {
 
     const prevMembershipSales =
       (prevSalesByCat["月会費"] ?? 0) + (prevSalesByCat["入会金"] ?? 0);
+    // 前期(8期)のパーソナルは hacomono由来のみ。Square決済のパーソナル取込は
+    // 2026-07以降の新運用であり、前期には Square アイテム別売上が存在しないため
+    // （squarePersonal=0 相当）hacomono分のみで前期の実態と一致する。
     const prevPersonalSales = prevSalesByCat["パーソナル"] ?? 0;
     const prevProductSales = prevSquareTotal;
     const prevOtherSales = prevSalesTotal - prevMembershipSales - prevPersonalSales;
