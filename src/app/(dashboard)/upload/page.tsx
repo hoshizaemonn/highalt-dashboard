@@ -62,25 +62,15 @@ export default function UploadPage() {
     { id: "pl-actual", label: "前年比PL" },
     { id: "fee-electricity", label: "手数料・電気料" },
   ];
-  // 店長は hacomono（売上・アンケート）/ PayPay銀行 / 前年比PL / 手数料・電気料
-  // （いずれも管理者専用の取込）タブを非表示。
-  // ※hacomono の取込は管理者のみ（松尾さん依頼 2026-07・API側でも403）
+  // 店長は PayPay銀行 / 前年比PL / 手数料・電気料（全社会計）タブを非表示
   const tabs = lockedStore
     ? allTabs.filter(
         (t) =>
-          t.id !== "hacomono" &&
           t.id !== "paypay-expense" &&
           t.id !== "pl-actual" &&
           t.id !== "fee-electricity",
       )
     : allTabs;
-
-  // 実効タブ: 選択中タブが表示可能タブに無い場合（既定 hacomono を店長が開いた等）は
-  // 先頭の表示可能タブにフォールバックする。setState を使わず描画時に導出する
-  // （非表示タブの中身が誤って描画されるのを防ぐ）。
-  const activeTabId: TabId = tabs.some((t) => t.id === activeTab)
-    ? activeTab
-    : (tabs[0]?.id ?? activeTab);
 
   return (
     <div>
@@ -99,14 +89,14 @@ export default function UploadPage() {
               className={`
                 flex-1 px-4 py-3 text-sm font-medium transition-colors relative
                 ${
-                  activeTabId === tab.id
+                  activeTab === tab.id
                     ? "text-[#567FC0]"
                     : "text-gray-500 hover:text-gray-700"
                 }
               `}
             >
               {tab.label}
-              {activeTabId === tab.id && (
+              {activeTab === tab.id && (
                 <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#567FC0]" />
               )}
             </button>
@@ -116,23 +106,23 @@ export default function UploadPage() {
 
       {/* Tab Content */}
       <div className="bg-white rounded-b-lg shadow-sm p-6">
-        {activeTabId === "payroll" && <PayrollTab onSuccess={refreshHistory} />}
-        {activeTabId === "amazon-expense" && (
+        {activeTab === "payroll" && <PayrollTab onSuccess={refreshHistory} />}
+        {activeTab === "amazon-expense" && (
           <AmazonExpenseTab onSuccess={refreshHistory} lockedStore={lockedStore} />
         )}
-        {activeTabId === "paypay-expense" && (
+        {activeTab === "paypay-expense" && (
           <PayPayExpenseTab onSuccess={refreshHistory} lockedStore={lockedStore} />
         )}
-        {activeTabId === "hacomono" && (
+        {activeTab === "hacomono" && (
           <HacomonoTab onSuccess={refreshHistory} lockedStore={lockedStore} />
         )}
-        {activeTabId === "budget" && (
+        {activeTab === "budget" && (
           <BudgetTab onSuccess={refreshHistory} lockedStore={lockedStore} />
         )}
-        {activeTabId === "pl-actual" && (
+        {activeTab === "pl-actual" && (
           <PlActualTab onSuccess={refreshHistory} lockedStore={lockedStore} />
         )}
-        {activeTabId === "fee-electricity" && (
+        {activeTab === "fee-electricity" && (
           <FeeElectricityTab onSuccess={refreshHistory} />
         )}
       </div>
@@ -146,7 +136,7 @@ export default function UploadPage() {
           </h2>
         </div>
         <div className="p-4">
-          <UploadHistory key={`${historyKey}-${activeTabId}`} filterTab={activeTabId} />
+          <UploadHistory key={`${historyKey}-${activeTab}`} filterTab={activeTab} />
         </div>
       </div>
     </div>
