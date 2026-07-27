@@ -980,31 +980,60 @@ export async function POST(request: NextRequest) {
 
       const records = Array.from(aggregated.values());
 
-      await prisma.$transaction(async (tx) => {
-        await tx.squareItemSales.deleteMany({
-          where: { year, month, storeName: store },
-        });
-        if (records.length > 0) {
-          await tx.squareItemSales.createMany({ data: records });
-        }
-        await tx.uploadLog.create({
-          data: {
-            userId: session.userId,
-            userName:
-              session.displayName || session.storeName || "ユーザー",
-            dataType: "square_item",
-            storeName: store,
-            year,
-            month,
-            fileName: file.name,
-            recordCount: records.length,
-          },
-        });
-      });
+      // 物販売上サマリ: ダッシュボードの「物販」は square_sales.gross_sales を参照するため、
+      // Square アイテム別売上のうち「物販」分類ぶんを店舗・月単位で集計して square_sales に反映する。
+      // （square-classify.ts の設計どおり。パーソナルは hacomono を正とするため物販のみ集計）
+      const buppan = records.filter((r) => r.classification === "物販");
+      const buppanGross = buppan.reduce((s, r) => s + r.grossSales, 0);
+      const buppanNet = buppan.reduce((s, r) => s + r.netSales, 0);
+      const buppanQty = buppan.reduce((s, r) => s + r.quantity, 0);
+
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.squareItemSales.deleteMany({
+            where: { year, month, storeName: store },
+          });
+          if (records.length > 0) {
+            await tx.squareItemSales.createMany({ data: records });
+          }
+          // 物販サマリを作り直す（店舗・月スコープ）。物販が0件でも既存サマリは消す。
+          await tx.squareSales.deleteMany({
+            where: { year, month, storeName: store },
+          });
+          if (buppan.length > 0) {
+            await tx.squareSales.create({
+              data: {
+                year,
+                month,
+                storeName: store,
+                grossSales: buppanGross,
+                netSales: buppanNet,
+                fees: 0,
+                transactionCount: buppanQty,
+              },
+            });
+          }
+          await tx.uploadLog.create({
+            data: {
+              userId: session.userId,
+              userName:
+                session.displayName || session.storeName || "ユーザー",
+              dataType: "square_item",
+              storeName: store,
+              year,
+              month,
+              fileName: file.name,
+              recordCount: records.length,
+            },
+          });
+        },
+        { maxWait: 10_000, timeout: 60_000 },
+      );
 
       return NextResponse.json({
         records: records.length,
         type: "square_item",
+        buppanGross,
         year,
         month,
       });
