@@ -377,8 +377,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 手動追記の「その他売上」は売上合計に含める（坪井さん要望: 請求書ベースの売上を計上）
-    const totalRevenue = salesTotal + squareTotal + manualOtherSales;
+    // 手動追記の「その他売上」は売上合計に含める（坪井さん要望: 請求書ベースの売上を計上）。
+    // totalRevenue は Square アイテム別売上（パーソナル）を算入するため、
+    // squareItemByClass の計算後（下方）で定義する。
 
     // ── 月会費 (PS001 商品別売上から正確に算出) ─────────────────
     // PL001 の摘要キーワードマッチでは月会費と入会金等が混ざる可能性があり、
@@ -412,20 +413,31 @@ export async function GET(request: NextRequest) {
     // 売上4分類（坪井さん要望: 会費/パーソナル/物販/その他）
     const salesMembership =
       (salesByCategory["月会費"] ?? 0) + (salesByCategory["入会金"] ?? 0);
-    // パーソナル/物販は Square アイテム別売上が取り込まれていれば classification 由来、
-    // 無ければ従来ロジック（PL001 摘要由来のパーソナル + SquareSales 全額=物販）。
-    const salesPersonal = hasSquareItem
-      ? squareItemByClass["パーソナル"] ?? 0
-      : salesByCategory["パーソナル"] ?? 0;
+    // パーソナル = hacomono売上明細のパーソナル分 ＋ Square決済のパーソナル分（松尾さん依頼 2026-07）。
+    //   パーソナルは決済チャネルが hacomono / Square の2系統に分かれるため両方を合算する。
+    //   hacomonoPersonal は salesTotal に含まれるが squarePersonal は含まれないため、
+    //   総売上・その他の計算では両者の扱いを分ける。
+    const hacomonoPersonal = salesByCategory["パーソナル"] ?? 0;
+    const squarePersonal = hasSquareItem ? (squareItemByClass["パーソナル"] ?? 0) : 0;
+    const salesPersonal = hacomonoPersonal + squarePersonal;
+    // 物販は Square アイテム別売上が取り込まれていれば classification 由来、無ければ SquareSales 全額。
     const salesProduct = hasSquareItem
       ? squareItemByClass["物販"] ?? 0
       : squareTotal;
     const salesService = hasSquareItem
       ? squareItemByClass["サービス"] ?? 0
       : 0;
-    // その他 = hacomonoのスポット等 + 手動追記の請求書「その他」
+    // その他 = hacomonoのスポット等 + 手動追記の請求書「その他」。
+    //   salesTotal(=hacomono売上合計) から差し引くのは hacomono由来分のみ
+    //   （squarePersonal は salesTotal に含まれないため差し引かない）。
     const salesOther =
-      salesTotal - salesMembership - salesPersonal + manualOtherSales;
+      salesTotal - salesMembership - hacomonoPersonal + manualOtherSales;
+
+    // 総売上: hacomono売上 + Square物販(square_sales) + Squareパーソナル + 手動その他。
+    //   Squareパーソナルは square_sales(物販のみ) に含まれないため個別に算入する
+    //   （従来は総売上・パーソナルから取りこぼしていた）。
+    const totalRevenue =
+      salesTotal + squareTotal + squarePersonal + manualOtherSales;
 
     const revenueSummary = {
       total: Math.round(totalRevenue),
