@@ -324,7 +324,7 @@
   </div>
   <h1>ハイアルチ PLダッシュボード</h1>
   <div class="subtitle">操作マニュアル</div>
-  <div class="meta">URL: https://highalt-dashboard.vercel.app &nbsp;|&nbsp; 最終更新: 2026年4月20日</div>
+  <div class="meta">URL: https://highalt-dashboard.vercel.app &nbsp;|&nbsp; 最終更新: 2026年7月23日</div>
 </header>
 
 <div class="container">
@@ -584,16 +584,20 @@
   <h3>2.4 グラフ</h3>
   <p>KPIカードの下に、データの推移や内訳を示すグラフが表示されます。</p>
   <ul>
-    <li><strong>月次推移グラフ:</strong> 売上・人件費・経費の月ごとの推移</li>
+    <li><strong>売上推移 / 内訳:</strong> 会費・パーソナル・物販・その他の4分類で表示（<strong>物販</strong>＝Squareのアイテム別売上の物販分類、<strong>パーソナル</strong>＝hacomono売上明細より集計）</li>
+    <li><strong>客単価推移:</strong> 月会費売上 ÷ プラン契約者数（1人あたりの月会費収入）。予算を点線で重ねて表示</li>
+    <li><strong>人件費・経費・営業利益の推移:</strong> 各月の推移に予算を重ねて表示</li>
+    <li><strong>会員数系の推移:</strong> 在籍会員数（プラン契約者数）・新規入会数・退会数・退会率・入会率など</li>
+    <li><strong>前年比比較グラフ:</strong> 今期と前期を項目別（売上・人件費・広告宣伝費・消耗品費・営業利益）に並べて比較。「前年比◯%」を表示（全体・店舗別どちらでも表示されます）</li>
     <li><strong>経費内訳:</strong> 勘定科目別の経費割合</li>
-    <li><strong>店舗比較:</strong> 全店舗の横並び比較（管理者のみ）</li>
   </ul>
+  <p class="tip">※ 人件費・消耗品費・広告宣伝費・前年比は、クライアント様公式の損益計算書（前年比PLタブで取込）を正データとして表示します。</p>
 
-  <h3>2.5 店舗比較画面</h3>
-  <p>管理者は店舗比較画面で、全店舗のKPIを一覧で比較できます。</p>
+  <h3>2.5 全体表示と店舗比較</h3>
+  <p>店舗セレクタで「<strong>全体</strong>」を選ぶと、全7店舗を合算した数値・グラフが表示されます。個別店舗を選ぶとその店舗のみの表示に切り替わります。</p>
   <ul>
-    <li>売上、人件費、経費、営業利益を店舗横並びで表示</li>
-    <li>前月比や前年同月比の変動も確認可能</li>
+    <li>売上、人件費、経費、営業利益、客単価、前年比などを全体／店舗別で確認可能</li>
+    <li>店舗比較では全店舗のKPIを横並びで比較できます（管理者・マネージャーのみ）</li>
   </ul>
 
   <a href="#top" class="back-top">
@@ -714,22 +718,45 @@
     <li><span class="step-num">5</span><span>「保存」をクリックしてデータを確定します</span></li>
   </ol>
 
-  <h3>3.4 売上CSV</h3>
+  <h3>3.4 hacomono（売上・アンケート・Square）</h3>
+  <p>「hacomono（売上・アンケート）」タブに、hacomono / Square から出力した各種CSVをドロップします。<strong>ファイルの種類（会員ML001 / 売上明細PL001 / 月次サマリMA002 / 商品別売上PS001 / アンケート回答 / Square アイテム別売上）は自動で判別されます。</strong>複数ファイルをまとめて投入できます。</p>
   <ol class="steps">
-    <li><span class="step-num">1</span><span>「売上」タブを選択します</span></li>
-    <li><span class="step-num">2</span><span>サブタブ（会員ML001 / 売上明細PL001 / 月次サマリMA002）を選択します</span></li>
-    <li><span class="step-num">3</span><span>対象店舗を指定します（年・月はCSVから自動認識されます）</span></li>
-    <li><span class="step-num">4</span><span>CSVファイルをアップロードします</span></li>
-    <li><span class="step-num">5</span><span>プレビューを確認後、保存します</span></li>
+    <li><span class="step-num">1</span><span>「hacomono（売上・アンケート）」タブを選択します</span></li>
+    <li><span class="step-num">2</span><span>対象店舗を指定します（会員ML001・売上明細PL001・月次サマリMA002 は年月をCSVから自動認識。商品別売上PS001・Square アイテム別売上 はファイル名に年月が無いため、画面で年月を指定します）</span></li>
+    <li><span class="step-num">3</span><span>CSVファイルをドロップします（複数可）</span></li>
+    <li><span class="step-num">4</span><span>プレビューを確認後、保存します</span></li>
   </ol>
 
+  <h4>Square アイテム別売上（物販の反映）</h4>
+  <p>ダッシュボードの「<strong>物販</strong>」は、Square のアイテム別売上のうち「物販」に分類された商品（サプリ・ドリンク・ウェア・プロテイン・グッズ等）を集計して表示します。手順は上記 3.4 と同じで、<strong>Square から出力した「アイテム別売上」CSV を hacomono タブにドロップし、対象の年・月・店舗を指定して保存</strong>してください（ファイル名に「square」等が含まれていれば自動判別されます）。</p>
+  <ul>
+    <li>商品名またはカテゴリに「パーソナル / PT」→ パーソナル、「物販・サプリ・ドリンク・ウェア・タオル・プロテイン・グッズ・BCAA」→ 物販、として自動分類されます。</li>
+    <li><strong>パーソナル売上は hacomono の売上明細から集計</strong>しています（Square のパーソナル分類は、二重計上を避けるため物販には含めていません）。</li>
+  </ul>
+
   <h3>3.5 予算CSV</h3>
+  <p>「予算」タブに、予算実績対比表の「予算書」CSV、または「販促報告」CSV をドロップします。<strong>店舗・年度・ファイルの種類は自動で判別</strong>されます（複数まとめて投入可）。</p>
   <ol class="steps">
     <li><span class="step-num">1</span><span>「予算」タブを選択します</span></li>
-    <li><span class="step-num">2</span><span>対象店舗・対象年度（決算年）・第○期を指定します</span></li>
-    <li><span class="step-num">3</span><span>予算実績対比表CSVをアップロードします（各月の予算列を取り込みます）</span></li>
-    <li><span class="step-num">4</span><span>「解析して保存する」をクリックします</span></li>
+    <li><span class="step-num">2</span><span>CSVファイルをドロップします（ファイル名の「2026_9期（○○スタジオ）」から店舗・年度・期を自動判別）</span></li>
+    <li><span class="step-num">3</span><span>「解析して保存する」をクリックします</span></li>
   </ol>
+
+  <h3>3.6 前年比PL（損益計算書・実績）</h3>
+  <p>「前年比PL」タブに、予算実績対比表の「損益計算書」または「開業からの実績累計（PL）」CSV をドロップします。前年比比較や、経費（広告宣伝費・賃借料・電気料など）の正データとして使用します（2026年4月以前のみ反映）。</p>
+  <ol class="steps">
+    <li><span class="step-num">1</span><span>「前年比PL」タブを選択します</span></li>
+    <li><span class="step-num">2</span><span>対象店舗を選び、その店舗のCSVを取り込みます</span></li>
+    <li><span class="step-num">3</span><span>「取り込む」をクリックします（既存データがある場合は上書き確認が出ます）</span></li>
+  </ol>
+
+  <h3>3.7 手数料・電気料（一括取込）</h3>
+  <p>「手数料・電気料」タブに、以下3種のファイルを<strong>まとめて1箇所にドロップ</strong>できます。ファイルの種類は自動判別され、店舗別・月次の経費（支払手数料 / 電気料）に反映されます。</p>
+  <ul>
+    <li>PAY.JP 決済手数料（店舗別サマリCSV）→ 支払手数料</li>
+    <li>fincode 決済手数料（取引明細CSV）→ 支払手数料</li>
+    <li>シンエナジー 電気料金明細（Excel）→ 電気料</li>
+  </ul>
 
   <a href="#top" class="back-top">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
@@ -838,10 +865,29 @@
   <p><strong>管理者のみアクセス可能です。</strong></p>
   <ul>
     <li><strong>ユーザー一覧:</strong> 登録済みのユーザーが表示されます</li>
-    <li><strong>新規追加:</strong> ユーザー名、パスワード、ロール（管理者/店長）、担当店舗を指定して作成します</li>
+    <li><strong>新規追加:</strong> ユーザー名、パスワード、ロール（管理者 / マネージャー / 店長）、担当店舗を指定して作成します</li>
+    <li><strong>マネージャー:</strong> 管理者と同等の権限を持つロールです（全店舗の閲覧・設定・アップロードが可能）</li>
     <li><strong>編集:</strong> 既存ユーザーのロールや担当店舗を変更できます</li>
     <li><strong>削除:</strong> ユーザーを削除できます</li>
   </ul>
+
+  <h3>4.5 本部一括経費</h3>
+  <p><strong>管理者・マネージャーのみ。</strong>電気代・水道代・家賃など、本部で一括支払いし各店のPayPay銀行CSVに現れない経費を月次で入力します。</p>
+  <ul>
+    <li><strong>計上先:</strong> 「本部一括」を選ぶと入力額を営業店舗数で均等按分。店舗名を選ぶとその店舗のみに計上します</li>
+    <li><strong>複数行:</strong> 同じ年月・費目・計上先でも、明細を分けて複数行を登録できます</li>
+    <li><strong>保存:</strong> 「行を追加」で入力し「保存」をクリックします</li>
+  </ul>
+
+  <h3>4.6 手動人件費</h3>
+  <p><strong>管理者・マネージャーのみ。</strong>クラウド給与の支給控除一覧表（CSV）に載らない社員（役員・業務委託・未登録者など）の給与総額を月次で登録します。登録額はその店舗・月の人件費に加算されます。</p>
+  <ul>
+    <li><strong>入力項目:</strong> 月・店舗・氏名・雇用区分（正社員/アルバイト）・給与総額</li>
+    <li><strong>反映:</strong> 2026年4月以前は損益計算書の人件費を正とするため、加算は主に5月以降に反映されます</li>
+  </ul>
+
+  <h3>4.7 店舗名管理</h3>
+  <p><strong>管理者・マネージャーのみ。</strong>画面表示用の店舗名（表示名）を設定できます。</p>
 
   <!-- Role Permission Matrix -->
   <h3>権限マトリクス</h3>
