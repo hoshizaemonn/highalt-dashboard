@@ -113,7 +113,13 @@ async function detectFromHeader(file: File): Promise<DetectedType> {
   // BOM 判定: 0xEF 0xBB 0xBF があれば UTF-8 確定
   const hasBom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
   let text = "";
-  if (hasBom) {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    // UTF-16LE（Square の CSV 等）
+    text = new TextDecoder("utf-16le").decode(buffer);
+  } else if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    // UTF-16BE
+    text = new TextDecoder("utf-16be").decode(buffer);
+  } else if (hasBom) {
     text = new TextDecoder("utf-8").decode(buffer);
   } else {
     // UTF-8 strict検証 → 失敗したら shift_jis
@@ -131,9 +137,14 @@ async function detectFromHeader(file: File): Promise<DetectedType> {
   text = text.replace(/^﻿/, "");
   const firstLine = text.split(/\r?\n/, 1)[0] || "";
 
-  // Square アイテム別売上: 「アイテム」or「Item」列 + 「総売上」「Gross Sales」「純売上」「Net Sales」のいずれか
+  // Square アイテム別売上: 「アイテム」or「Item」or「商品名(商品コード無し)」列
+  //   ＋「総売上」「Gross Sales」「純売上」「Net Sales」のいずれか。
+  //   Square の商品売上サマリーはヘッダーが「商品名」なので、ps001(商品コード＋商品名)と
+  //   衝突しないよう「商品コードが無い」条件を付けて商品名でも判定する。
   if (
-    (firstLine.includes("アイテム") || /\bItem\b/.test(firstLine)) &&
+    (firstLine.includes("アイテム") ||
+      /\bItem\b/.test(firstLine) ||
+      (firstLine.includes("商品名") && !firstLine.includes("商品コード"))) &&
     (firstLine.includes("総売上") ||
       firstLine.includes("純売上") ||
       firstLine.includes("ネット売上") ||

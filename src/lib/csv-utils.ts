@@ -10,6 +10,21 @@ export function decodeFileBuffer(
   buffer: ArrayBuffer,
   preferredEncoding?: string,
 ): string {
+  // ① UTF-16 は BOM で判定して先に処理する。
+  //    Square の CSV（商品売上サマリー等）は UTF-16LE + タブ区切りで出力されるため、
+  //    utf-8 / shift_jis だけだとデコードに失敗し 500（Internal server error）になる。
+  const head = new Uint8Array(buffer.slice(0, 2));
+  if (head.length >= 2) {
+    let utf16enc: string | null = null;
+    if (head[0] === 0xff && head[1] === 0xfe) utf16enc = "utf-16le";
+    else if (head[0] === 0xfe && head[1] === 0xff) utf16enc = "utf-16be";
+    if (utf16enc) {
+      let text = new TextDecoder(utf16enc).decode(buffer);
+      if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); // BOM 除去
+      return text;
+    }
+  }
+
   const encodings = preferredEncoding
     ? [preferredEncoding, "utf-8", "shift_jis"]
     : ["utf-8", "shift_jis"];
@@ -33,8 +48,18 @@ export function decodeFileBuffer(
 /**
  * Parse CSV text into rows (array of string arrays).
  * Handles quoted fields with commas and newlines.
+ * 区切り文字はカンマ既定だが、明示指定が無い場合は先頭行を見て
+ * タブ区切り（Square の CSV 等）を自動判定する。
  */
-export function parseCSV(text: string): string[][] {
+export function parseCSV(text: string, delimiter?: string): string[][] {
+  let delim = delimiter ?? ",";
+  if (!delimiter) {
+    const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+    const tabs = (firstLine.match(/\t/g) || []).length;
+    const commas = (firstLine.match(/,/g) || []).length;
+    if (tabs > commas) delim = "\t";
+  }
+
   const rows: string[][] = [];
   let current = "";
   let inQuotes = false;
@@ -57,7 +82,7 @@ export function parseCSV(text: string): string[][] {
     } else {
       if (ch === '"') {
         inQuotes = true;
-      } else if (ch === ",") {
+      } else if (ch === delim) {
         row.push(current.trim());
         current = "";
       } else if (ch === "\r") {
@@ -110,7 +135,8 @@ export function getCell(row: string[], idx: number): string {
  */
 export function safeFloat(val: string | undefined | null): number {
   if (!val) return 0;
-  const cleaned = val.replace(/,/g, "").trim();
+  // カンマ・通貨記号（¥ / 全角￥）・空白を除去（Square は "¥209,003" 形式で出力する）
+  const cleaned = val.replace(/[,¥￥\s]/g, "").trim();
   const n = parseFloat(cleaned);
   return isNaN(n) ? 0 : n;
 }
@@ -120,7 +146,8 @@ export function safeFloat(val: string | undefined | null): number {
  */
 export function safeInt(val: string | undefined | null): number {
   if (!val) return 0;
-  const cleaned = val.replace(/,/g, "").trim();
+  // カンマ・通貨記号（¥ / 全角￥）・空白を除去（Square は "¥209,003" / "-¥64,800" 形式）
+  const cleaned = val.replace(/[,¥￥\s]/g, "").trim();
   const n = parseInt(cleaned, 10);
   return isNaN(n) ? 0 : n;
 }
