@@ -192,10 +192,10 @@ export default function ManualExpenseTab() {
             <table className="w-full text-sm min-w-[800px]">
               <thead>
                 <tr className="border-b bg-gray-50">
-                  <th className="text-left px-3 py-2 font-medium text-gray-600 w-20">
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 w-28">
                     年
                   </th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600 w-16">
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 w-20">
                     月
                   </th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">
