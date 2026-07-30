@@ -870,30 +870,30 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const getVal = (row: string[], colName: string): string => {
-        const idx = hmap[colName];
+      // 列名は Square CSV の言語/書式揺れに対応するため、候補を「完全一致→部分一致」で解決する。
+      // Square は「総売上」ではなく「総売上高」「総売上額」等の表記になることがあり、
+      // 完全一致だけだと金額列を拾えず 0 になってしまうため、部分一致でも拾う。
+      const headerNames = Object.keys(hmap);
+      const resolveIdx = (candidates: string[]): number | undefined => {
+        for (const c of candidates) {
+          if (hmap[c] !== undefined) return hmap[c];
+        }
+        for (const c of candidates) {
+          const hit = headerNames.find((n) => n.includes(c));
+          if (hit !== undefined) return hmap[hit];
+        }
+        return undefined;
+      };
+      const pickCol = (row: string[], candidates: string[]): string => {
+        const idx = resolveIdx(candidates);
         return idx !== undefined && idx < row.length ? row[idx].trim() : "";
       };
-      const getIntVal = (row: string[], colName: string): number => {
-        return safeInt(getVal(row, colName));
-      };
-      // 列名は Square CSV の言語/書式揺れに対応するため候補から最初に見つかったものを使う
-      const pickCol = (row: string[], candidates: string[]): string => {
-        for (const c of candidates) {
-          const v = getVal(row, c);
-          if (v) return v;
-        }
-        return "";
-      };
       const pickIntCol = (row: string[], candidates: string[]): number => {
-        for (const c of candidates) {
-          const idx = hmap[c];
-          if (idx !== undefined) return safeInt(getCell(row, idx));
-        }
-        return 0;
+        const idx = resolveIdx(candidates);
+        return idx !== undefined ? safeInt(getCell(row, idx)) : 0;
       };
 
-      const ITEM_COLS = ["アイテム", "アイテム名", "商品名", "商品", "Item", "Item Name"];
+      const ITEM_COLS = ["アイテム", "アイテム名", "商品名", "Item", "Item Name"];
       const VARIATION_COLS = ["商品バリエーション", "バリエーション", "Variation", "オプション"];
       const CATEGORY_COLS = ["商品カテゴリ", "カテゴリ", "カテゴリー", "Category"];
       const QTY_COLS = ["販売商品数", "数量", "販売数", "Qty", "Quantity", "件数"];
