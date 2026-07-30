@@ -322,6 +322,7 @@ const TAB_DATATYPES: Record<string, string[]> = {
     "hacomono_ma002",
     "hacomono_ps001",
     "hacomono_enquete_answer",
+    "square_item",
   ],
   payroll: ["payroll"],
   // 旧 expense タブ向けの互換マッピング（amazon-expense / paypay-expense に分割後も両方を見せる）
@@ -362,6 +363,8 @@ export function UploadHistory({ filterTab }: { filterTab?: string }) {
     hacomono_pl001: "売上明細 (PL001)",
     hacomono_ma002: "月次サマリ (MA002)",
     hacomono_ps001: "商品別売上 (PS001)",
+    hacomono_enquete_answer: "アンケート回答",
+    square_item: "Square アイテム別売上",
   };
 
   // 現在開いているタブに応じてフィルタ。タブ未指定なら全件。
