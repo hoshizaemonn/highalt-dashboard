@@ -893,10 +893,10 @@ export async function POST(request: NextRequest) {
         return 0;
       };
 
-      const ITEM_COLS = ["アイテム", "アイテム名", "商品名", "Item", "Item Name"];
-      const VARIATION_COLS = ["バリエーション", "Variation", "オプション"];
-      const CATEGORY_COLS = ["カテゴリ", "カテゴリー", "Category"];
-      const QTY_COLS = ["数量", "販売数", "Qty", "Quantity", "件数"];
+      const ITEM_COLS = ["アイテム", "アイテム名", "商品名", "商品", "Item", "Item Name"];
+      const VARIATION_COLS = ["商品バリエーション", "バリエーション", "Variation", "オプション"];
+      const CATEGORY_COLS = ["商品カテゴリ", "カテゴリ", "カテゴリー", "Category"];
+      const QTY_COLS = ["販売商品数", "数量", "販売数", "Qty", "Quantity", "件数"];
       const GROSS_COLS = ["総売上", "売上", "Gross Sales", "Gross Sales (¥)"];
       const NET_COLS = ["純売上", "ネット売上", "Net Sales", "Net Sales (¥)"];
       const DISCOUNT_COLS = ["割引", "割引額", "Discounts"];
