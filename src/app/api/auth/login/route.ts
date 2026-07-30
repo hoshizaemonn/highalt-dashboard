@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     // 名前比較時は全空白を除いて正規化する。
     // ① username 完全一致
     // ② 無ければ displayName 完全一致
-    // ③ 無ければ 入力を社員IDとみなして PayrollData から社員名を逆引き
+    // ③ 無ければ 入力を社員IDとみなして PayrollData（無ければ従業員店舗マッピング）から社員名を逆引き
     // ④ 無ければ 全ユーザを正規化比較（スペース揺れ吸収）
     const normalize = (s: string | null | undefined) =>
       (s ?? "").replace(/[\s　]+/g, "");
@@ -65,7 +65,20 @@ export async function POST(request: Request) {
         select: { employeeName: true },
         orderBy: [{ year: "desc" }, { month: "desc" }],
       });
-      const empName = payroll?.employeeName;
+      let empName = payroll?.employeeName ?? null;
+      // PayrollData に無ければ 従業員店舗マッピング(store_overrides)からも社員名を逆引き。
+      // 人件費CSV未登録・マッピングのみの社員も社員IDでログインできるようにする
+      // （松尾さん依頼 2026-07。StoreOverride.employeeId は数値なので変換して照合）。
+      if (!empName) {
+        const empIdNum = parseInt(username, 10);
+        if (!Number.isNaN(empIdNum)) {
+          const ov = await prisma.storeOverride.findFirst({
+            where: { employeeId: empIdNum },
+            select: { employeeName: true },
+          });
+          if (ov?.employeeName) empName = ov.employeeName;
+        }
+      }
       if (empName) {
         const byUsername = await prisma.user.findUnique({
           where: { username: empName },
