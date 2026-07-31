@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireStoreUploadAccess } from "@/lib/auth";
 import { decodeFileBuffer, parseCSV } from "@/lib/csv-utils";
 import { parsePlActuals } from "@/lib/pl-csv";
+import { parsePlStatement } from "@/lib/pl-statement-parse";
 
 /**
  * 開業からの実績累計（PL）CSV を取り込み、pl_actuals に保存する。
@@ -41,9 +42,40 @@ export async function POST(request: NextRequest) {
     const text = decodeFileBuffer(buffer);
     const rows = parseCSV(text);
 
-    let records;
+    // シート種別を自動判定して取込方式を切り替える：
+    //   ①「損益計算書」シート → parsePlStatement（費目を細かく取込＝消耗品費が正しい小さい値。
+    //      人件費は給与系を合算して category="人件費" として併せて取り込む＝前年比の人件費も維持）
+    //   ②「開業からの実績累計（PL）」シート → 従来の parsePlActuals（人件費/消耗品費/広告宣伝費の3費目）
+    const title = (rows[0]?.[0] ?? "").replace(/\s/g, "");
+    const isPlStatement = title.includes("損益計算書");
+
+    let records: {
+      year: number;
+      month: number;
+      category: string;
+      amount: number;
+    }[];
     try {
-      records = parsePlActuals(rows);
+      if (isPlStatement) {
+        const parsed = parsePlStatement(rows, { includeLabor: true });
+        // 店舗取り違え防止：ファイル1行目の店舗と選択店舗が一致するか検証
+        if (parsed.storeName !== store) {
+          return NextResponse.json(
+            {
+              error: `選択した店舗（${store}）とファイルの店舗（${parsed.storeName}）が一致しません。店舗の選択を確認してください。`,
+            },
+            { status: 400 },
+          );
+        }
+        records = parsed.records.map((r) => ({
+          year: r.year,
+          month: r.month,
+          category: r.category,
+          amount: r.amount,
+        }));
+      } else {
+        records = parsePlActuals(rows);
+      }
     } catch (e) {
       return NextResponse.json(
         { error: e instanceof Error ? e.message : "PL CSVの解析に失敗しました" },
@@ -53,7 +85,7 @@ export async function POST(request: NextRequest) {
 
     if (records.length === 0) {
       return NextResponse.json(
-        { error: "取り込めるデータ（人件費・消耗品費・広告宣伝費）が見つかりませんでした" },
+        { error: "取り込めるデータが見つかりませんでした（損益計算書 または 開業からの実績累計PL シートのCSVをご確認ください）" },
         { status: 400 },
       );
     }

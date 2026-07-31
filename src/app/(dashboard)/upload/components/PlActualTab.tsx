@@ -111,13 +111,16 @@ export function PlActualTab({
     <div className="space-y-4">
       <div className="bg-blue-50/60 border border-blue-100 rounded-lg p-4">
         <h3 className="text-sm font-bold text-gray-800 mb-1">
-          開業からの実績累計（PL）— 前年比比較用
+          前年比PL（損益計算書 / 開業からの実績累計PL）
         </h3>
         <p className="text-xs text-gray-600 leading-relaxed">
-          クライアント様の「予算実績対比表」の<strong>「開業からの実績累計（PL）」シート</strong>をCSVにして取り込みます。
-          <strong>人件費・消耗品費・広告宣伝費</strong>の<strong>当年・前年</strong>を抽出し、前年比比較に使用します（単位は千円→自動で円換算）。
+          クライアント様の「予算実績対比表」の<strong>「損益計算書」シート</strong>または<strong>「開業からの実績累計（PL）」シート</strong>をCSVにして取り込みます（シート種別は自動判定）。
+          前年比比較に使用します（単位は千円→自動で円換算）。
           <br />
-          ※ 店舗別ファイルです。<strong>店舗を選んでから、その店舗のCSVを1つずつ</strong>取り込んでください。
+          ・<strong>損益計算書</strong>シート：消耗品費・賃借料・減価償却費など費目ごとに正確に取り込みます（推奨）。
+          ・<strong>開業からの実績累計PL</strong>シート：人件費・消耗品費・広告宣伝費の3費目を取り込みます。
+          <br />
+          ※ 店舗別ファイルです。<strong>店舗を選んでから、その店舗のCSVを1つずつ</strong>取り込んでください（ファイルの店舗名と選択店舗が一致しない場合はエラーになります）。
         </p>
       </div>
 

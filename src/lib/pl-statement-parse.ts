@@ -92,7 +92,16 @@ function resolveFiscalYear(rows: string[][]): number | null {
  * 損益計算書CSV（parseCSV済みの2次元配列）から経費実績を抽出する。
  * 解析できない場合は Error を投げる（呼び出し側で400を返す）。
  */
-export function parsePlStatement(rows: string[][]): PlStatementResult {
+/** 人件費として合算する損益計算書の行ラベル接頭辞。
+ *  正社員給与 + 契約社員給与 + 賞与 + 通勤手当 + 法定福利費（福利厚生費は経費側なので含めない）。
+ *  ※通常この関数は人件費を除外する（給与CSVが正）が、前年比PL(pl_actuals)は
+ *    人件費も pl_actuals から読むため、includeLabor 指定時のみ集計して返す。 */
+const PL_LABOR_PREFIXES = ["正社員", "契約社員", "賞", "通勤手当", "法定福利"];
+
+export function parsePlStatement(
+  rows: string[][],
+  opts?: { includeLabor?: boolean },
+): PlStatementResult {
   if (!rows.length) throw new Error("ファイルが空です。");
 
   const title = norm((rows[0] ?? [])[0]);
@@ -116,17 +125,37 @@ export function parsePlStatement(rows: string[][]): PlStatementResult {
     );
   }
 
-  // 月ヘッダー行（「10月」を含む行）を探す
-  const headerIdx = rows.findIndex((r) => r.some((c) => norm(c) === "10月"));
+  // 月ヘッダー行を探す。2種類の表記に対応する：
+  //   ① 「10月」「11月」… 形式（9期の損益計算書タブ）
+  //   ② 「2024.10」「2025.9」… 形式（年.月。8期の損益計算書タブ等）
+  const MONTH_LABEL_RE = /^(\d{1,2})月$/;
+  const YM_LABEL_RE = /^(\d{4})[.\/](\d{1,2})$/;
+  const headerIdx = rows.findIndex((r) =>
+    r.some((c) => {
+      const s = norm(c);
+      return MONTH_LABEL_RE.test(s) || YM_LABEL_RE.test(s);
+    }),
+  );
   if (headerIdx < 0) {
-    throw new Error("月ヘッダー行（10月〜9月）が見つかりません。");
+    throw new Error("月ヘッダー行（10月〜9月 または 2024.10 形式）が見つかりません。");
   }
   const header = rows[headerIdx];
 
-  // 月ラベル列 → (年, 月)。10〜12月は前年、1〜9月は当年（9期=2025/10〜2026/9）
+  // 月ラベル列 → (年, 月)。
+  //   ①「10月」形式は 10〜12月を前年・1〜9月を当年として fiscalYear から補完。
+  //   ②「2024.10」形式は年月が明示されているのでそのまま使う。
   const monthCols: Array<{ col: number; year: number; month: number }> = [];
   for (let i = 0; i < header.length; i++) {
-    const m = norm(header[i]).match(/^(\d{1,2})月$/);
+    const s = norm(header[i]);
+    const ym = s.match(YM_LABEL_RE);
+    if (ym) {
+      const year = parseInt(ym[1], 10);
+      const month = parseInt(ym[2], 10);
+      if (month < 1 || month > 12) continue;
+      monthCols.push({ col: i, year, month });
+      continue;
+    }
+    const m = s.match(MONTH_LABEL_RE);
     if (!m) continue;
     const month = parseInt(m[1], 10);
     if (month < 1 || month > 12) continue;
@@ -134,7 +163,7 @@ export function parsePlStatement(rows: string[][]): PlStatementResult {
     monthCols.push({ col: i, year, month });
   }
   if (monthCols.length === 0) {
-    throw new Error("月次ヘッダー（例: 10月）が見つかりません。");
+    throw new Error("月次ヘッダー（例: 10月 または 2024.10）が見つかりません。");
   }
 
   const targets = new Set<string>(PL_COST_CATEGORIES.map((c) => norm(c)));
@@ -163,6 +192,27 @@ export function parsePlStatement(rows: string[][]): PlStatementResult {
         category,
         amount: Math.round(sen * 1000),
       });
+    }
+  }
+
+  // 人件費（前年比PL用）: 給与系の行を月次で合算して category="人件費" として追加する。
+  if (opts?.includeLabor) {
+    const laborRows = rows.filter((r) => {
+      const label = norm(r?.[0]);
+      return label && PL_LABOR_PREFIXES.some((p) => label.startsWith(p));
+    });
+    if (laborRows.length > 0) {
+      for (const { col, year, month } of monthCols) {
+        const sen = laborRows.reduce((acc, r) => acc + toNumber(r[col]), 0);
+        if (sen === 0) continue;
+        records.push({
+          storeName,
+          year,
+          month,
+          category: "人件費",
+          amount: Math.round(sen * 1000),
+        });
+      }
     }
   }
 
