@@ -8,6 +8,7 @@ import {
   parseCSV,
   safeFloat,
 } from "@/lib/csv-utils";
+import { assignmentsForMonth, loadEmployeeMapping } from "@/lib/payroll-reallocate";
 
 interface StoreAssignment {
   storeName: string;
@@ -22,24 +23,23 @@ interface UnresolvedEmployee {
 }
 
 /**
- * Resolve an employee ID to store assignments.
- * 1. Check store_overrides table
+ * Resolve an employee ID to store assignments for a specific month.
+ * 1. Check store_overrides table（適用開始月・移転前店舗を考慮）
  * 2. Fall back to thousand-digit rule
  */
-async function resolveStore(employeeId: string): Promise<StoreAssignment[]> {
+async function resolveStore(
+  employeeId: string,
+  year: number,
+  month: number,
+): Promise<StoreAssignment[]> {
   const empId = parseInt(employeeId, 10);
   if (isNaN(empId)) return [];
 
-  // 1. Check override table
-  const overrides = await prisma.storeOverride.findMany({
-    where: { employeeId: empId },
-  });
-
-  if (overrides.length > 0) {
-    return overrides.map((o) => ({
-      storeName: o.storeName,
-      ratio: o.ratio,
-    }));
+  // 1. マッピングがあれば、その月に対する割当を返す
+  //    （適用開始月より前は移転前の店舗1本／以降は按分先）
+  const mapping = await loadEmployeeMapping(prisma, empId);
+  if (mapping) {
+    return assignmentsForMonth(mapping, empId, year, month);
   }
 
   // 2. Thousand-digit rule
@@ -240,7 +240,7 @@ export async function POST(request: NextRequest) {
       const workersCompCo = col(95);
       const generalContributionCo = col(96);
 
-      let assignments = await resolveStore(empIdStr);
+      let assignments = await resolveStore(empIdStr, year, month);
 
       // Fallback: use CSV section header (e.g. 【東日本橋スタジオ】)
       if (assignments.length === 0 && currentSectionStore) {

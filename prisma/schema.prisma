@@ -51,6 +51,13 @@ model StoreOverride {
   ratio        Int    @default(100)
   employeeName String @default("") @map("employee_name")
 
+  // 適用開始年月（この月から按分/移転を適用）。null＝全期間に適用（従来動作）。
+  effectiveYear  Int? @map("effective_year")
+  effectiveMonth Int? @map("effective_month")
+  // 適用開始月より前の月に使う店舗（移転前の所属）。null＝社員番号ルールで判定、
+  // それも不可なら按分先の先頭店舗にフォールバック。初回設定時に自動取得し編集可。
+  baseStore    String? @map("base_store")
+
   @@unique([employeeId, storeName])
   @@map("store_overrides")
 }
