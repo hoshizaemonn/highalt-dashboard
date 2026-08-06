@@ -31,15 +31,16 @@ const MONTH_LABELS_IN_ORDER = [
 
 const norm = (s: unknown) => String(s ?? "").replace(/\s/g, "");
 
-/** このCSVが「会員数・収入算出」シートか判定（在籍数＋休会（未払い）＋退会率の3点で識別） */
+/** このCSVが「会員数・収入算出」シートか判定（在籍数＋退会率＋「休会」かつ「未払」で識別）。
+ *  カッコ種別（全角/半角）や「い」の有無・閉じカッコ欠けに左右されないよう部分一致で判定する。 */
 export function isMemberIncomeSheet(text: string): boolean {
   const t = norm(text);
-  const hasSuspend =
-    t.includes("休会（未払い）") ||
-    t.includes("休会(未払い)") ||
-    t.includes("休会（未払）") ||
-    t.includes("休会(未払)");
-  return t.includes("在籍数") && t.includes("退会率") && hasSuspend;
+  return (
+    t.includes("在籍数") &&
+    t.includes("退会率") &&
+    t.includes("休会") &&
+    t.includes("未払")
+  );
 }
 
 /**
