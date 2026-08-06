@@ -6,6 +6,7 @@ import { requireSession, getSessionAllowedStores } from "@/lib/auth";
 import { expenseRowShareWithCategorySplit } from "@/lib/manual-expense-split";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
+import { signupsForMonth } from "@/lib/signup-count";
 
 const CACHE_TTL_MS = 30_000;
 
@@ -107,7 +108,14 @@ export async function GET(request: NextRequest) {
       // 体験者数: ManualEntry の trial_count（店長手動入力）or MemberData trialDate
       prisma.manualEntry.findMany({ where: { year: { in: years } } }),
       prisma.memberData.findMany({
-        select: { storeName: true, trialDate: true, firstTrialDate: true },
+        select: {
+          storeName: true,
+          trialDate: true,
+          firstTrialDate: true,
+          year: true,
+          month: true,
+          joinDate: true,
+        },
       }),
     ]);
 
@@ -248,7 +256,17 @@ export async function GET(request: NextRequest) {
       const msList = allMonthlySummary.filter(
         (r) => r.storeName === storeName && isInPeriod(r.year, r.month),
       );
-      const newSignups = msList.reduce((s, r) => s + r.newPlanSignups, 0);
+      // 新規入会数: 月ごとに、ML001がある月は入会日時ベース、無い月はMA002（松尾さん②）
+      const storeMember = allMember.filter((r) => r.storeName === storeName);
+      const newSignups = periods.reduce((sum, p) => {
+        const maRow = msList.find(
+          (r) => r.year === p.year && r.month === p.month,
+        );
+        return (
+          sum +
+          signupsForMonth(storeMember, maRow ? maRow.newPlanSignups : 0, p.year, p.month)
+        );
+      }, 0);
       const cancellations = msList.reduce((s, r) => s + r.cancellations, 0);
       // 退会率: 単月レコードの文字列ではなく、期間の退会数合計÷在籍(プラン契約者)合計で算出。
       // （従来は ms 1件の cancellation_rate 文字列を使っており、春日のように該当月が0%だと
