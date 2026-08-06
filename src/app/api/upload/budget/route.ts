@@ -9,6 +9,11 @@ import {
   extractPromotionBudgetRecords,
   PROMOTION_BUDGET_CATEGORIES,
 } from "@/lib/promotion-budget-parse";
+import {
+  isMemberIncomeSheet,
+  extractMemberKpiBudget,
+  MEMBER_KPI_BUDGET_CATEGORIES,
+} from "@/lib/member-income-budget-parse";
 import { parseBudgetFilename } from "@/lib/budget-filename";
 
 export async function GET(request: NextRequest) {
@@ -105,6 +110,56 @@ export async function POST(request: NextRequest) {
         { error: "CSVにデータ行がありません" },
         { status: 400 },
       );
+    }
+
+    // ── 会員数・収入算出シート（休会数予算・退会率予算）の自動判別 ──────────
+    // 松尾さん要望: 休会数予算・退会率予算を「会員数・収入算出」シートの
+    // 「休会（未払い）」「退会率」行から取り込む。予算実績対比表とはレイアウトが
+    // 異なり（ラベルがcol[1]・先頭に前年9月列・人数/百分率）、BUDGET_ITEMSでは拾えない。
+    // 売上/経費予算（予算実績対比表由来）を消さないよう、対象カテゴリのみスコープ取込する。
+    if (isMemberIncomeSheet(text)) {
+      const kpiRecords = extractMemberKpiBudget(allRows, store, fiscalYear);
+      if (kpiRecords.length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              "会員数・収入算出シートと判定しましたが、休会（未払い）/退会率の行を検出できませんでした。シートの体裁をご確認ください。",
+          },
+          { status: 400 },
+        );
+      }
+      const kpiYears = [...new Set(kpiRecords.map((r) => r.year))];
+      await prisma.$transaction(async (tx) => {
+        // 対象カテゴリ（休会数・退会率）だけをスコープ削除→挿入（売上/経費予算は温存）
+        await tx.budgetData.deleteMany({
+          where: {
+            storeName: store,
+            year: { in: kpiYears },
+            category: { in: [...MEMBER_KPI_BUDGET_CATEGORIES] },
+          },
+        });
+        await tx.budgetData.createMany({ data: kpiRecords, skipDuplicates: true });
+        await tx.uploadLog.create({
+          data: {
+            userId: session.userId,
+            userName: session.displayName || session.storeName || "ユーザー",
+            dataType: "member_kpi_budget",
+            storeName: store,
+            year: fiscalYear,
+            fileName: file.name,
+            recordCount: kpiRecords.length,
+            note: `${fiscalYear}年度 休会数・退会率予算（会員数・収入算出・自動判別）`,
+          },
+        });
+      }, { timeout: 30000 });
+      return NextResponse.json({
+        records: kpiRecords.length,
+        categories: [...new Set(kpiRecords.map((r) => r.category))],
+        detected: "member_income",
+        store,
+        fiscalYear,
+        period,
+      });
     }
 
     // ── サーバー側フォールバック自動判別 ──────────────────────
