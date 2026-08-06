@@ -17,6 +17,7 @@ import { isPlOverrideMonth, PL_OVERRIDE_CATEGORIES } from "@/lib/pl-override";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
+import { signupsForMonth } from "@/lib/signup-count";
 
 const CACHE_TTL_MS = 30_000; // 30秒
 
@@ -208,7 +209,13 @@ export async function GET(request: NextRequest) {
       // 体験者数の自動算出（ML001 時点スナップショット）
       prisma.memberData.findMany({
         where: { ...storeWhere },
-        select: { trialDate: true, firstTrialDate: true },
+        select: {
+          trialDate: true,
+          firstTrialDate: true,
+          year: true,
+          month: true,
+          joinDate: true,
+        },
       }),
       // 予算: 店舗指定があればその店舗、全体時は本部+非表示除外
       prisma.budgetData.findMany({ where: budgetWhere }),
@@ -490,7 +497,13 @@ export async function GET(request: NextRequest) {
         parttime_count: ptCount,
         ma_total_members: ms.reduce((s, r) => s + r.totalMembers, 0),
         ma_plan_subscribers: ms.reduce((s, r) => s + r.planSubscribers, 0),
-        ma_new_signups: ms.reduce((s, r) => s + r.newPlanSignups, 0),
+        // 新規入会数: ML001がある月は入会日時ベース、無い月はMA002（松尾さん②）
+        ma_new_signups: signupsForMonth(
+          allMember,
+          ms.reduce((s, r) => s + r.newPlanSignups, 0),
+          y,
+          m,
+        ),
         ma_cancellations: ms.reduce((s, r) => s + r.cancellations, 0),
         ma_suspensions: ms.reduce((s, r) => s + r.suspensions, 0),
         ma_cancel_rate: ms.length > 0 ? ms[0].cancellationRate : "",

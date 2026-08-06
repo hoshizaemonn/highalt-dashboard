@@ -333,6 +333,9 @@ export function EditableMemberSection({
           </div>
         ))}
       </div>
+      <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
+        ※新規入会数は、メンバー一覧(ML001)を取り込んだ月は「入会日時」基準で集計しています（未取込の月は従来のプラン契約数ベース）。各月末にML001を取り込むと入会日時基準で正確に積み上がります。
+      </p>
     </>
   );
 }

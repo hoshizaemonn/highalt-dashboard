@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { HQ_STORE, STORES } from "@/lib/constants";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
+import { signupsForMonth } from "@/lib/signup-count";
 
 const CACHE_TTL_MS = 30_000;
 import {
@@ -466,12 +467,29 @@ export async function GET(request: NextRequest) {
       orderBy: [{ year: "desc" }, { month: "desc" }],
     });
 
+    // 新規入会数: ML001（メンバー一覧）がある月は入会日時ベース、無い月はMA002（松尾さん②）
+    const memberDataRows = await prisma.memberData.findMany({
+      where: memberWhere,
+      select: { year: true, month: true, joinDate: true },
+    });
+    const signupMonthKeys = new Set(
+      memberRows.map((r) => `${r.year}-${r.month}`),
+    );
+    let newSignupsTotal = 0;
+    for (const key of signupMonthKeys) {
+      const [yy, mm] = key.split("-").map(Number);
+      const maVal = memberRows
+        .filter((r) => r.year === yy && r.month === mm)
+        .reduce((s, r) => s + r.newPlanSignups, 0);
+      newSignupsTotal += signupsForMonth(memberDataRows, maVal, yy, mm);
+    }
+
     // If multiple months, take latest; if single month, aggregate by store
     const memberSummary =
       memberRows.length > 0
         ? {
             plan_subscribers: memberRows.reduce((s, r) => s + r.planSubscribers, 0),
-            new_plan_signups: memberRows.reduce((s, r) => s + r.newPlanSignups, 0),
+            new_plan_signups: newSignupsTotal,
             cancellations: memberRows.reduce((s, r) => s + r.cancellations, 0),
             suspensions: memberRows.reduce((s, r) => s + r.suspensions, 0),
             cancellation_rate: memberRows[0].cancellationRate,
