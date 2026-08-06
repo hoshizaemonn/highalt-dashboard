@@ -18,13 +18,23 @@ export interface BudgetFilenameInfo {
 export function parseBudgetFilename(filename: string): BudgetFilenameInfo {
   const info: BudgetFilenameInfo = {};
 
-  // 店舗: 全角/半角カッコ内のテキストから「スタジオ」を除去し、既知店舗にマッチ
+  // 店舗判定（優先順）:
+  //  ① 全角/半角カッコ内（例「（東日本橋スタジオ）」）を既知店舗にマッチ
+  //  ② ①で取れなければ、ファイル名全体から既知店舗名を部分一致で探す
+  //     （会員数・収入算出シートは「【春日】…」「…船橋 三次案」等、店舗がカッコ外/【】内にある）
+  //  ※ カッコ内が店舗でない文字列（例「（メンテ費用等修正済み）」）を店舗にしない
   const paren = filename.match(/[（(]([^）)]+)[）)]/);
   if (paren) {
     const inner = paren[1].replace(/スタジオ/g, "").trim();
     const matched = STORES.find((s) => inner === s || inner.includes(s));
     if (matched) info.store = matched;
-    else if (inner) info.store = inner; // 未知店舗でも名前があれば採用
+  }
+  if (!info.store) {
+    // 祖師ヶ谷大蔵は「祖師ヶ谷」表記もあるため短縮形も許容
+    const matched = STORES.find(
+      (s) => filename.includes(s) || filename.includes(s.replace(/大蔵$/, "")),
+    );
+    if (matched) info.store = matched;
   }
 
   // 決算年 + 期: "2026_9期" / "2026 9期" / "2026年9期" など
