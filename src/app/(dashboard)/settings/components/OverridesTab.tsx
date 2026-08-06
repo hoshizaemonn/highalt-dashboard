@@ -23,6 +23,9 @@ interface Override {
   storeName: string;
   ratio: number;
   employeeName: string;
+  effectiveYear?: number | null;
+  effectiveMonth?: number | null;
+  baseStore?: string | null;
 }
 
 // ─── Component ──────────────────────────────────────────────────────
@@ -50,6 +53,10 @@ export default function OverridesTab() {
   const [dualSplits, setDualSplits] = useState<
     { storeName: string; ratio: number }[]
   >([]);
+  // 適用開始月（この月から按分/移転を適用）。空＝全期間。移転前の店舗も設定可。
+  const [dualEffYear, setDualEffYear] = useState<string>("");
+  const [dualEffMonth, setDualEffMonth] = useState<string>("");
+  const [dualBaseStore, setDualBaseStore] = useState<string>("");
 
   // New employee form
   const [newEmpId, setNewEmpId] = useState("");
@@ -256,6 +263,9 @@ export default function OverridesTab() {
           employeeId: dualTarget.employeeId,
           employeeName: dualTarget.employeeName,
           stores: dualSplits.filter((s) => s.ratio > 0),
+          effectiveYear: dualEffYear ? parseInt(dualEffYear, 10) : null,
+          effectiveMonth: dualEffMonth ? parseInt(dualEffMonth, 10) : null,
+          baseStore: dualBaseStore || null,
         }),
       });
       setDualTarget(null);
@@ -509,6 +519,10 @@ export default function OverridesTab() {
                       <button
                         onClick={() => {
                           setDualTarget(o);
+                          // 適用開始月・移転前店舗を既存値で初期化（移転前店舗は未設定なら現店舗）
+                          setDualEffYear(o.effectiveYear ? String(o.effectiveYear) : "");
+                          setDualEffMonth(o.effectiveMonth ? String(o.effectiveMonth) : "");
+                          setDualBaseStore(o.baseStore || o.storeName);
                           // 既に複数店舗なら現在の割当で初期化（3店舗目以降の追加が可能）。
                           // 単一店舗なら 50/50 の2店舗で初期化。
                           const current = overrides.filter(
@@ -632,6 +646,61 @@ export default function OverridesTab() {
                     合計: {dualTotal}%{dualValid ? "" : "（100%になるよう調整してください）"}
                   </p>
                 </div>
+
+                {/* 適用開始月 & 移転前の店舗 */}
+                <div className="mt-4 border-t border-gray-100 pt-3 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-medium text-gray-600 w-full sm:w-auto">
+                      この月から適用
+                    </span>
+                    <select
+                      value={dualEffYear}
+                      onChange={(e) => setDualEffYear(e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1 text-sm"
+                    >
+                      <option value="">全期間</option>
+                      {[2024, 2025, 2026, 2027].map((y) => (
+                        <option key={y} value={y}>{y}年</option>
+                      ))}
+                    </select>
+                    <select
+                      value={dualEffMonth}
+                      onChange={(e) => setDualEffMonth(e.target.value)}
+                      disabled={!dualEffYear}
+                      className="border border-gray-300 rounded px-2 py-1 text-sm disabled:bg-gray-100"
+                    >
+                      <option value="">--</option>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                        <option key={m} value={m}>{m}月</option>
+                      ))}
+                    </select>
+                  </div>
+                  {dualEffYear && dualEffMonth && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-medium text-gray-600">
+                        移転前の店舗
+                      </span>
+                      <select
+                        value={dualBaseStore}
+                        onChange={(e) => setDualBaseStore(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm"
+                      >
+                        {ALL_STORES.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-gray-400">
+                        （開始月より前はこの店舗100%）
+                      </span>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    {dualEffYear && dualEffMonth
+                      ? `${dualEffYear}年${dualEffMonth}月以降にこの按分を適用し、それより前は「移転前の店舗」100%になります。`
+                      : "「全期間」の場合、取り込み済みの全月にこの按分を適用します。開始月を指定すると移転（途中で所属変更）に対応できます。"}
+                  </p>
+                </div>
+
                 <div className="flex gap-2 justify-end mt-4">
                   <button
                     onClick={() => setDualTarget(null)}
