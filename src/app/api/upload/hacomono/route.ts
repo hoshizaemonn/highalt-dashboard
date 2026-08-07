@@ -372,17 +372,51 @@ export async function POST(request: NextRequest) {
           month: effectiveMonth,
         });
       }
-      // CSV内に該当行が無い極小ケース（records.length===0）でも、
-      // ユーザの意図しないデータ消失を避けるため、empty なら何も消さない。
+      // 会員マスタ方式（松尾さん②・2026-08）:
+      // 店舗まるごと消す(旧: 1店舗=1スナップショット)のをやめ、アップロードに含まれる
+      // 会員ID分だけを置換する。これにより「契約中」CSVと「退会済み」CSVを別々に
+      // 取り込んで1つのマスタに合算でき、退会者も含めて入会日時ベースで数えられる。
+      // 同一会員の既存行（旧スナップショット含む・年月問わず）は会員IDで消してから入れ直す。
+
+      // ファイル内の (店舗,会員ID) 重複を排除（unique制約違反・二重計上を防ぐ）
+      const dedupMap = new Map<string, (typeof records)[number]>();
+      const noIdRecords: typeof records = [];
+      for (const r of records) {
+        if (!r.memberId) {
+          noIdRecords.push(r);
+          continue;
+        }
+        dedupMap.set(`${r.storeName} ${r.memberId}`, r);
+      }
+      const dedupRecords = [...dedupMap.values(), ...noIdRecords];
+
+      const chunk = <T,>(arr: T[], size: number): T[][] => {
+        const out: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+        return out;
+      };
+
       await prisma.$transaction(async (tx) => {
-        for (const s of affectedStores) {
-          await tx.memberData.deleteMany({
-            where: { storeName: s },
-          });
+        // 会員IDを店舗ごとにまとめ、既存の同一会員行を削除（店舗まるごとは消さない）
+        const idsByStore = new Map<string, string[]>();
+        for (const r of dedupRecords) {
+          if (!r.memberId) continue;
+          const arr = idsByStore.get(r.storeName) ?? [];
+          arr.push(r.memberId);
+          idsByStore.set(r.storeName, arr);
+        }
+        for (const [s, ids] of idsByStore) {
+          for (const c of chunk(ids, 500)) {
+            await tx.memberData.deleteMany({
+              where: { storeName: s, memberId: { in: c } },
+            });
+          }
         }
 
-        if (records.length > 0) {
-          await tx.memberData.createMany({ data: records });
+        if (dedupRecords.length > 0) {
+          for (const c of chunk(dedupRecords, 500)) {
+            await tx.memberData.createMany({ data: c });
+          }
         }
 
         await tx.uploadLog.create({
@@ -397,13 +431,13 @@ export async function POST(request: NextRequest) {
             year: effectiveYear,
             month: effectiveMonth,
             fileName: file.name,
-            recordCount: records.length,
+            recordCount: dedupRecords.length,
           },
         });
       });
 
       return NextResponse.json({
-        records: records.length,
+        records: dedupRecords.length,
         type: "ml001",
         affected_stores: affectedStores,
       });

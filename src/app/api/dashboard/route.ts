@@ -467,11 +467,14 @@ export async function GET(request: NextRequest) {
       orderBy: [{ year: "desc" }, { month: "desc" }],
     });
 
-    // 新規入会数: ML001（メンバー一覧）がある月は入会日時ベース、無い月はMA002（松尾さん②）
+    // 新規入会数: 会員マスタ（契約中＋退会済み）を取り込んだ店舗は「入会日時」基準で
+    // 全月算出、未取込の店舗はMA002にフォールバック（松尾さん②・マスタ方式）。
+    // マスタは(year,month)スナップではないので、店舗スコープのみで取得し年月では絞らない。
     const memberDataRows = await prisma.memberData.findMany({
-      where: memberWhere,
-      select: { year: true, month: true, joinDate: true },
+      where: { ...(store && { storeName: storeNameFilter }) },
+      select: { joinDate: true },
     });
+    const hasMaster = memberDataRows.length > 0;
     const signupMonthKeys = new Set(
       memberRows.map((r) => `${r.year}-${r.month}`),
     );
@@ -481,7 +484,13 @@ export async function GET(request: NextRequest) {
       const maVal = memberRows
         .filter((r) => r.year === yy && r.month === mm)
         .reduce((s, r) => s + r.newPlanSignups, 0);
-      newSignupsTotal += signupsForMonth(memberDataRows, maVal, yy, mm);
+      newSignupsTotal += signupsForMonth(
+        memberDataRows.map((r) => ({ year: 0, month: 0, joinDate: r.joinDate })),
+        maVal,
+        yy,
+        mm,
+        hasMaster,
+      );
     }
 
     // If multiple months, take latest; if single month, aggregate by store

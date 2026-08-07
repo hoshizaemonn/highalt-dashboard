@@ -33,17 +33,28 @@ export function joinDateInMonth(
 
 /**
  * 指定 (year, month) の新規入会数を返す。
- * memberRows は対象スコープ（店舗など）で絞り込み済みの member_data 行。
- *   - その月の ML001 スナップショットがある（＝year/month 一致行が存在する）→ 入会日時ベースで件数
- *   - 無ければ maFallback（MA002 の新規入会数）を返す
+ * memberRows は対象スコープ（店舗など）の member_data マスタ行（1会員1行）。
+ *
+ * マスタ方式（松尾さん②・2026-08）: 会員マスタ（契約中＋退会済みを合算した全会員）を
+ * 取り込んでいる店舗は、その月に「入会日時」が該当する会員数を数える（退会済みも含めて
+ * 取りこぼさない・全月ぶん算出可能）。マスタを取り込んでいない店舗は従来どおり
+ * maFallback（MA002 の新規契約数）にフォールバックする。
+ *
+ * hasMaster: このスコープに会員マスタが存在するか（＝memberRows が空でないか）。
+ *   true  → 入会日時ベースで件数（該当0なら0を返す。maFallbackには落とさない）
+ *   false → maFallback
+ *
+ * 注意: 会員マスタは (year,month) スナップではなくなったため、year/month 列では
+ * フィルタしない。会員の入会日時のみで判定する。
  */
 export function signupsForMonth(
   memberRows: MemberJoinRow[],
   maFallback: number,
   year: number,
   month: number,
+  hasMaster: boolean,
 ): number {
-  const snap = memberRows.filter((r) => r.year === year && r.month === month);
-  if (snap.length === 0) return maFallback;
-  return snap.filter((r) => joinDateInMonth(r.joinDate, year, month)).length;
+  if (!hasMaster) return maFallback;
+  return memberRows.filter((r) => joinDateInMonth(r.joinDate, year, month))
+    .length;
 }

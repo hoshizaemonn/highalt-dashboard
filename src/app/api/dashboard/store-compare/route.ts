@@ -258,13 +258,20 @@ export async function GET(request: NextRequest) {
       );
       // 新規入会数: 月ごとに、ML001がある月は入会日時ベース、無い月はMA002（松尾さん②）
       const storeMember = allMember.filter((r) => r.storeName === storeName);
+      const storeHasMaster = storeMember.length > 0;
       const newSignups = periods.reduce((sum, p) => {
         const maRow = msList.find(
           (r) => r.year === p.year && r.month === p.month,
         );
         return (
           sum +
-          signupsForMonth(storeMember, maRow ? maRow.newPlanSignups : 0, p.year, p.month)
+          signupsForMonth(
+            storeMember,
+            maRow ? maRow.newPlanSignups : 0,
+            p.year,
+            p.month,
+            storeHasMaster,
+          )
         );
       }, 0);
       const cancellations = msList.reduce((s, r) => s + r.cancellations, 0);
