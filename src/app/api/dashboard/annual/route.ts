@@ -455,8 +455,18 @@ export async function GET(request: NextRequest) {
         budgetMap["退会数"] ?? budgetMap["退会"] ?? 0;
       const budgetSuspensions =
         budgetMap["休会数"] ?? budgetMap["休会"] ?? 0;
+      // 退会率は「率」なので、全体ビューで店舗合算(SUM)すると過大になる
+      //（例: 各店3〜5% を7店足して 26% など）。該当月に退会率予算を持つ店舗の
+      // 平均を全体値とする。単店ビューは1件=その店の値。例: 8 = 8%
+      const cancelRateRows = budgetForMonth.filter((r) => r.category === "退会率");
       const budgetCancellationRate =
-        budgetMap["退会率"] ?? 0; // 例: 8 = 8%
+        cancelRateRows.length > 0
+          ? Math.round(
+              (cancelRateRows.reduce((s, r) => s + r.amount, 0) /
+                cancelRateRows.length) *
+                10,
+            ) / 10
+          : 0;
       const budgetTrialCount =
         budgetMap["体験者数"] ?? budgetMap["新規体験者数"] ?? 0;
       // 有効在籍数（予算）→ 在籍会員数チャートの予算線（販促報告由来）
