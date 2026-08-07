@@ -513,6 +513,7 @@ export async function GET(request: NextRequest) {
           ms.reduce((s, r) => s + r.newPlanSignups, 0),
           y,
           m,
+          allMember.length > 0,
         ),
         ma_cancellations: ms.reduce((s, r) => s + r.cancellations, 0),
         ma_suspensions: ms.reduce((s, r) => s + r.suspensions, 0),
