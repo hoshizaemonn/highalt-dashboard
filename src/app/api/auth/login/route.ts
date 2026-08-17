@@ -104,6 +104,7 @@ export async function POST(request: Request) {
           role: true,
           storeName: true,
           displayName: true,
+          lastLoginAt: true,
         },
       });
       const matches = candidates.filter(
@@ -135,6 +136,7 @@ export async function POST(request: Request) {
             role: true,
             storeName: true,
             displayName: true,
+            lastLoginAt: true,
           },
         });
         const norm = normalize(empName);
@@ -175,6 +177,21 @@ export async function POST(request: Request) {
 
     // Success — clear failed attempts
     await clearAttempts(ip);
+
+    // 最終ログイン日時を記録（監視用・2026-08）。
+    // ここで失敗してもログイン自体は成功させたいので握りつぶす
+    // （SQL未適用でカラムが無い環境でもログインを止めない）。
+    try {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
+    } catch (e) {
+      console.error(
+        "lastLoginAt update skipped:",
+        e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+      );
+    }
 
     await createSession(user.id, user.role, user.storeName, user.displayName);
 

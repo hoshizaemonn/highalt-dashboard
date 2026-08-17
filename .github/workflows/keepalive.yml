@@ -1,0 +1,126 @@
+name: keepalive-monitor
+
+# ハイアルチ 業績ダッシュボードの外形監視。
+#
+# Supabase 無料プランの自動停止そのものは Vercel Cron
+# （vercel.json / 毎日9:00 JST → /api/keepalive）が防ぐ。
+# このワークフローは Vercel の外側から独立して、
+#   ① ダッシュボードが落ちていないか
+#   ② 誰もログインしない状態が続いていないか（3日以上）
+# を確認し、該当した時だけ ChatWork マイチャットへ通知する。
+# 正常時は何も通知しない（毎日の正常通知は無視されるようになるため）。
+
+on:
+  schedule:
+    # 04:00 UTC = 13:00 JST。Vercel Cron（9:00 JST）の4時間後に結果を確認する
+    - cron: "0 4 * * *"
+  workflow_dispatch: # 手動実行（通知が届くかのテスト用）
+
+env:
+  DASHBOARD_URL: https://highalt-dashboard.vercel.app
+  SUPABASE_URL: https://supabase.com/dashboard/project/awdyflcmegjjeddoponl
+  # 何日ログインが無かったら通知するか
+  NO_LOGIN_ALERT_DAYS: 3
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ダッシュボードの死活確認（30秒おきに3回まで再試行）
+        id: check
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          code=""
+          payload=""
+          for i in 1 2 3; do
+            response=$(curl -sS -m 30 -w $'\n%{http_code}' \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              "${DASHBOARD_URL}/api/keepalive" || true)
+            code=$(printf '%s' "$response" | tail -n 1)
+            payload=$(printf '%s' "$response" | sed '$d')
+            echo "attempt ${i}: HTTP ${code} ${payload}"
+            if [ "$code" = "200" ]; then
+              days=$(printf '%s' "$payload" | jq -r '.daysSinceLastLogin // "null"')
+              last=$(printf '%s' "$payload" | jq -r '.lastLoginAt // "未記録"')
+              {
+                echo "status=ok"
+                echo "days=${days}"
+                echo "last=${last}"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # コールドスタートや一時的な失敗で誤報を出さないよう間隔を空けて再試行
+            [ "$i" != "3" ] && sleep 30
+          done
+          {
+            echo "status=ng"
+            echo "code=${code}"
+            echo "payload=${payload}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 【異常】落ちている時に ChatWork へ通知
+        if: steps.check.outputs.status == 'ng'
+        env:
+          CHATWORK_API_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+          CHATWORK_ROOM_ID: ${{ secrets.CHATWORK_ROOM_ID }}
+          CODE: ${{ steps.check.outputs.code }}
+          PAYLOAD: ${{ steps.check.outputs.payload }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="[info][title]⚠️ ハイアルチ 業績ダッシュボードが応答していません[/title]
+          3回試して復旧しませんでした。坪井様・アンビルさんが開くとエラー画面になる状態です。
+
+          HTTP: ${CODE}
+          応答: ${PAYLOAD}
+
+          ■ 最初に見るところ
+          Supabase が一時停止していないか（無料プランは放置で自動停止します）
+          ${SUPABASE_URL}
+          → paused と出ていたら [Resume project] を押すだけで復旧します（データは消えません）
+
+          ■ 実行ログ
+          ${RUN_URL}[/info]"
+          curl -sS -X POST \
+            "https://api.chatwork.com/v2/rooms/${CHATWORK_ROOM_ID}/messages" \
+            -H "X-ChatWorkToken: ${CHATWORK_API_TOKEN}" \
+            --data-urlencode "body=${body}" > /dev/null
+          echo "ChatWork へ異常通知を送信しました"
+
+      - name: 【放置検知】3日以上ログインが無い時に ChatWork へ通知
+        if: steps.check.outputs.status == 'ok'
+        env:
+          CHATWORK_API_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+          CHATWORK_ROOM_ID: ${{ secrets.CHATWORK_ROOM_ID }}
+          DAYS: ${{ steps.check.outputs.days }}
+          LAST: ${{ steps.check.outputs.last }}
+        run: |
+          if [ "$DAYS" = "null" ]; then
+            echo "最終ログイン日時がまだ記録されていないため通知しません（初回ログイン後から計測開始）"
+            exit 0
+          fi
+          if [ "$DAYS" -lt "$NO_LOGIN_ALERT_DAYS" ]; then
+            echo "最終ログインから ${DAYS} 日。正常なので通知しません"
+            exit 0
+          fi
+          # 毎日鳴らすと無視されるので、3日目・6日目・9日目…と3日おきに鳴らす
+          if [ $(( DAYS % NO_LOGIN_ALERT_DAYS )) -ne 0 ]; then
+            echo "最終ログインから ${DAYS} 日。前回通知から間が空いていないため今回は見送ります"
+            exit 0
+          fi
+          body="[info][title]📉 ハイアルチ ダッシュボードに ${DAYS}日間ログインがありません[/title]
+          最終ログイン: ${LAST}
+
+          放置しても Supabase の自動停止は毎日の自動アクセスで防いでいるので、すぐに壊れることはありません。
+          ただ、誰も見ていない状態が続いています。長期休暇明けなどはデータ更新の遅れがないか確認してください。
+
+          ${DASHBOARD_URL}[/info]"
+          curl -sS -X POST \
+            "https://api.chatwork.com/v2/rooms/${CHATWORK_ROOM_ID}/messages" \
+            -H "X-ChatWorkToken: ${CHATWORK_API_TOKEN}" \
+            --data-urlencode "body=${body}" > /dev/null
+          echo "ChatWork へ放置通知を送信しました（${DAYS}日）"
+
+      - name: 異常時はジョブを失敗させる（Actions 上で赤く残す）
+        if: steps.check.outputs.status == 'ng'
+        run: exit 1

@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/api/auth/login",
+  "/api/auth/logout",
+  // Supabase 自動停止の防止＆外形監視用。Vercel Cron / GitHub Actions は
+  // セッションCookieを持てないためここを通す。認証はエンドポイント側で
+  // CRON_SECRET（Bearer）を検証して担保している。
+  "/api/keepalive",
+];
 
 /**
  * Verify HMAC-SHA256 signature using Web Crypto API (Edge Runtime compatible).
