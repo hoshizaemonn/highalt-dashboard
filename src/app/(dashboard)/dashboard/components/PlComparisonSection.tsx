@@ -20,6 +20,8 @@ interface CategoryComp {
   currentTotal: number;
   prevTotal: number;
   yoyTotal: number | null;
+  /** 合計が何月ぶんの比較か（費目ごとに揃っている月が異なるため費目単位で持つ） */
+  totalPeriodLabel?: string | null;
 }
 interface CompResponse {
   fiscalYear: number;
@@ -157,9 +159,9 @@ export function PlComparisonSection({
                   ))}
                   <th className="text-right px-3 py-2 font-medium text-gray-700 bg-gray-100 min-w-[96px]">
                     合計
-                    {data.totalPeriodLabel && (
+                    {cat.totalPeriodLabel && (
                       <span className="block text-[10px] font-normal text-gray-500">
-                        {data.totalPeriodLabel}
+                        {cat.totalPeriodLabel}
                       </span>
                     )}
                   </th>

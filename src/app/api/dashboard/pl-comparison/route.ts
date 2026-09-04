@@ -73,17 +73,23 @@ export async function GET(request: NextRequest) {
     const map = new Map<string, number>();
     // (year, month) -> その月にPLが取り込まれている店舗の集合
     const storesByYm = new Map<string, Set<string>>();
+    // (category, year, month) -> その費目が入っている店舗の集合
+    const storesByCatYm = new Map<string, Set<string>>();
     for (const r of rows) {
       const k = `${r.category}:${r.year}:${r.month}`;
       map.set(k, (map.get(k) ?? 0) + r.amount);
       const ymk = `${r.year}:${r.month}`;
       if (!storesByYm.has(ymk)) storesByYm.set(ymk, new Set());
       storesByYm.get(ymk)!.add(r.storeName);
+      if (!storesByCatYm.has(k)) storesByCatYm.set(k, new Set());
+      storesByCatYm.get(k)!.add(r.storeName);
     }
     const get = (cat: string, y: number, m: number) =>
       map.get(`${cat}:${y}:${m}`) ?? 0;
     const coverage = (y: number, m: number) =>
       storesByYm.get(`${y}:${m}`)?.size ?? 0;
+    const catCoverage = (cat: string, y: number, m: number) =>
+      storesByCatYm.get(`${cat}:${y}:${m}`)?.size ?? 0;
 
     // 「その月が揃っている」と判断する基準店舗数。
     // 当年・前年を通じて最も店舗数が多い月を満額とみなす（単店表示なら1）。
@@ -119,7 +125,24 @@ export async function GET(request: NextRequest) {
       const monthly = months.map((mm, i) => {
         const current = get(cat, mm.y, mm.m);
         const prev = get(cat, mm.y - 1, mm.m);
-        const status = monthStatus[i].status;
+
+        // 判定は「当年側」だけで行う（前年は確定済みのため）。
+        //   ① その月にPLを出している店舗が揃っていない → partial / none
+        //   ② 月は揃っていても、その費目だけ欠けている店舗がある → partial
+        // ②が無いと、例えば7月のPLは全店提出済みでも人件費だけ5店舗、という
+        // 状態を「揃っている」と誤判定し、人件費が過少なまま前年比が出てしまう
+        // （2026-07・2026-04人件費の実例あり）。
+        const monthCov = monthStatus[i].stores;
+        const cCov = catCoverage(cat, mm.y, mm.m);
+        const status: "none" | "partial" | "complete" =
+          monthCov === 0
+            ? "none"
+            : expectedStores > 0 && monthCov < expectedStores
+              ? "partial"
+              : cCov < monthCov
+                ? "partial"
+                : "complete";
+
         // 揃っている月だけ前年比を出す。揃っていない月の 0円 は
         // 「使わなかった」ではなく「まだ入っていない」なので比率にしない。
         const yoy =
@@ -131,20 +154,28 @@ export async function GET(request: NextRequest) {
           prev,
           yoy,
           status,
-          stores: monthStatus[i].stores,
+          stores: cCov,
         };
       });
 
-      // 合計も「揃っている月」だけで当年・前年をそろえて出す（期間ミスマッチ防止）
+      // 合計も「揃っている月」だけで当年・前年をそろえて出す（期間ミスマッチ防止）。
+      // 揃っている月は費目ごとに違いうるので、対象期間ラベルも費目ごとに持つ。
       const completeMonths = monthly.filter((x) => x.status === "complete");
       const currentTotal = completeMonths.reduce((s, x) => s + x.current, 0);
       const prevTotal = completeMonths.reduce((s, x) => s + x.prev, 0);
+      const labels = completeMonths.map((x) => x.label);
       return {
         category: cat,
         monthly,
         currentTotal,
         prevTotal,
         yoyTotal: prevTotal !== 0 ? currentTotal / prevTotal : null,
+        totalPeriodLabel:
+          labels.length === 0
+            ? null
+            : labels.length === 1
+              ? labels[0]
+              : `${labels[0]}〜${labels[labels.length - 1]}`,
       };
     });
 
