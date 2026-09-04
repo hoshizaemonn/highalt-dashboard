@@ -1,10 +1,10 @@
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { requireSession, getEffectiveStoreFilter } from "@/lib/auth";
 import { HQ_STORE } from "@/lib/constants";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { PL_CATEGORIES } from "@/lib/pl-csv";
+import { loadComparisonSource } from "@/lib/pl-comparison-source";
 
 // 前年比比較（人件費・消耗品費・広告宣伝費）— クライアント公式PL（pl_actuals）由来。
 // 当年 vs 前年を同一ソースで比較するため、ダッシュボードの granular（PayPay）とは別系統。
@@ -54,54 +54,18 @@ export async function GET(request: NextRequest) {
       months.push({ y, m, label: `${m}月` });
     }
 
-    // 当年・前年の全 (year, month) を一括取得
-    const ymSet = new Set<string>();
-    for (const mm of months) {
-      ymSet.add(`${mm.y}-${mm.m}`);
-      ymSet.add(`${mm.y - 1}-${mm.m}`);
-    }
-    const orConds = Array.from(ymSet).map((k) => {
-      const [y, m] = k.split("-").map(Number);
-      return { year: y, month: m };
-    });
-
-    const rows = await prisma.plActual.findMany({
-      where: { storeName: storeNameFilter, OR: orConds },
-    });
-
-    // (category, year, month) -> amount（全体表示時は複数店舗ぶんを合算する）
-    const map = new Map<string, number>();
-    // (year, month) -> その月にPLが取り込まれている店舗の集合
-    const storesByYm = new Map<string, Set<string>>();
-    // (category, year, month) -> その費目が入っている店舗の集合
-    const storesByCatYm = new Map<string, Set<string>>();
-    for (const r of rows) {
-      const k = `${r.category}:${r.year}:${r.month}`;
-      map.set(k, (map.get(k) ?? 0) + r.amount);
-      const ymk = `${r.year}:${r.month}`;
-      if (!storesByYm.has(ymk)) storesByYm.set(ymk, new Set());
-      storesByYm.get(ymk)!.add(r.storeName);
-      if (!storesByCatYm.has(k)) storesByCatYm.set(k, new Set());
-      storesByCatYm.get(k)!.add(r.storeName);
-    }
-    const get = (cat: string, y: number, m: number) =>
-      map.get(`${cat}:${y}:${m}`) ?? 0;
-    const coverage = (y: number, m: number) =>
-      storesByYm.get(`${y}:${m}`)?.size ?? 0;
+    // データソースは会計年度で切り替える（9期までは予算実績対比表、10期からはダッシュボード）。
+    // 当年・前年を混ぜないよう、切り替えは年度まるごとで行う。
+    const source = await loadComparisonSource(fiscalYear, months, storeNameFilter);
+    const get = (cat: string, y: number, m: number) => source.amount(cat, y, m);
     const catCoverage = (cat: string, y: number, m: number) =>
-      storesByCatYm.get(`${cat}:${y}:${m}`)?.size ?? 0;
-
-    // 「その月が揃っている」と判断する基準店舗数。
-    // 当年・前年を通じて最も店舗数が多い月を満額とみなす（単店表示なら1）。
-    // 前年(8期)は全月そろっているため、当年の取込途中月をここで検出できる。
-    let expectedStores = 0;
-    for (const mm of months) {
-      expectedStores = Math.max(
-        expectedStores,
-        coverage(mm.y, mm.m),
-        coverage(mm.y - 1, mm.m),
-      );
-    }
+      source.coverage(cat, y, m);
+    const expectedStores = source.expectedStores;
+    // 月単位のカバレッジ＝表示3費目のうち最も多くの店舗が入っている数。
+    // 賃借料・減価償却費のように先の月まで先入力される費目を含めると、
+    // 未到来の8月・9月まで「揃っている」と誤判定するため対象を3費目に限定する。
+    const monthCoverage = (y: number, m: number) =>
+      Math.max(...PL_CATEGORIES.map((c) => catCoverage(c, y, m)));
 
     // 月ごとの取込状況。
     //   "none"     : 当年のPLが1店舗も入っていない（＝未取込。前年比は出さない）
@@ -109,7 +73,7 @@ export async function GET(request: NextRequest) {
     //   "complete" : 対象店舗が揃っている（＝前年比・合計の対象）
     type Status = "none" | "partial" | "complete";
     const statusOf = (y: number, m: number): Status => {
-      const c = coverage(y, m);
+      const c = monthCoverage(y, m);
       if (c === 0) return "none";
       if (expectedStores > 0 && c < expectedStores) return "partial";
       return "complete";
@@ -118,7 +82,7 @@ export async function GET(request: NextRequest) {
     const monthStatus = months.map((mm) => ({
       label: mm.label,
       status: statusOf(mm.y, mm.m),
-      stores: coverage(mm.y, mm.m),
+      stores: monthCoverage(mm.y, mm.m),
     }));
 
     const categories = PL_CATEGORIES.map((cat) => {

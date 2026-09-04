@@ -2,6 +2,10 @@ node_modules/
 .next/
 .env.local
 .env
+# 公開リポジトリのため、環境変数ファイルは全パターン除外する
+# （.env.development.local 等が対象外で、誤コミットの余地があった）
+.env*
+!.env.example
 src/generated/
 .vercel
 
