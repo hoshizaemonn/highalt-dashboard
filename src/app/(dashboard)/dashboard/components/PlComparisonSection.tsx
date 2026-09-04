@@ -41,12 +41,8 @@ function yoyText(yoy: number | null): string {
 function currentCell(c: MonthCell) {
   if (c.status === "none") return <span className="text-gray-400">-</span>;
   if (c.status === "partial") {
-    return (
-      <span className="text-amber-700">
-        {formatYen(c.current)}
-        <span className="ml-1 text-[10px] align-top">※</span>
-      </span>
-    );
+    // 一部店舗のみ取込済みの速報値。金額は出すが全店実績ではないので色で区別する。
+    return <span className="text-amber-700">{formatYen(c.current)}</span>;
   }
   return formatYen(c.current);
 }
@@ -130,41 +126,12 @@ export function PlComparisonSection({
     );
   }
 
-  const monthStatus = data.monthStatus ?? [];
-  const partialMonths = monthStatus.filter((m) => m.status === "partial");
-  const noneMonths = monthStatus.filter((m) => m.status === "none");
-
   return (
     <>
       <SectionTitle>前年比比較（人件費・消耗品費・広告宣伝費）</SectionTitle>
       <p className="text-xs text-gray-500 mb-2">
         クライアント様の「開業からのPL」由来。当年・前年とも同一ソースで比較しています（単位：円）。
       </p>
-      {(partialMonths.length > 0 || noneMonths.length > 0) && (
-        <div className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <div className="font-bold mb-1">取込状況のご案内</div>
-          {partialMonths.length > 0 && (
-            <div>
-              ※{" "}
-              {partialMonths
-                .map((m) => `${m.label}（${m.stores}/${data.expectedStores}店舗）`)
-                .join("、")}
-              は一部店舗のみ取込済みの速報値です。全店の実績ではないため、前年比は
-              「—」としています。
-            </div>
-          )}
-          {noneMonths.length > 0 && (
-            <div>
-              ・{noneMonths.map((m) => m.label).join("、")} は未取込のため空欄です。
-            </div>
-          )}
-          <div className="mt-1">
-            合計・前年比は、全店そろっている月
-            {data.totalPeriodLabel ? `（${data.totalPeriodLabel}）` : ""}
-            のみで当年・前年をそろえて算出しています。
-          </div>
-        </div>
-      )}
       <div className="space-y-6">
         {data.categories.map((cat) => (
           <div
