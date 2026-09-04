@@ -1,0 +1,38 @@
+name: uptime-check
+
+# ダッシュボードが表示できる状態かを、Vercel の外側から毎日確認する。
+#
+# 役割分担:
+#   - DB の自動停止防止と、DB異常／長期未ログインの ChatWork 通知
+#       → Vercel Cron（vercel.json → /api/keepalive）が担当
+#   - Vercel 自体が落ちている／デプロイが壊れている場合の検知
+#       → このワークフロー（Vercel の外から見るのでこちらでしか気づけない）
+#
+# ★このリポジトリは public のため、ここに認証情報・通知先は一切置かない。
+#   失敗すると GitHub から Actions の失敗通知メールが届く。
+
+on:
+  schedule:
+    # 04:00 UTC = 13:00 JST。Vercel Cron（9:00 JST）の4時間後に結果を確認する
+    - cron: "0 4 * * *"
+  workflow_dispatch: # 手動実行
+
+jobs:
+  uptime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ログイン画面が表示できるか確認（30秒おきに3回まで再試行）
+        run: |
+          url="https://highalt-dashboard.vercel.app/login"
+          for i in 1 2 3; do
+            code=$(curl -sS -o /dev/null -m 30 -w '%{http_code}' "$url" || true)
+            echo "attempt ${i}: HTTP ${code}"
+            if [ "$code" = "200" ]; then
+              echo "正常です"
+              exit 0
+            fi
+            # コールドスタートや一時的な失敗で誤報を出さないよう間隔を空けて再試行
+            [ "$i" != "3" ] && sleep 30
+          done
+          echo "::error::ダッシュボードが応答していません（最後の HTTP: ${code}）"
+          exit 1

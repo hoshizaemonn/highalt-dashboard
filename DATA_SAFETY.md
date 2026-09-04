@@ -71,6 +71,30 @@ PR #9 で ML001 / PL001 / MA002 / 客単価予算の上書き前に確認ダイ�
 - Supabase の Point-in-Time Recovery（PITR）を有効化しておく
 - 重要な変更（スキーマ変更・大量投入）前に、Supabase Dashboard から手動スナップショット取得
 
+## Supabase の自動停止（2026-08-17 発生）
+
+Supabase 無料プランは、一定期間 DB アクセスが無いとプロジェクトが**自動で一時停止**する。
+停止するとログインを含む全機能が「サーバーエラーが発生しました」（500）になる。
+
+- **データは消えない。** Supabase ダッシュボードの `Resume project` を押せば復旧する
+  （復旧期限あり。2026-08-17 時点の表示では 2027-09-21 まで）
+
+**再発防止（実装済み）:**
+
+| 仕組み | 内容 |
+|---|---|
+| Vercel Cron（`vercel.json`） | 毎日 9:00 JST に `/api/keepalive` を叩いて DB に触り、停止させない |
+| 同上 | DB に繋がらない時／3日以上ログインが無い時だけ ChatWork へ通知（3日おき） |
+| GitHub Actions（`.github/workflows/keepalive.yml`） | 毎日 13:00 JST に Vercel の外側から `/login` を確認。Vercel 自体の障害を検知 |
+
+`/api/keepalive` は `src/proxy.ts` の `PUBLIC_PATHS` に入れてセッション認証を通し、
+代わりに `CRON_SECRET`（Bearer）で保護している。**このパスを PUBLIC_PATHS から外すと
+Cron が 401 で弾かれ、停止防止が効かなくなる。**
+
+⚠️ **このリポジトリは public。** 通知先・トークン・Supabase のプロジェクト URL などは
+コードにも GitHub Secrets にも置かず、Vercel の環境変数にのみ置くこと
+（`CRON_SECRET` / `CHATWORK_API_TOKEN` / `CHATWORK_ROOM_ID`）。
+
 ## 困ったら
 
 - **データ欠損が疑われる場合**、Supabase Dashboard → Backups から PITR で復旧可能
