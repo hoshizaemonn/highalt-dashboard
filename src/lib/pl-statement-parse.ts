@@ -54,6 +54,13 @@ export interface PlStatementResult {
 
 const norm = (s: unknown) => String(s ?? "").replace(/\s/g, "");
 
+/** セルが空欄か（明示的な "0" は空欄ではない）。
+ *  空欄＝まだ入力されていない月、"0"＝その月は発生しなかった、と区別するために使う。
+ *  区別しないと「実際に0円だった月」が「未取込の月」と同じ扱いになり、
+ *  前年比比較で取込済みの月まで「—」になってしまう（2026-03 広告宣伝費/東日本橋、
+ *  2026-06 消耗品費/船橋 の実例）。 */
+const isBlankCell = (v: unknown) => String(v ?? "").trim() === "";
+
 /** "1,234" / "(516)" / "" / "#DIV/0!" などを数値化（負号・カンマ・括弧に対応） */
 function toNumber(s: unknown): number {
   if (s == null) return 0;
@@ -183,8 +190,8 @@ export function parsePlStatement(
       PL_COST_CATEGORIES.find((c) => norm(c) === label) ?? String(row[0]).trim();
 
     for (const { col, year, month } of monthCols) {
+      if (isBlankCell(row[col])) continue; // 空欄＝未入力の月なので保存しない
       const sen = toNumber(row[col]);
-      if (sen === 0) continue; // 0円は保存しない（未到来月・未発生費目）
       records.push({
         storeName,
         year,
@@ -203,8 +210,10 @@ export function parsePlStatement(
     });
     if (laborRows.length > 0) {
       for (const { col, year, month } of monthCols) {
+        // 給与系の行がすべて空欄の月＝未入力なので保存しない。
+        // 1つでも数値が入っていれば（合計が0でも）その月は入力済みとして保存する。
+        if (laborRows.every((r) => isBlankCell(r[col]))) continue;
         const sen = laborRows.reduce((acc, r) => acc + toNumber(r[col]), 0);
-        if (sen === 0) continue;
         records.push({
           storeName,
           year,

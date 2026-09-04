@@ -163,6 +163,21 @@ export async function GET(request: NextRequest) {
       const completeMonths = monthly.filter((x) => x.status === "complete");
       const currentTotal = completeMonths.reduce((s, x) => s + x.current, 0);
       const prevTotal = completeMonths.reduce((s, x) => s + x.prev, 0);
+      // 対象期間ラベル。途中に欠けた月がある場合は「10月〜7月（3月除く）」のように
+      // 除外月を明示する（「10月〜7月」とだけ書くと合計に含まれていない月が隠れるため）。
+      const completeSet = new Set(completeMonths.map((x) => x.label));
+      const firstIdx = monthly.findIndex((x) => x.status === "complete");
+      const lastIdx =
+        monthly.length -
+        1 -
+        [...monthly].reverse().findIndex((x) => x.status === "complete");
+      const gaps =
+        firstIdx < 0
+          ? []
+          : monthly
+              .slice(firstIdx, lastIdx + 1)
+              .filter((x) => !completeSet.has(x.label))
+              .map((x) => x.label);
       const labels = completeMonths.map((x) => x.label);
       return {
         category: cat,
@@ -175,7 +190,8 @@ export async function GET(request: NextRequest) {
             ? null
             : labels.length === 1
               ? labels[0]
-              : `${labels[0]}〜${labels[labels.length - 1]}`,
+              : `${labels[0]}〜${labels[labels.length - 1]}` +
+                (gaps.length > 0 ? `（${gaps.join("・")}除く）` : ""),
       };
     });
 
