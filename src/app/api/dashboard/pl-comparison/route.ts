@@ -14,7 +14,16 @@ import { PL_CATEGORIES } from "@/lib/pl-csv";
 // 全体表示にも対応する（松尾さん報告 2026-07: 全体の前年比グラフで前期が0になる）。
 // getEffectiveStoreFilter で「全体=全店」「単店=その店」のフィルタを得て、
 // 対象店舗ぶんを (費目, 年, 月) で合算する。
-
+//
+// ★取込途中の月の扱い（アンビルさん報告 2026-09: 5月以降の数値が正しくない）
+//   pl_actuals は店舗ごと・月ごとに取り込まれるため、月の途中では
+//   「7店舗中3店舗だけ入っている」状態が発生する。以前はこれを区別せず
+//   当年合計÷前年合計を出していたため、
+//     - 未取込月（当年0円）が「前年比0%」＝経費100%削減 に見える
+//     - 一部店舗しか無い月が全店実績として過少に見える（5月 人件費16.5% など）
+//     - 合計が「当年7ヶ月 vs 前年12ヶ月」の期間ミスマッチになる（63.9% など）
+//   という誤読を招いた。そこで月ごとに取込状況(status)を判定し、
+//   揃っている月(complete)だけで前年比・合計を出す。
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireSession();
@@ -62,22 +71,74 @@ export async function GET(request: NextRequest) {
 
     // (category, year, month) -> amount（全体表示時は複数店舗ぶんを合算する）
     const map = new Map<string, number>();
+    // (year, month) -> その月にPLが取り込まれている店舗の集合
+    const storesByYm = new Map<string, Set<string>>();
     for (const r of rows) {
       const k = `${r.category}:${r.year}:${r.month}`;
       map.set(k, (map.get(k) ?? 0) + r.amount);
+      const ymk = `${r.year}:${r.month}`;
+      if (!storesByYm.has(ymk)) storesByYm.set(ymk, new Set());
+      storesByYm.get(ymk)!.add(r.storeName);
     }
     const get = (cat: string, y: number, m: number) =>
       map.get(`${cat}:${y}:${m}`) ?? 0;
+    const coverage = (y: number, m: number) =>
+      storesByYm.get(`${y}:${m}`)?.size ?? 0;
+
+    // 「その月が揃っている」と判断する基準店舗数。
+    // 当年・前年を通じて最も店舗数が多い月を満額とみなす（単店表示なら1）。
+    // 前年(8期)は全月そろっているため、当年の取込途中月をここで検出できる。
+    let expectedStores = 0;
+    for (const mm of months) {
+      expectedStores = Math.max(
+        expectedStores,
+        coverage(mm.y, mm.m),
+        coverage(mm.y - 1, mm.m),
+      );
+    }
+
+    // 月ごとの取込状況。
+    //   "none"     : 当年のPLが1店舗も入っていない（＝未取込。前年比は出さない）
+    //   "partial"  : 一部店舗しか入っていない（＝速報値。全店実績ではないので前年比は出さない）
+    //   "complete" : 対象店舗が揃っている（＝前年比・合計の対象）
+    type Status = "none" | "partial" | "complete";
+    const statusOf = (y: number, m: number): Status => {
+      const c = coverage(y, m);
+      if (c === 0) return "none";
+      if (expectedStores > 0 && c < expectedStores) return "partial";
+      return "complete";
+    };
+
+    const monthStatus = months.map((mm) => ({
+      label: mm.label,
+      status: statusOf(mm.y, mm.m),
+      stores: coverage(mm.y, mm.m),
+    }));
 
     const categories = PL_CATEGORIES.map((cat) => {
-      const monthly = months.map((mm) => {
+      const monthly = months.map((mm, i) => {
         const current = get(cat, mm.y, mm.m);
         const prev = get(cat, mm.y - 1, mm.m);
-        const yoy = prev !== 0 ? current / prev : null; // 前年比（倍率）
-        return { month: mm.m, label: mm.label, current, prev, yoy };
+        const status = monthStatus[i].status;
+        // 揃っている月だけ前年比を出す。揃っていない月の 0円 は
+        // 「使わなかった」ではなく「まだ入っていない」なので比率にしない。
+        const yoy =
+          status === "complete" && prev !== 0 ? current / prev : null;
+        return {
+          month: mm.m,
+          label: mm.label,
+          current,
+          prev,
+          yoy,
+          status,
+          stores: monthStatus[i].stores,
+        };
       });
-      const currentTotal = monthly.reduce((s, x) => s + x.current, 0);
-      const prevTotal = monthly.reduce((s, x) => s + x.prev, 0);
+
+      // 合計も「揃っている月」だけで当年・前年をそろえて出す（期間ミスマッチ防止）
+      const completeMonths = monthly.filter((x) => x.status === "complete");
+      const currentTotal = completeMonths.reduce((s, x) => s + x.current, 0);
+      const prevTotal = completeMonths.reduce((s, x) => s + x.prev, 0);
       return {
         category: cat,
         monthly,
@@ -86,6 +147,17 @@ export async function GET(request: NextRequest) {
         yoyTotal: prevTotal !== 0 ? currentTotal / prevTotal : null,
       };
     });
+
+    // 合計が何月ぶんの比較なのかを画面に出すためのラベル（例: "10月〜4月"）
+    const completeLabels = monthStatus
+      .filter((s) => s.status === "complete")
+      .map((s) => s.label);
+    const totalPeriodLabel =
+      completeLabels.length === 0
+        ? null
+        : completeLabels.length === 1
+          ? completeLabels[0]
+          : `${completeLabels[0]}〜${completeLabels[completeLabels.length - 1]}`;
 
     // データ有無（全費目・全月で当年も前年も0なら未取込）
     const hasData = categories.some(
@@ -97,6 +169,9 @@ export async function GET(request: NextRequest) {
       store,
       hasData,
       months: months.map((m) => m.label),
+      monthStatus,
+      expectedStores,
+      totalPeriodLabel,
       categories,
     });
   } catch (error) {
