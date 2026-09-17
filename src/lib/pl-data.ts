@@ -8,7 +8,16 @@ import {
   singleStoreShare,
   allStoresShare,
   expenseRowSharesByCategory,
+  expenseRowShare,
 } from "@/lib/manual-expense-split";
+
+// 福利厚生費は EXPENSE_CATEGORIES / BUDGET_ITEMS 上は経費科目として選べるが、
+// PL出力では人件費の内訳（正社員給与・賞与・通勤手当・法定福利費と並ぶ行）として
+// 別枠 payrollWelfare に集計する（slot.expenses には入れない。pl-xlsx.ts 参照）。
+const WELFARE_CATEGORY = "福利厚生費";
+// 自販機手数料収入はPayPay銀行CSVの入金（is_revenue=1）で分類する売上科目。
+// PL出力では salesVending（自販機手数料収入の専用行）に集計する。
+const VENDING_REVENUE_CATEGORY = "自販機手数料収入";
 
 export interface PlAggregateResult {
   fiscalYear: number;
@@ -35,6 +44,7 @@ export async function aggregatePlForFiscalYear(
   const [
     allPayroll,
     allExpenses,
+    allVendingRevenue,
     allSalesDetail,
     allRevenue,
     allSquare,
@@ -56,6 +66,19 @@ export async function aggregatePlForFiscalYear(
           { storeName: store ? store : notHqOrHidden },
           { splitRatios: { not: null } },
           { categorySplits: { not: null } },
+        ],
+      },
+    }),
+    // 自販機手数料収入（PayPay銀行CSVの入金・is_revenue=1）。
+    // 通常の経費行とはスコープが逆（isRevenue: 1）なので別クエリで拾う。
+    prisma.expenseData.findMany({
+      where: {
+        year: { in: expenseYears },
+        isRevenue: 1,
+        category: VENDING_REVENUE_CATEGORY,
+        OR: [
+          { storeName: store ? store : notHqOrHidden },
+          { splitRatios: { not: null } },
         ],
       },
     }),
@@ -149,10 +172,23 @@ export async function aggregatePlForFiscalYear(
     for (const [cat, share] of Object.entries(sharesByCat)) {
       if (cat === "仕入高") {
         slot.cogs += share;
+      } else if (cat === WELFARE_CATEGORY) {
+        slot.payrollWelfare += share;
       } else {
         slot.expenses[cat] = (slot.expenses[cat] ?? 0) + share;
       }
     }
+  }
+
+  // 自販機手数料収入（is_revenue=1）
+  for (const r of allVendingRevenue) {
+    const ey = r.accrualYear ?? r.year;
+    const em = r.accrualMonth ?? r.month;
+    const idx = toFiscalIndex(ey, em, fiscalYear);
+    if (idx === null) continue;
+    const share = expenseRowShare(r, expenseTarget);
+    if (share === 0) continue;
+    ensureSlot(idx).salesVending += share;
   }
 
   for (const r of allManualExpense) {
@@ -165,6 +201,8 @@ export async function aggregatePlForFiscalYear(
     const slot = ensureSlot(idx);
     if (r.category === "仕入高") {
       slot.cogs += amount;
+    } else if (r.category === WELFARE_CATEGORY) {
+      slot.payrollWelfare += amount;
     } else {
       slot.expenses[r.category] = (slot.expenses[r.category] ?? 0) + amount;
     }
