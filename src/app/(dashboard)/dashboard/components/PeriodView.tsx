@@ -1040,6 +1040,18 @@ export default function PeriodView({
           color: "text-blue-700",
         });
 
+        // 自販機手数料収入の内訳（hacomono/Squareとは別経路の売上のため、
+        // 経費明細で分類が始まるまでは全月0円になる。データが無い間は行を出さない）
+        const vendingSum = monthly.reduce((s, m) => s + (m.sales_vending || 0), 0);
+        if (vendingSum > 0) {
+          rows.push({
+            label: "  自販機手数料収入",
+            values: monthly.map((m) => m.sales_vending || 0),
+            total: vendingSum,
+            avg: Math.round(vendingSum / nMonths),
+          });
+        }
+
         // Payroll detail
         // 社員給与の黒塗り（安蒜さん依頼）: 店長など非admin では正社員給与・人件費（課税支給合計）を黒塗り。
         // この場合サーバ側で fulltime_gross / gross_total は 0 に伏せられるため、
