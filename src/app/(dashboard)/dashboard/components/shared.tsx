@@ -236,6 +236,8 @@ export interface MonthlyEntry {
   sales_personal: number;
   sales_product: number;
   sales_other: number;
+  /** 自販機手数料収入（経費明細のPayPay入金分類・is_revenue=1側から集計） */
+  sales_vending: number;
   budget_revenue: number;
   budget_labor: number;
   budget_expense: number;
@@ -284,6 +286,7 @@ export interface AnnualData {
     sales_personal: number;
     sales_product: number;
     sales_other: number;
+    sales_vending: number;
     advertising: number;
     supplies: number;
     new_signups: number;
