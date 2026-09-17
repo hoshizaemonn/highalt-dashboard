@@ -162,6 +162,8 @@ export interface DashboardData {
     personal: number;
     product: number;
     other: number;
+    /** 自販機手数料収入（経費明細のPayPay入金分類・is_revenue=1側から集計） */
+    vending: number;
   };
   member: {
     plan_subscribers: number;
