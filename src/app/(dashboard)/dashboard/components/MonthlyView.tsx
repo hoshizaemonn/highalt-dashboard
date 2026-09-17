@@ -222,6 +222,17 @@ export default function MonthlyView({
               </td>
               <td className="px-4 py-1.5 text-right">{formatYen(data.revenue.other)}</td>
             </tr>
+            {data.revenue.vending > 0 && (
+              <tr className="border-b">
+                <td className="px-4 py-1.5 pl-8 text-gray-600">
+                  <span className="inline-flex items-center gap-1">
+                    自販機手数料収入
+                    <HelpHint text="経費明細（PayPay銀行入金）で「自販機手数料収入」に分類した金額。hacomono・Squareとは別経路の売上。" />
+                  </span>
+                </td>
+                <td className="px-4 py-1.5 text-right">{formatYen(data.revenue.vending)}</td>
+              </tr>
+            )}
             <tr className="border-b font-bold">
               <td className="px-4 py-2 text-blue-700">売上合計</td>
               <td className="px-4 py-2 text-right text-blue-700">

@@ -12,7 +12,12 @@ import {
   allStoresShare,
   expenseRowShareWithCategorySplit,
   expenseRowSharesByCategory,
+  expenseRowShare,
 } from "@/lib/manual-expense-split";
+
+// 自販機手数料収入（PayPay銀行入金・is_revenue=1で分類）。
+// hacomono/Squareとは別経路の売上のため、他の売上4分類とは独立に集計する。
+const VENDING_REVENUE_CATEGORY = "自販機手数料収入";
 import { isPlOverrideMonth, PL_OVERRIDE_CATEGORIES } from "@/lib/pl-override";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
@@ -65,6 +70,8 @@ interface MonthlyEntry {
   sales_personal: number;
   sales_product: number;
   sales_other: number;
+  /** 自販機手数料収入（経費明細のPayPay入金分類・is_revenue=1側から集計） */
+  sales_vending: number;
   budget_revenue: number;
   budget_labor: number;
   budget_expense: number;
@@ -169,7 +176,7 @@ export async function GET(request: NextRequest) {
     // 影響を最小化）。逐次より速く、フル並列より他APIに優しい。
     const budgetWhere = { year: { in: years }, storeName: storeNameFilter };
     // バッチ1: 集計の主軸となる重めのデータ
-    const [allPayroll, allExpenses, allSalesDetail, allRevenue, allSquare] = await Promise.all([
+    const [allPayroll, allExpenses, allVendingRevenue, allSalesDetail, allRevenue, allSquare] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: years }, ...storeWhere } }),
       // 発生月対応（依頼⑥）: 当年の前年も取得して跨年シフト分も拾う
       // splitRatios / categorySplits あり行は店舗フィルタを跨ぐため OR で展開
@@ -181,6 +188,18 @@ export async function GET(request: NextRequest) {
             { storeName: storeNameFilter },
             { splitRatios: { not: null } },
             { categorySplits: { not: null } },
+          ],
+        },
+      }),
+      // 自販機手数料収入（is_revenue=1側）。上と同じ跨年フィルタで拾う。
+      prisma.expenseData.findMany({
+        where: {
+          year: { in: [...years, ...years.map((y) => y - 1)] },
+          isRevenue: 1,
+          category: VENDING_REVENUE_CATEGORY,
+          OR: [
+            { storeName: storeNameFilter },
+            { splitRatios: { not: null } },
           ],
         },
       }),
@@ -384,9 +403,26 @@ export async function GET(request: NextRequest) {
         0,
       );
 
-      // 総売上: hacomono売上 + Square物販 + Squareパーソナル + 手動その他。
+      // 自販機手数料収入（is_revenue=1側。経費明細で分類された分のみ、hacomono/Squareとは無関係）
+      const vendingRows = allVendingRevenue.filter((r) => {
+        const ey = r.accrualYear ?? r.year;
+        const em = r.accrualMonth ?? r.month;
+        return ey === y && em === m;
+      });
+      // 入金行は amount ではなく deposit 列に金額が入る
+      const salesVending = vendingRows.reduce(
+        (s, r) =>
+          s +
+          expenseRowShare(
+            { storeName: r.storeName, amount: r.deposit, splitRatios: r.splitRatios },
+            expenseTarget,
+          ),
+        0,
+      );
+
+      // 総売上: hacomono売上 + Square物販 + Squareパーソナル + 手動その他 + 自販機手数料収入。
       const totalRevenue =
-        salesTotal + squareTotal + squarePersonal + manualOther;
+        salesTotal + squareTotal + squarePersonal + manualOther + salesVending;
 
       // 売上4分類（坪井さん要望: 会費/パーソナル/物販/その他）
       const salesMembership =
@@ -530,6 +566,7 @@ export async function GET(request: NextRequest) {
         sales_personal: Math.round(salesPersonal),
         sales_product: Math.round(salesProduct),
         sales_other: Math.round(salesOther),
+        sales_vending: Math.round(salesVending),
         budget_revenue: budgetRevenue,
         budget_labor: budgetLabor,
         budget_expense: budgetExpense,
@@ -584,7 +621,7 @@ export async function GET(request: NextRequest) {
     const prevYears = [...new Set(prevPeriods.map((p) => p.year))];
 
     // 高速化: 前期データも Promise.all で並列取得
-    const [prevPayroll, prevExpenses, prevSales, prevRevenue, prevSquare, prevMonthlySummary] = await Promise.all([
+    const [prevPayroll, prevExpenses, prevVendingRevenue, prevSales, prevRevenue, prevSquare, prevMonthlySummary] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
       prisma.expenseData.findMany({
         where: {
@@ -594,6 +631,17 @@ export async function GET(request: NextRequest) {
             { storeName: storeNameFilter },
             { splitRatios: { not: null } },
             { categorySplits: { not: null } },
+          ],
+        },
+      }),
+      prisma.expenseData.findMany({
+        where: {
+          year: { in: [...prevYears, ...prevYears.map((y) => y - 1)] },
+          isRevenue: 1,
+          category: VENDING_REVENUE_CATEGORY,
+          OR: [
+            { storeName: storeNameFilter },
+            { splitRatios: { not: null } },
           ],
         },
       }),
@@ -638,7 +686,17 @@ export async function GET(request: NextRequest) {
     const prevSquareTotal = prevSquare
       .filter((r) => isInPeriod(r.year, r.month))
       .reduce((s, r) => s + r.grossSales, 0);
-    const prevRevenueTotal = prevSalesTotal + prevSquareTotal;
+    // 入金行は amount ではなく deposit 列に金額が入る
+    const prevVendingTotal = prevVendingRevenue.reduce((s, r) => {
+      const ey = r.accrualYear ?? r.year;
+      const em = r.accrualMonth ?? r.month;
+      if (!isInPeriod(ey, em)) return s;
+      return s + expenseRowShare(
+        { storeName: r.storeName, amount: r.deposit, splitRatios: r.splitRatios },
+        prevExpenseTarget,
+      );
+    }, 0);
+    const prevRevenueTotal = prevSalesTotal + prevSquareTotal + prevVendingTotal;
 
     const prevMembershipSales =
       (prevSalesByCat["月会費"] ?? 0) + (prevSalesByCat["入会金"] ?? 0);
@@ -665,6 +723,7 @@ export async function GET(request: NextRequest) {
       sales_personal: Math.round(prevPersonalSales),
       sales_product: Math.round(prevProductSales),
       sales_other: Math.round(prevOtherSales),
+      sales_vending: Math.round(prevVendingTotal),
       advertising: Math.round(prevExpenseByCat["広告宣伝費"] ?? 0),
       supplies: Math.round(prevExpenseByCat["消耗品費"] ?? 0),
       new_signups: prevNewSignups,

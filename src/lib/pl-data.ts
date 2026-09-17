@@ -180,13 +180,18 @@ export async function aggregatePlForFiscalYear(
     }
   }
 
-  // 自販機手数料収入（is_revenue=1）
+  // 自販機手数料収入（is_revenue=1）。
+  // 入金行は amount ではなく deposit 列に金額が入る（PayPay CSVの
+  // 「お支払金額」列がamount、「お預り金額」列がdeposit。入金は後者のみ埋まる）。
   for (const r of allVendingRevenue) {
     const ey = r.accrualYear ?? r.year;
     const em = r.accrualMonth ?? r.month;
     const idx = toFiscalIndex(ey, em, fiscalYear);
     if (idx === null) continue;
-    const share = expenseRowShare(r, expenseTarget);
+    const share = expenseRowShare(
+      { storeName: r.storeName, amount: r.deposit, splitRatios: r.splitRatios },
+      expenseTarget,
+    );
     if (share === 0) continue;
     ensureSlot(idx).salesVending += share;
   }

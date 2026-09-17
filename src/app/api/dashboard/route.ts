@@ -17,7 +17,12 @@ import {
   parseSplitRatios,
   expenseRowShareWithCategorySplit,
   expenseRowSharesByCategory,
+  expenseRowShare,
 } from "@/lib/manual-expense-split";
+
+// 自販機手数料収入（PayPay銀行入金・is_revenue=1で分類）。
+// hacomono/Squareとは別経路の売上のため、他の売上4分類とは独立に集計する。
+const VENDING_REVENUE_CATEGORY = "自販機手数料収入";
 import { isPlOverrideMonth, PL_OVERRIDE_CATEGORIES } from "@/lib/pl-override";
 
 const CALENDAR_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
@@ -197,6 +202,35 @@ export async function GET(request: NextRequest) {
       if (month !== undefined && effMonth !== month) return false;
       return true;
     });
+
+    // 自販機手数料収入（is_revenue=1側）。上と同じ accrual フィルタで拾う。
+    const vendingRevenueRowsAll = await prisma.expenseData.findMany({
+      where: {
+        year: { in: [year - 1, year] },
+        isRevenue: 1,
+        category: VENDING_REVENUE_CATEGORY,
+        OR: [
+          { storeName: storeNameFilter },
+          { splitRatios: { not: null } },
+        ],
+      },
+    });
+    const vendingRevenueRows = vendingRevenueRowsAll.filter((row) => {
+      const effYear = row.accrualYear ?? row.year;
+      const effMonth = row.accrualMonth ?? row.month;
+      if (effYear !== year) return false;
+      if (month !== undefined && effMonth !== month) return false;
+      return true;
+    });
+    // 入金行は amount ではなく deposit 列に金額が入る（PayPay CSVの
+    // 「お支払金額」列がamount、「お預り金額」列がdeposit。入金は後者のみ埋まる）。
+    let salesVending = 0;
+    for (const row of vendingRevenueRows) {
+      salesVending += expenseRowShare(
+        { storeName: row.storeName, amount: row.deposit, splitRatios: row.splitRatios },
+        expenseTarget,
+      );
+    }
 
     const expenseByCategory: Record<string, number> = {};
     // PL反映対象月（〜2026/4）ぶんだけの内訳。
@@ -434,11 +468,12 @@ export async function GET(request: NextRequest) {
     const salesOther =
       salesTotal - salesMembership - hacomonoPersonal + manualOtherSales;
 
-    // 総売上: hacomono売上 + Square物販(square_sales) + Squareパーソナル + 手動その他。
+    // 総売上: hacomono売上 + Square物販(square_sales) + Squareパーソナル + 手動その他 + 自販機手数料収入。
     //   Squareパーソナルは square_sales(物販のみ) に含まれないため個別に算入する
     //   （従来は総売上・パーソナルから取りこぼしていた）。
+    //   自販機手数料収入は経費明細（PayPay入金）で分類された分のみで、hacomono/Squareとは無関係。
     const totalRevenue =
-      salesTotal + squareTotal + squarePersonal + manualOtherSales;
+      salesTotal + squareTotal + squarePersonal + manualOtherSales + salesVending;
 
     const revenueSummary = {
       total: Math.round(totalRevenue),
@@ -451,6 +486,7 @@ export async function GET(request: NextRequest) {
       product: Math.round(salesProduct),
       service: Math.round(salesService),
       other: Math.round(salesOther),
+      vending: Math.round(salesVending),
       square_item_loaded: hasSquareItem,
       square_item_by_class: squareItemByClass,
     };
@@ -598,6 +634,38 @@ export async function GET(request: NextRequest) {
           return s + expenseRowShareWithCategorySplit(r, expTarget);
         }, 0);
 
+        // 自販機手数料収入（is_revenue=1側）。当月の売上合計に含める。
+        const vendingRowsForMonth = await prisma.expenseData.findMany({
+          where: {
+            year: { in: [y - 1, y] },
+            isRevenue: 1,
+            category: VENDING_REVENUE_CATEGORY,
+            ...(store
+              ? { OR: [{ storeName: storeNameFilter }, { splitRatios: { not: null } }] }
+              : {}),
+          },
+          select: {
+            year: true,
+            month: true,
+            amount: true,
+            deposit: true,
+            storeName: true,
+            splitRatios: true,
+            accrualYear: true,
+            accrualMonth: true,
+          },
+        });
+        // 入金行は amount ではなく deposit 列に金額が入る
+        const vendingTotal = vendingRowsForMonth.reduce((s, r) => {
+          const ey = r.accrualYear ?? r.year;
+          const em = r.accrualMonth ?? r.month;
+          if (ey !== y || em !== m) return s;
+          return s + expenseRowShare(
+            { storeName: r.storeName, amount: r.deposit, splitRatios: r.splitRatios },
+            expTarget,
+          );
+        }, 0);
+
         const cw = {
           year: y,
           month: m,
@@ -618,7 +686,7 @@ export async function GET(request: NextRequest) {
         // PL001 がある月はそちら優先、無ければ revenueData
         const sales = (sd._sum.amount ?? 0) || (rev._sum.amount ?? 0);
         const square = sq._sum.grossSales ?? 0;
-        const revenueTotal = sales + square;
+        const revenueTotal = sales + square + vendingTotal;
 
         return {
           revenue: Math.round(revenueTotal),
