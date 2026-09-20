@@ -372,6 +372,66 @@ export function parseTrialSheetCsv(
   return { records, warnings };
 }
 
+/**
+ * 体験シートのファイル名から年月を検出する（星崎さん要望 2026-09-20）。
+ *
+ * 各店舗が送ってくるファイル名の年月表記は店舗ごとにバラバラで、実際に確認できた例:
+ *   【中目黒】体験シート - 26.9.csv               → "26.9"（西暦下2桁.月）
+ *   下北沢 体験後記入シート.xlsx - 2026年9月.csv    → "2026年9月"
+ *   祖師ヶ谷大蔵　体験会情報.xlsx - 2026年9月 .csv  → "2026年9月"
+ *   巣鴨体験者・入会一覧　- R8.9月体験リスト.csv     → "R8.9"（令和年.月。令和N年=2018+N年）
+ *   【2022年8月～】春日スタジオ体験会情報 - 2026年9月.csv
+ *     → ファイル名前半に別の年月「2022年8月～」が含まれるため、最初にマッチした
+ *       ものではなく、ファイル名の末尾（拡張子）に近い方の年月表記を優先する必要がある
+ *   体験会情報 - 26.7月体験者リスト .csv            → "26.7月"
+ *   船橋体験会情報　- 202609.csv                   → "202609"（YYYYMM連結）
+ *
+ * 上記の全パターンをファイル名全体から抽出し、**最も後ろ（拡張子に近い）に
+ * 出現したもの**を採用する（同じ文字列に複数の年月表記が含まれる春日のケース対応）。
+ * 検出できない場合は null を返し、呼び出し側は従来通り手動選択に委ねる
+ * （品質ゲート: 過去に日付取り違え事故が複数あるため、無人で確定させず
+ * UI側で必ず目視確認・修正できる状態を残すこと）。
+ */
+export function detectYearMonthFromTrialSheetFilename(
+  filename: string,
+): { year: number; month: number } | null {
+  type Candidate = { index: number; year: number; month: number };
+  const candidates: Candidate[] = [];
+
+  const pushIfValid = (index: number, year: number, month: number) => {
+    if (year >= 2020 && year <= 2039 && month >= 1 && month <= 12) {
+      candidates.push({ index, year, month });
+    }
+  };
+
+  // ① YYYY年M月 / YYYY年MM月
+  for (const m of filename.matchAll(/(\d{4})年(\d{1,2})月/g)) {
+    pushIfValid(m.index ?? 0, parseInt(m[1], 10), parseInt(m[2], 10));
+  }
+
+  // ② 令和表記: R8.9 / Ｒ8.9 / R8.9月 など（令和N年 = 2018 + N）
+  for (const m of filename.matchAll(/[Rr](\d{1,2})[.．](\d{1,2})月?/g)) {
+    pushIfValid(m.index ?? 0, 2018 + parseInt(m[1], 10), parseInt(m[2], 10));
+  }
+
+  // ③ YYYYMM（6桁連結）
+  for (const m of filename.matchAll(/(?<!\d)(\d{4})(\d{2})(?!\d)/g)) {
+    pushIfValid(m.index ?? 0, parseInt(m[1], 10), parseInt(m[2], 10));
+  }
+
+  // ④ YY.M / YY.M月（西暦下2桁.月）。令和表記(②)と紛れないよう R/r が直前に無いものだけ。
+  for (const m of filename.matchAll(/(?<![Rr\d])(\d{2})[.．](\d{1,2})月?(?!\d)/g)) {
+    pushIfValid(m.index ?? 0, 2000 + parseInt(m[1], 10), parseInt(m[2], 10));
+  }
+
+  if (candidates.length === 0) return null;
+
+  // ファイル名の末尾（拡張子）に近い＝index が最大のものを採用する
+  candidates.sort((a, b) => a.index - b.index);
+  const best = candidates[candidates.length - 1];
+  return { year: best.year, month: best.month };
+}
+
 /** 体験シートの集計結果（体験者数・入会率の算出用） */
 export interface TrialSheetSummary {
   trialCount: number;

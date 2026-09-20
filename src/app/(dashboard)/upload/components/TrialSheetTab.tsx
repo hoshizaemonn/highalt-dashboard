@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { STORES } from "@/lib/constants";
+import { detectYearMonthFromTrialSheetFilename } from "@/lib/trial-sheet-parse";
 import {
   StatusMessage,
   FileDropzone,
@@ -44,20 +45,39 @@ export function TrialSheetTab({
   const [results, setResults] = useState<string[]>([]);
   const [existingCount, setExistingCount] = useState(0);
   const [confirmStage, setConfirmStage] = useState<"idle" | "review">("idle");
+  // ファイル名から自動検出した年月（星崎さん要望 2026-09-20）。
+  // あくまで年月セレクタの初期値を埋めるだけで、選択欄は常に編集可能なまま残す
+  // （品質ゲート: 日付取り違え事故が過去複数あるため、無人で確定させず目視確認を必須にする）。
+  const [autoDetectedNote, setAutoDetectedNote] = useState<string | null>(null);
 
   const isFunabashi = store === "船橋";
 
   const handleFilesAdd = (added: File[]) => {
     // 1ファイルのみ（1店舗1月1ファイル運用）
-    setFiles(added.slice(0, 1));
+    const target = added.slice(0, 1);
+    setFiles(target);
     setStatus(null);
     setResults([]);
     setConfirmStage("idle");
+    setAutoDetectedNote(null);
+
+    const file = target[0];
+    if (file) {
+      const detected = detectYearMonthFromTrialSheetFilename(file.name);
+      if (detected) {
+        setYear(detected.year);
+        setMonth(detected.month);
+        setAutoDetectedNote(
+          `ファイル名「${file.name}」から ${detected.year}年${detected.month}月 を自動検出して入力しました。内容をご確認のうえ、違う場合は下の年月を修正してください。`,
+        );
+      }
+    }
   };
 
   const handleRemove = () => {
     setFiles([]);
     setConfirmStage("idle");
+    setAutoDetectedNote(null);
   };
 
   const runDryRun = async (): Promise<{
@@ -180,9 +200,27 @@ export function TrialSheetTab({
         ) : (
           <StoreSelect value={store} onChange={setStore} />
         )}
-        <YearSelect value={year} onChange={setYear} />
-        <MonthSelect value={month} onChange={setMonth} />
+        <YearSelect
+          value={year}
+          onChange={(v) => {
+            setYear(v);
+            setAutoDetectedNote(null);
+          }}
+        />
+        <MonthSelect
+          value={month}
+          onChange={(v) => {
+            setMonth(v);
+            setAutoDetectedNote(null);
+          }}
+        />
       </div>
+
+      {autoDetectedNote && (
+        <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+          ℹ️ {autoDetectedNote}
+        </p>
+      )}
 
       <FileDropzone
         accept=".csv"
