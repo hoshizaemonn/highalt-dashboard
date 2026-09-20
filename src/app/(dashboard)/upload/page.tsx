@@ -8,6 +8,7 @@ import { HacomonoTab } from "./components/HacomonoTab";
 import { BudgetTab, UploadHistory } from "./components/BudgetTab";
 import { PlActualTab } from "./components/PlActualTab";
 import { FeeElectricityTab } from "./components/FeeElectricityTab";
+import { TrialSheetTab } from "./components/TrialSheetTab";
 
 // ─── Types ──────────────────────────────────────────────────
 //   amazon-expense: Amazon 注文履歴（店長/admin両対応）
@@ -18,6 +19,7 @@ type TabId =
   | "amazon-expense"
   | "paypay-expense"
   | "hacomono"
+  | "trial-sheet"
   | "budget"
   | "pl-actual"
   | "fee-electricity";
@@ -55,6 +57,7 @@ export default function UploadPage() {
   //   - PayPay銀行（経費）: admin限定（会社全体の銀行明細）
   const allTabs: { id: TabId; label: string }[] = [
     { id: "hacomono", label: "hacomono（売上・アンケート）" },
+    { id: "trial-sheet", label: "体験シート" },
     { id: "payroll", label: "人件費" },
     { id: "amazon-expense", label: "Amazon（経費）" },
     { id: "paypay-expense", label: "PayPay銀行（経費）" },
@@ -115,6 +118,9 @@ export default function UploadPage() {
         )}
         {activeTab === "hacomono" && (
           <HacomonoTab onSuccess={refreshHistory} lockedStore={lockedStore} />
+        )}
+        {activeTab === "trial-sheet" && (
+          <TrialSheetTab onSuccess={refreshHistory} lockedStore={lockedStore} />
         )}
         {activeTab === "budget" && (
           <BudgetTab onSuccess={refreshHistory} lockedStore={lockedStore} />

@@ -547,6 +547,35 @@ model ManualEntry {
   @@map("manual_entry")
 }
 
+// ─── Trial Sheet (体験シート取込) ────────────────────────────
+// 山本様要望 2026-09-20: hacomono(ML001) は「最終的に入会した人」しか含まれず、
+// 体験者数・入会率が構造的に不正確（体験して入会しなかった人が分母から漏れる）。
+// 各店舗が運用している「体験シート」（Googleスプレッドシート→CSVエクスポート）を
+// 正本として取り込み、行単位（1体験者=1行）で保持する。
+// 6店舗共通フォーマット: 日付/氏名/即日入会/後日入会/入会しない の列を持つ。
+// 船橋のみ別フォーマット（即日/後日はあるが入会しない相当の列が無い＝B案、
+// src/lib/trial-sheet-parse.ts 参照）。
+//
+// 集計時の優先順位（体験者数・入会率の分母/分子）:
+//   このテーブルにデータがある店舗・月 > ManualEntry.trialCount（店長手動集計値）
+//   > MemberData の trialDate/firstTrialDate による自動算出（hacomono、入会者のみ）
+model TrialSheetEntry {
+  id           Int      @id @default(autoincrement())
+  year         Int
+  month        Int
+  storeName    String   @map("store_name")
+  /** 元シートの日付表記をそのまま保持（例: "7/4"）。表示・突合用で集計には使わない */
+  entryDate    String?  @map("entry_date")
+  memberName   String?  @map("member_name")
+  /** "即日入会" | "後日入会" | "入会しない" | "検討中"（結果未確定・6店舗共通フォーマットのみ） */
+  resultType   String   @map("result_type")
+  sourceFile   String?  @map("source_file")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([year, month, storeName])
+  @@map("trial_sheet_entry")
+}
+
 // ─── その他売上 内訳行（複数請求書対応） ───────────────────
 // 1月に複数件の請求書がある場合に各行を分けて記録する。
 // 集計時は (year, month, storeName) で sum(amount) を ManualEntry.otherSalesAmount

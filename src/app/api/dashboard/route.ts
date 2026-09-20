@@ -391,7 +391,25 @@ export async function GET(request: NextRequest) {
     const autoTrialCount = await prisma.memberData.count({
       where: { ...memberStoreFilter, ...autoTrialDateWhere },
     });
-    // 手動入力があればそれを使う、無ければ自動。
+
+    // 体験シート取込データ（山本様要望 2026-09-20: hacomonoは入会者のみのため分母が
+    // 不正確。体験シートがある店舗・月はそれを最優先で使う）。
+    // ※ 全体ビュー(month未指定)は年間合算、単月ビューはその月のみで判定。
+    const trialSheetWhere = {
+      year,
+      ...(month !== undefined && { month }),
+      storeName: storeNameFilter,
+    };
+    const trialSheetRows = await prisma.trialSheetEntry.findMany({
+      where: trialSheetWhere,
+      select: { storeName: true },
+    });
+    const trialSheetByStore = new Map<string, number>();
+    for (const r of trialSheetRows) {
+      trialSheetByStore.set(r.storeName, (trialSheetByStore.get(r.storeName) ?? 0) + 1);
+    }
+
+    // 優先順位: 体験シート実データ > 店長手動追記 > hacomono自動算出（入会者のみ）。
     //
     // ★全体ビュー（store未指定）は店舗ごとに判定してから合算する。
     //   以前は「全店の手動入力合計」と「全店の自動算出合計」を単純比較しており、
@@ -416,20 +434,24 @@ export async function GET(request: NextRequest) {
             autoByStore.set(r.storeName, (autoByStore.get(r.storeName) ?? 0) + 1);
           }
           const allStoreNames = new Set([
+            ...trialSheetByStore.keys(),
             ...manualByStore.keys(),
             ...autoByStore.keys(),
           ]);
           let total = 0;
           for (const sn of allStoreNames) {
+            const sheet = trialSheetByStore.get(sn) ?? 0;
             const manual = manualByStore.get(sn) ?? 0;
             const auto = autoByStore.get(sn) ?? 0;
-            total += manual > 0 ? manual : auto;
+            total += sheet > 0 ? sheet : manual > 0 ? manual : auto;
           }
           return total;
         })()
-      : manualTrial > 0
-        ? manualTrial
-        : autoTrialCount;
+      : (trialSheetByStore.get(store) ?? 0) > 0
+        ? trialSheetByStore.get(store)!
+        : manualTrial > 0
+          ? manualTrial
+          : autoTrialCount;
 
     let salesTotal = 0;
     const salesByCategory: Record<string, number> = {};
