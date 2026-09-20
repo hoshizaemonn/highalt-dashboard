@@ -240,6 +240,14 @@ export function EditableMemberSection({
 
   // When in "全体" mode and no editing, show read-only
   if (isAllStores) {
+    // 入会率 = 新規入会数 ÷ 体験者数（山本様依頼: 全体・月次表示でも見たい）。
+    // data.new_plan_signups / data.trial_count は全店舗合算済みの値
+    // （dashboard/route.ts 側で 全体ビュー時は複数店舗を合算する仕様）。
+    const allTrialCount = data?.trial_count ?? 0;
+    const allSignupRate =
+      allTrialCount > 0
+        ? `${(((data?.new_plan_signups ?? 0) / allTrialCount) * 100).toFixed(1)}%`
+        : "-";
     return (
       <>
         <SectionTitle>会員情報 (MA002)</SectionTitle>
@@ -248,6 +256,12 @@ export function EditableMemberSection({
             title="在籍会員数"
             value={data ? `${numFormat.format(data.total_members)}人` : "-"}
             color={COLORS.blue}
+          />
+          <KPICard
+            title="入会率"
+            value={allSignupRate}
+            color={COLORS.green}
+            help="全店舗合算の新規入会数 ÷ 体験者数。"
           />
         </div>
       </>
