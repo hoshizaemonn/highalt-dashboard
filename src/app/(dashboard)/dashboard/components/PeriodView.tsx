@@ -1020,6 +1020,8 @@ export default function PeriodView({
           color?: string;
           isHours?: boolean;
           isPerHour?: boolean;
+          /** 円ではなく「人」単位で表示する行（新規入会数など） */
+          isCount?: boolean;
           /** 社員給与の黒塗り（店長権限）: true の行は金額の代わりに黒帯を描画する */
           masked?: boolean;
         };
@@ -1146,6 +1148,17 @@ export default function PeriodView({
           color: "text-green-700",
         });
 
+        // 新規入会数（山本様依頼: 月ごとの入会数を、この表でも合計付きで確認したい）
+        const newSignupsSum = monthly.reduce((s, m) => s + (m.ma_new_signups || 0), 0);
+        rows.push({
+          label: "新規入会数",
+          values: monthly.map((m) => m.ma_new_signups || 0),
+          total: newSignupsSum,
+          avg: Math.round(newSignupsSum / nMonths),
+          color: "text-blue-700",
+          isCount: true,
+        });
+
         // タイムバリュー（営業利益 ÷ 総勤務時間。1時間あたりの稼ぎ）
         // 総勤務時間が記録されている月のみ計算（無い月は "-"）
         if (hasPayroll) {
@@ -1178,9 +1191,11 @@ export default function PeriodView({
           v: string | number,
           isHours?: boolean,
           isPerHour?: boolean,
+          isCount?: boolean,
         ) => {
           if (isHours) return typeof v === "number" ? (v > 0 ? `${v.toFixed(1)}h` : "-") : "-";
           if (isPerHour) return typeof v === "number" ? `${formatYen(v)}/h` : "-";
+          if (isCount) return typeof v === "number" ? `${numFormat.format(v)}人` : v;
           return typeof v === "number" ? formatYen(v) : v;
         };
 
@@ -1221,14 +1236,14 @@ export default function PeriodView({
                     </td>
                     {row.values.map((v, j) => (
                       <td key={j} className="px-3 py-1.5 text-right whitespace-nowrap">
-                        {row.masked ? <MaskedAmount /> : fmtCell(v, row.isHours, row.isPerHour)}
+                        {row.masked ? <MaskedAmount /> : fmtCell(v, row.isHours, row.isPerHour, row.isCount)}
                       </td>
                     ))}
                     <td className="px-3 py-1.5 text-right bg-gray-50 whitespace-nowrap">
-                      {row.masked ? <MaskedAmount /> : fmtCell(row.total, row.isHours, row.isPerHour)}
+                      {row.masked ? <MaskedAmount /> : fmtCell(row.total, row.isHours, row.isPerHour, row.isCount)}
                     </td>
                     <td className="px-3 py-1.5 text-right bg-gray-50 whitespace-nowrap">
-                      {row.masked ? <MaskedAmount /> : fmtCell(row.avg, row.isHours, row.isPerHour)}
+                      {row.masked ? <MaskedAmount /> : fmtCell(row.avg, row.isHours, row.isPerHour, row.isCount)}
                     </td>
                   </tr>
                 ))}
