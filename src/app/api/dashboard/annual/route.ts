@@ -218,6 +218,7 @@ export async function GET(request: NextRequest) {
       allPlActual,
       allManualPayroll,
       allSquareItem,
+      allTrialSheet,
     ] = await Promise.all([
       // 本部一括経費（手動入力）
       prisma.manualExpenseEntry.findMany({ where: { year: { in: years } } }),
@@ -252,6 +253,12 @@ export async function GET(request: NextRequest) {
       prisma.manualPayrollEntry.findMany({ where: { year: { in: years }, ...storeWhere } }),
       // Square アイテム別売上（パーソナル分を売上分類に合算・松尾さん依頼 2026-07）
       prisma.squareItemSales.findMany({ where: { year: { in: years }, ...storeWhere } }),
+      // 体験シート取込データ（山本様要望 2026-09-20: hacomonoは入会者のみのため分母が
+      // 不正確。体験シートがある店舗・月はそれを最優先で使う）
+      prisma.trialSheetEntry.findMany({
+        where: { year: { in: years }, ...storeWhere },
+        select: { year: true, month: true, storeName: true },
+      }),
     ]);
     // PL上書き用マップ: `${year}-${month}-${category}` -> 金額（全体時は店舗合算）
     const plExpMap = new Map<string, number>();
@@ -391,7 +398,19 @@ export async function GET(request: NextRequest) {
       const autoTrialCount = allMember.filter((r) =>
         trialDateMatchesMonth(r.trialDate, r.firstTrialDate, y, m),
       ).length;
-      // ★全体ビュー（store未指定）は店舗ごとに「手動優先」を判定してから合算する。
+      // 体験シート取込データ（この月・全店舗分）
+      const trialSheetMonth = allTrialSheet.filter((r) => r.year === y && r.month === m);
+      const trialSheetByStoreMonth = new Map<string, number>();
+      for (const r of trialSheetMonth) {
+        trialSheetByStoreMonth.set(
+          r.storeName,
+          (trialSheetByStoreMonth.get(r.storeName) ?? 0) + 1,
+        );
+      }
+
+      // 優先順位: 体験シート実データ > 店長手動追記 > hacomono自動算出（入会者のみ）。
+      //
+      // ★全体ビュー（store未指定）は店舗ごとに「優先順位」を判定してから合算する。
       //   以前は「全店の手動入力合計」と「全店の自動算出合計」を単純比較しており、
       //   1店舗でも手動入力があると他の全店舗の自動算出が丸ごと捨てられていた
       //   （例: 東日本橋のみ手動14件 → 全体は14件のみになり、他6店舗の自動算出
@@ -411,17 +430,21 @@ export async function GET(request: NextRequest) {
           autoByStore.set(r.storeName, (autoByStore.get(r.storeName) ?? 0) + 1);
         }
         const allStoreNames = new Set([
+          ...trialSheetByStoreMonth.keys(),
           ...manualByStore.keys(),
           ...autoByStore.keys(),
         ]);
         effectiveTrial = 0;
         for (const sn of allStoreNames) {
+          const sheet = trialSheetByStoreMonth.get(sn) ?? 0;
           const manual = manualByStore.get(sn) ?? 0;
           const auto = autoByStore.get(sn) ?? 0;
-          effectiveTrial += manual > 0 ? manual : auto;
+          effectiveTrial += sheet > 0 ? sheet : manual > 0 ? manual : auto;
         }
       } else {
-        effectiveTrial = manualTrial > 0 ? manualTrial : autoTrialCount;
+        const sheetForStore = trialSheetByStoreMonth.get(store) ?? 0;
+        effectiveTrial =
+          sheetForStore > 0 ? sheetForStore : manualTrial > 0 ? manualTrial : autoTrialCount;
       }
       // 紹介経由は店長手動入力（全店舗合算）
       const manualReferral = manualMonth.reduce((s, r) => s + r.trialReferralCount, 0);

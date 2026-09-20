@@ -331,6 +331,7 @@ const TAB_DATATYPES: Record<string, string[]> = {
   "amazon-expense": ["amazon"],
   "paypay-expense": ["expense"],
   budget: ["budget", "promotion_budget"],
+  "trial-sheet": ["trial_sheet"],
 };
 
 export function UploadHistory({ filterTab }: { filterTab?: string }) {
@@ -364,6 +365,7 @@ export function UploadHistory({ filterTab }: { filterTab?: string }) {
     hacomono_pl001: "売上明細 (PL001)",
     hacomono_ma002: "月次サマリ (MA002)",
     hacomono_ps001: "商品別売上 (PS001)",
+    trial_sheet: "体験シート",
     hacomono_enquete_answer: "アンケート回答",
     square_item: "Square アイテム別売上",
   };
