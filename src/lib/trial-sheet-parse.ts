@@ -15,11 +15,25 @@
  *      いずれのマークも無い行（検討中・記入待ち）は「検討中」として体験者数には
  *      カウントするが、入会/非入会のどちらにも数えない。
  *
- *   ② 船橋専用フォーマット（B案・星崎さん決定 2026-09-20）
- *      列: 日付 / 氏名 / 即日 / 後日 のみで「入会しない」に相当する列が無い。
- *      → 即日 or 後日にマークがあれば入会、どちらも無ければ「入会しない」とみなす
- *        （＝船橋シートには「検討中」の概念を別途持たないという運用前提。
- *          実物のシートは未確認のため、想定と異なる場合は要修正）。
+ *   ② 船橋専用フォーマット（実物確認済み・2026-09-20 星崎さん経由で2026年9月分CSVを受領）
+ *      列: 連番 / 日付 / 氏名 / 担当 / 体験経路 / スポーツ・目的 / 入会 / 即日 / 後日 /
+ *          入会種別 / 学割・ペア割 / アスリート / 後日フォロー / 備考
+ *      6店舗共通フォーマットとは列名・列順が大きく異なり、船橋固有の列
+ *      （担当・体験経路・スポーツ/目的・入会種別・学割ペア割・アスリート・後日フォロー・備考）
+ *      が多数あるため、列名の部分一致に頼らず「入会」「即日」「後日」列を個別に検出する
+ *      専用ロジックで判定する。
+ *
+ *      判定の正本は「入会」列（〇=入会、空欄=未入会・体験のみ）。即日/後日列は
+ *      入会=〇の場合の内訳（いつ入会したか）を表す補助列に過ぎない。
+ *      実データには「入会は空欄なのに後日列に〇が付いている」ような現場入力の
+ *      ブレ（検討中止まりのケース等）があるため、必ず「入会」列を最優先に判定し、
+ *      即日/後日列は入会=〇の時だけ参照する（矛盾データは「入会しない」扱いでよい）。
+ *      「×」は明示的な「未入会」マークとして使われており、isMarked() では
+ *      マーク無し（false）として扱う。
+ *
+ *      ヘッダー行の上に説明文・凡例行（「⇚入会」等）が複数あるため、ヘッダー行の
+ *      自動検出（「日付」「氏名」を含む行を探す）は既存ロジックのまま使えるが、
+ *      念のため走査行数に十分な余裕を持たせている。
  *
  * 列名は完全一致→部分一致（trim・全角スペース除去後）の順でゆらぎに対応する。
  */
@@ -66,12 +80,40 @@ function findColumnIndex(header: string[], candidates: string[]): number {
   return -1;
 }
 
-/** セルにマーク（〇・○・レ・TRUE等）が入っているかどうか */
+/**
+ * header配列から候補キーワードに完全一致する列のindexを探す（部分一致フォールバック無し）。
+ * 「入会」のように単独では意味を持つが、他の列名（例: 入会種別・入会しない）の
+ * 部分文字列としても現れやすい語を安全に検出するために使う。
+ */
+function findExactColumnIndex(header: string[], candidates: string[]): number {
+  const normalizedHeader = header.map((h) => norm(h));
+  for (const cand of candidates) {
+    const idx = normalizedHeader.indexOf(norm(cand));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
+/**
+ * セルにマーク（〇・○・レ・TRUE等）が入っているかどうか。
+ * 「×」は船橋シート等で「明示的に未入会」を表す記号として使われているため、
+ * マーク無し（false）として扱う。
+ */
 function isMarked(cell: string | undefined): boolean {
   if (!cell) return false;
   const v = cell.trim();
   if (v === "") return false;
-  if (v === "FALSE" || v === "false" || v === "0" || v === "-") return false;
+  if (
+    v === "FALSE" ||
+    v === "false" ||
+    v === "0" ||
+    v === "-" ||
+    v === "×" ||
+    v === "x" ||
+    v === "X"
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -95,7 +137,9 @@ interface ColumnMap {
   name: number;
   immediate: number;
   later: number;
-  noJoin: number; // -1 なら該当列なし（船橋パターン）
+  noJoin: number; // -1 なら該当列なし
+  /** 船橋専用: 「入会」列（〇=入会、空欄=未入会）。入会有無の正本。-1なら未検出 */
+  joined: number;
 }
 
 function buildColumnMap(header: string[]): ColumnMap {
@@ -105,6 +149,8 @@ function buildColumnMap(header: string[]): ColumnMap {
     immediate: findColumnIndex(header, ["即日入会", "即日"]),
     later: findColumnIndex(header, ["後日入会", "後日"]),
     noJoin: findColumnIndex(header, ["入会しない", "非入会", "見送り"]),
+    // 完全一致のみ（部分一致だと「入会種別」「入会しない」等を誤検出するため）
+    joined: findExactColumnIndex(header, ["入会"]),
   };
 }
 
@@ -116,10 +162,27 @@ function classifyCommon(row: string[], cols: ColumnMap): TrialResultType {
 }
 
 /**
- * 船橋専用（B案）: 「入会しない」列が無いため、即日/後日どちらのマークも無ければ
- * 「入会しない」とみなす（＝検討中という中間状態を持たない前提）。
+ * 船橋専用（実物確認済み・2026-09-20）:
+ * 「入会」列（〇=入会、空欄=未入会）を入会有無の正本として最優先で判定する。
+ * 即日/後日列は入会=〇の場合の内訳（いつ入会したか）にのみ使う。
+ * 現場入力のブレ（入会が空欄なのに即日/後日にマークが付いている等の矛盾データ）は
+ * 「入会」列を信頼して「入会しない」として扱う。
+ *
+ * 「入会」列自体を検出できなかった場合のみ、フォールバックとして
+ * 即日/後日どちらかにマークがあれば入会とみなす旧ロジックを使う。
  */
 function classifyFunabashi(row: string[], cols: ColumnMap): TrialResultType {
+  if (cols.joined !== -1) {
+    if (isMarked(row[cols.joined])) {
+      if (isMarked(row[cols.immediate])) return "即日入会";
+      if (isMarked(row[cols.later])) return "後日入会";
+      // 入会〇だが即日/後日どちらも空欄 → 念のため即日扱い（星崎さん合意のフォールバック）
+      return "即日入会";
+    }
+    // 入会列が空欄 = 未入会（体験のみ）。即日/後日列の値（矛盾データ含む）は無視する。
+    return "入会しない";
+  }
+  // 「入会」列が見つからない場合のみ、即日/後日ベースの旧ロジックにフォールバック
   if (isMarked(row[cols.immediate])) return "即日入会";
   if (isMarked(row[cols.later])) return "後日入会";
   return "入会しない";
@@ -166,6 +229,11 @@ export function parseTrialSheetCsv(
   if (!isFunabashi && cols.noJoin === -1) {
     warnings.push(
       "「入会しない」列を検出できませんでした。即日/後日どちらもマークが無い行は「検討中」として扱います。",
+    );
+  }
+  if (isFunabashi && cols.joined === -1) {
+    warnings.push(
+      "「入会」列を検出できませんでした。即日/後日どちらもマークが無い行は「入会しない」として扱います（入会列を優先する判定にフォールバックできていません）。",
     );
   }
 
