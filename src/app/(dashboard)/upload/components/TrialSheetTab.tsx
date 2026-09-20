@@ -56,6 +56,14 @@ export function TrialSheetTab({
 
   const isFunabashi = store === "船橋";
 
+  // 「ファイルが選ばれていない」状態の初期値。ファイル差し替え時に検出できなかった
+  // 項目をこれにリセットするために使う（前のファイルの検出結果を引きずらないため。
+  // 星崎さん実機テストで発覚: 新しいファイルの店舗名が検出できないと、前のファイルで
+  // 検出済みの店舗が残ったまま新ファイルに紐づき、誤った店舗に取り込まれるリスクがあった）。
+  const defaultStore = lockedStore ?? STORES[0];
+  const defaultYear = new Date().getFullYear();
+  const defaultMonth = new Date().getMonth() + 1;
+
   const handleFilesAdd = (added: File[]) => {
     // 1ファイルのみ（1店舗1月1ファイル運用）
     const target = added.slice(0, 1);
@@ -70,25 +78,28 @@ export function TrialSheetTab({
 
     const detectedParts: string[] = [];
 
-    // 店舗（lockedStoreがある店長ログイン時は自店舗固定なので自動判定しない）
+    // 店舗（lockedStoreがある店長ログイン時は自店舗固定なので自動判定しない）。
+    // 検出できた場合はその値、できなかった場合は必ずデフォルトに戻す
+    // （前のファイルで検出した値をそのまま残さない）。
     if (!lockedStore) {
       const detectedStore = detectStoreFromTrialSheetFilename(file.name);
-      if (detectedStore) {
-        setStore(detectedStore);
-        detectedParts.push(`店舗=${detectedStore}`);
-      }
+      setStore(detectedStore ?? defaultStore);
+      if (detectedStore) detectedParts.push(`店舗=${detectedStore}`);
     }
 
+    // 年月も同様に、検出できなければ現在年月にリセットする。
     const detectedYm = detectYearMonthFromTrialSheetFilename(file.name);
-    if (detectedYm) {
-      setYear(detectedYm.year);
-      setMonth(detectedYm.month);
-      detectedParts.push(`${detectedYm.year}年${detectedYm.month}月`);
-    }
+    setYear(detectedYm?.year ?? defaultYear);
+    setMonth(detectedYm?.month ?? defaultMonth);
+    if (detectedYm) detectedParts.push(`${detectedYm.year}年${detectedYm.month}月`);
 
     if (detectedParts.length > 0) {
       setAutoDetectedNote(
         `ファイル名「${file.name}」から ${detectedParts.join(" / ")} を自動検出して入力しました。内容をご確認のうえ、違う場合は下の項目を修正してください。`,
+      );
+    } else {
+      setAutoDetectedNote(
+        `ファイル名「${file.name}」からは店舗・年月を自動検出できませんでした。下の項目を手動で選択してください。`,
       );
     }
   };
@@ -96,6 +107,17 @@ export function TrialSheetTab({
   const handleRemove = () => {
     setFiles([]);
     setConfirmStage("idle");
+    setAutoDetectedNote(null);
+  };
+
+  // アップロード完了後、フォームを初期状態に戻す（星崎さん実機テストで発覚:
+  // アップロード後も前回の店舗・年月・ファイルが残ったままで、次のアップロードと
+  // 混同しやすかった）。結果メッセージ(results/status)は完了報告として残す。
+  const resetFormAfterUpload = () => {
+    setFiles([]);
+    setStore(defaultStore);
+    setYear(defaultYear);
+    setMonth(defaultMonth);
     setAutoDetectedNote(null);
   };
 
@@ -182,6 +204,9 @@ export function TrialSheetTab({
         type: "success",
         text: `${store} ${year}年${month}月の体験シートを取り込みました（${data.records}件）`,
       });
+      // 完了メッセージ(status/results)は残したまま、フォーム側だけ初期状態に戻す
+      // （前回の店舗・年月・ファイルが残ったまま次のアップロードと混同しないように）。
+      resetFormAfterUpload();
       onSuccess?.();
     } catch (e) {
       setStatus({
