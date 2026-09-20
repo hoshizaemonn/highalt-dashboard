@@ -234,6 +234,7 @@ export async function GET(request: NextRequest) {
           year: true,
           month: true,
           joinDate: true,
+          storeName: true,
         },
       }),
       // 予算: 店舗指定があればその店舗、全体時は本部+非表示除外
@@ -390,7 +391,38 @@ export async function GET(request: NextRequest) {
       const autoTrialCount = allMember.filter((r) =>
         trialDateMatchesMonth(r.trialDate, r.firstTrialDate, y, m),
       ).length;
-      const effectiveTrial = manualTrial > 0 ? manualTrial : autoTrialCount;
+      // ★全体ビュー（store未指定）は店舗ごとに「手動優先」を判定してから合算する。
+      //   以前は「全店の手動入力合計」と「全店の自動算出合計」を単純比較しており、
+      //   1店舗でも手動入力があると他の全店舗の自動算出が丸ごと捨てられていた
+      //   （例: 東日本橋のみ手動14件 → 全体は14件のみになり、他6店舗の自動算出
+      //   合計44件が消える。山本様指摘 2026-09-20、6月の入会率485%として発覚）。
+      let effectiveTrial: number;
+      if (!store) {
+        const manualByStore = new Map<string, number>();
+        for (const r of manualMonth) {
+          manualByStore.set(
+            r.storeName,
+            (manualByStore.get(r.storeName) ?? 0) + r.trialCount,
+          );
+        }
+        const autoByStore = new Map<string, number>();
+        for (const r of allMember) {
+          if (!trialDateMatchesMonth(r.trialDate, r.firstTrialDate, y, m)) continue;
+          autoByStore.set(r.storeName, (autoByStore.get(r.storeName) ?? 0) + 1);
+        }
+        const allStoreNames = new Set([
+          ...manualByStore.keys(),
+          ...autoByStore.keys(),
+        ]);
+        effectiveTrial = 0;
+        for (const sn of allStoreNames) {
+          const manual = manualByStore.get(sn) ?? 0;
+          const auto = autoByStore.get(sn) ?? 0;
+          effectiveTrial += manual > 0 ? manual : auto;
+        }
+      } else {
+        effectiveTrial = manualTrial > 0 ? manualTrial : autoTrialCount;
+      }
       // 紹介経由は店長手動入力（全店舗合算）
       const manualReferral = manualMonth.reduce((s, r) => s + r.trialReferralCount, 0);
       const trialNonReferral = Math.max(0, effectiveTrial - manualReferral);
