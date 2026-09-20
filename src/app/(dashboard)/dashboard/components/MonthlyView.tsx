@@ -492,6 +492,7 @@ export default function MonthlyView({
         // admin = 任意店舗で編集可、店長 = 自店舗のみ編集可
         canEdit={isAdmin || (sessionStoreName !== null && sessionStoreName === store)}
         initialTrialCount={data.member?.trial_count ?? 0}
+        newSignupsCount={data.member?.new_plan_signups ?? 0}
         onSaved={onRefresh}
       />
 

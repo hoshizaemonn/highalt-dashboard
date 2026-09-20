@@ -13,6 +13,8 @@ interface Props {
   /** 親側で受け取る合算データ。集計値の表示用 */
   initialTrialCount?: number;
   initialOtherSales?: number;
+  /** 新規入会数（山本様依頼: 体験者数の隣に並べて計算式を見えるようにする） */
+  newSignupsCount?: number;
   /** 保存時に親へ再フェッチを依頼 */
   onSaved?: () => void;
 }
@@ -29,6 +31,7 @@ export function ManualEntrySection({
   canEdit,
   initialTrialCount,
   initialOtherSales,
+  newSignupsCount,
   onSaved,
 }: Props) {
   const isAll = store === "全体" || !store;
@@ -173,7 +176,7 @@ export function ManualEntrySection({
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* 体験者数 */}
         {!editing ? (
           <KPICard
@@ -241,6 +244,16 @@ export function ManualEntrySection({
             </div>
           </div>
         )}
+
+        {/* 新規入会数（山本様依頼: 体験者数の隣に並べて計算式が見えるように） */}
+        <KPICard
+          title="新規入会数"
+          value={`${numFormat.format(newSignupsCount ?? 0)}人`}
+          color={COLORS.blue}
+          help="hacomono MA002由来。左の体験者数とは集計元が異なる別データのため、
+単純に割った入会率は参考値です（体験者数はhacomonoの会員一覧＝現会員のみが対象のため、
+体験して入会しなかった人は含まれません）。正確な入会率は体験シート取込後に算出します。"
+        />
 
         {/* その他売上（複数請求書対応） */}
         {!editing ? (
