@@ -304,10 +304,20 @@ export function EditableMemberSection({
       </div>
 
       {/* Summary metrics row */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <EditableKPI title="プラン契約者数" fieldKey="plan_subscribers" color={COLORS.blue} />
         <EditableKPI title="退会率" fieldKey="cancellation_rate" color={COLORS.red} isRate />
         <EditableKPI title="プラン変更" fieldKey="plan_changes" color={COLORS.orange} />
+        <KPICard
+          title="入会率"
+          value={
+            (data?.trial_count ?? 0) > 0
+              ? `${((fields.new_plan_signups / data!.trial_count!) * 100).toFixed(1)}%`
+              : "-"
+          }
+          color={COLORS.green}
+          help="新規入会数 ÷ 体験者数。体験者数は下部「体験者数」欄の値（自動算出または手動入力）を使用。"
+        />
       </div>
 
       {/* 新規入会 / 退会 / 休会 — each displayed separately to clarify scale differences */}
