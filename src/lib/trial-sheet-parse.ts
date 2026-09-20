@@ -53,6 +53,8 @@
  * 列名は完全一致→部分一致（trim・全角スペース除去後）の順でゆらぎに対応する。
  */
 
+import { STORES } from "@/lib/constants";
+
 export type TrialResultType =
   | "即日入会"
   | "後日入会"
@@ -430,6 +432,51 @@ export function detectYearMonthFromTrialSheetFilename(
   candidates.sort((a, b) => a.index - b.index);
   const best = candidates[candidates.length - 1];
   return { year: best.year, month: best.month };
+}
+
+/**
+ * 体験シートのファイル名から店舗名を検出する（星崎さん要望 2026-09-20）。
+ *
+ * 人件費CSV（従業員IDの千の位）とは異なり、体験シートは1ファイル=1店舗運用のため、
+ * 予算CSVの店舗判定（src/lib/budget-filename.ts の parseBudgetFilename）と同じ
+ * 「ファイル名に店舗名の文字列が含まれているか」で判定する方式を踏襲する。
+ *
+ * 実際に届いたファイル名の例:
+ *   【中目黒】体験シート - 26.9.csv                    → 【】内から検出
+ *   下北沢 体験後記入シート.xlsx - 2026年9月.csv         → ファイル名全体から検出
+ *   祖師ヶ谷大蔵　体験会情報.xlsx - 2026年9月 .csv       → 同上
+ *   巣鴨体験者・入会一覧　- R8.9月体験リスト.csv          → 同上
+ *   【2022年8月～】春日スタジオ体験会情報 - 2026年9月.csv → 【】内は年月なので不一致、
+ *                                                        全体検索で「春日」を検出
+ *   船橋体験会情報　- 202609.csv                        → ファイル名全体から検出
+ *
+ * 東日本橋のように店舗名がファイル名に全く含まれないケースは null を返し、
+ * 呼び出し側は従来通り手動選択に委ねる（無人確定はしない）。
+ */
+export function detectStoreFromTrialSheetFilename(filename: string): string | null {
+  const findInText = (text: string): string | null => {
+    const cleaned = text.replace(/スタジオ/g, "").trim();
+    const exact = STORES.find((s) => cleaned === s);
+    if (exact) return exact;
+    // 祖師ヶ谷大蔵は「祖師ヶ谷」の短縮表記も許容
+    return (
+      STORES.find((s) => cleaned.includes(s)) ??
+      (cleaned.includes("祖師ヶ谷") ? "祖師ヶ谷大蔵" : null)
+    );
+  };
+
+  // ① 括弧内（【】/（）/()/[]）を優先的に検査（例:「【中目黒】体験シート...」）
+  const bracketPatterns = [/【([^】]+)】/, /[（(]([^）)]+)[）)]/, /\[([^\]]+)\]/];
+  for (const p of bracketPatterns) {
+    const m = filename.match(p);
+    if (m) {
+      const matched = findInText(m[1]);
+      if (matched) return matched;
+    }
+  }
+
+  // ② ①で見つからなければファイル名全体から部分一致で探す
+  return findInText(filename);
 }
 
 /** 体験シートの集計結果（体験者数・入会率の算出用） */
