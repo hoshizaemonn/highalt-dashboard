@@ -377,23 +377,59 @@ export async function GET(request: NextRequest) {
     // ML001 は時点スナップショットのため、年月別フィルタは trialDate / firstTrialDate を
     // 直接照合する（"YYYY/MM/" or "YYYY-MM-" で始まる文字列）。
     const memberStoreFilter = { storeName: storeNameFilter };
-    const autoTrialCount = month !== undefined
-      ? await prisma.memberData.count({
-          where: { ...memberStoreFilter, ...trialDateMonthWhere(year, month) },
-        })
-      : await prisma.memberData.count({
-          where: {
-            ...memberStoreFilter,
+    const autoTrialDateWhere =
+      month !== undefined
+        ? trialDateMonthWhere(year, month)
+        : {
             OR: [
               { trialDate: { startsWith: `${year}/` } },
               { trialDate: { startsWith: `${year}-` } },
               { firstTrialDate: { startsWith: `${year}/` } },
               { firstTrialDate: { startsWith: `${year}-` } },
             ],
-          },
-        });
-    // 手動入力があればそれを使う、無ければ自動
-    const effectiveTrialCount = manualTrial > 0 ? manualTrial : autoTrialCount;
+          };
+    const autoTrialCount = await prisma.memberData.count({
+      where: { ...memberStoreFilter, ...autoTrialDateWhere },
+    });
+    // 手動入力があればそれを使う、無ければ自動。
+    //
+    // ★全体ビュー（store未指定）は店舗ごとに判定してから合算する。
+    //   以前は「全店の手動入力合計」と「全店の自動算出合計」を単純比較しており、
+    //   1店舗でも手動入力があると他の全店舗の自動算出が丸ごと捨てられていた
+    //   （例: 東日本橋のみ手動14件 → 全体は14件のみになり、他6店舗の自動算出
+    //   合計44件が消える。山本様指摘 2026-09-20、6月の入会率485%として発覚）。
+    const effectiveTrialCount = !store
+      ? await (async () => {
+          const manualByStore = new Map<string, number>();
+          for (const r of manualRows) {
+            manualByStore.set(
+              r.storeName,
+              (manualByStore.get(r.storeName) ?? 0) + r.trialCount,
+            );
+          }
+          const autoTrialRows = await prisma.memberData.findMany({
+            where: { ...memberStoreFilter, ...autoTrialDateWhere },
+            select: { storeName: true },
+          });
+          const autoByStore = new Map<string, number>();
+          for (const r of autoTrialRows) {
+            autoByStore.set(r.storeName, (autoByStore.get(r.storeName) ?? 0) + 1);
+          }
+          const allStoreNames = new Set([
+            ...manualByStore.keys(),
+            ...autoByStore.keys(),
+          ]);
+          let total = 0;
+          for (const sn of allStoreNames) {
+            const manual = manualByStore.get(sn) ?? 0;
+            const auto = autoByStore.get(sn) ?? 0;
+            total += manual > 0 ? manual : auto;
+          }
+          return total;
+        })()
+      : manualTrial > 0
+        ? manualTrial
+        : autoTrialCount;
 
     let salesTotal = 0;
     const salesByCategory: Record<string, number> = {};
