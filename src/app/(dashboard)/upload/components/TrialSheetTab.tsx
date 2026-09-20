@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { STORES } from "@/lib/constants";
-import { detectYearMonthFromTrialSheetFilename } from "@/lib/trial-sheet-parse";
+import {
+  detectYearMonthFromTrialSheetFilename,
+  detectStoreFromTrialSheetFilename,
+} from "@/lib/trial-sheet-parse";
 import {
   StatusMessage,
   FileDropzone,
@@ -45,9 +48,10 @@ export function TrialSheetTab({
   const [results, setResults] = useState<string[]>([]);
   const [existingCount, setExistingCount] = useState(0);
   const [confirmStage, setConfirmStage] = useState<"idle" | "review">("idle");
-  // ファイル名から自動検出した年月（星崎さん要望 2026-09-20）。
-  // あくまで年月セレクタの初期値を埋めるだけで、選択欄は常に編集可能なまま残す
-  // （品質ゲート: 日付取り違え事故が過去複数あるため、無人で確定させず目視確認を必須にする）。
+  // ファイル名から自動検出した店舗・年月（星崎さん要望 2026-09-20）。
+  // あくまで各セレクタの初期値を埋めるだけで、選択欄は常に編集可能なまま残す
+  // （品質ゲート: 日付・店舗の取り違え事故が過去複数あるため、無人で確定させず
+  // 目視確認を必須にする）。
   const [autoDetectedNote, setAutoDetectedNote] = useState<string | null>(null);
 
   const isFunabashi = store === "船橋";
@@ -62,15 +66,30 @@ export function TrialSheetTab({
     setAutoDetectedNote(null);
 
     const file = target[0];
-    if (file) {
-      const detected = detectYearMonthFromTrialSheetFilename(file.name);
-      if (detected) {
-        setYear(detected.year);
-        setMonth(detected.month);
-        setAutoDetectedNote(
-          `ファイル名「${file.name}」から ${detected.year}年${detected.month}月 を自動検出して入力しました。内容をご確認のうえ、違う場合は下の年月を修正してください。`,
-        );
+    if (!file) return;
+
+    const detectedParts: string[] = [];
+
+    // 店舗（lockedStoreがある店長ログイン時は自店舗固定なので自動判定しない）
+    if (!lockedStore) {
+      const detectedStore = detectStoreFromTrialSheetFilename(file.name);
+      if (detectedStore) {
+        setStore(detectedStore);
+        detectedParts.push(`店舗=${detectedStore}`);
       }
+    }
+
+    const detectedYm = detectYearMonthFromTrialSheetFilename(file.name);
+    if (detectedYm) {
+      setYear(detectedYm.year);
+      setMonth(detectedYm.month);
+      detectedParts.push(`${detectedYm.year}年${detectedYm.month}月`);
+    }
+
+    if (detectedParts.length > 0) {
+      setAutoDetectedNote(
+        `ファイル名「${file.name}」から ${detectedParts.join(" / ")} を自動検出して入力しました。内容をご確認のうえ、違う場合は下の項目を修正してください。`,
+      );
     }
   };
 
@@ -198,7 +217,13 @@ export function TrialSheetTab({
         {lockedStore ? (
           <LockedStoreField storeName={lockedStore} />
         ) : (
-          <StoreSelect value={store} onChange={setStore} />
+          <StoreSelect
+            value={store}
+            onChange={(v) => {
+              setStore(v);
+              setAutoDetectedNote(null);
+            }}
+          />
         )}
         <YearSelect
           value={year}
