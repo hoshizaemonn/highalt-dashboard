@@ -35,8 +35,16 @@ export function ManualEntrySection({
   onSaved,
 }: Props) {
   const isAll = store === "全体" || !store;
-  const [trial, setTrial] = useState<number>(initialTrialCount ?? 0);
+  // 体験者数の内訳（星崎さん要望 2026-09-23: 体験シートの値を「反映」しつつ、
+  // 引き続き手動編集もできるようにする）。
+  //   manualTrial: ManualEntry.trialCount の生値（0=未入力）
+  //   trialSheetCount: 体験シート取込データの件数（0=無し）
+  //   autoTrial: hacomono自動算出
+  //   editTrial: 編集モード中の入力欄の値（保存時にこれが ManualEntry に書き込まれる）
+  const [manualTrial, setManualTrial] = useState<number>(0);
+  const [trialSheetCount, setTrialSheetCount] = useState<number>(0);
   const [autoTrial, setAutoTrial] = useState<number>(0);
+  const [editTrial, setEditTrial] = useState<number>(0);
   const [trialReferral, setTrialReferral] = useState<number>(0);
   const [otherSales, setOtherSales] = useState<number>(initialOtherSales ?? 0);
   const [otherItems, setOtherItems] = useState<OtherSalesItem[]>([]);
@@ -44,9 +52,21 @@ export function ManualEntrySection({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  // 表示する体験者数 = 手動入力 > 0 なら手動、それ以外は自動
-  const effectiveTrial = trial > 0 ? trial : autoTrial;
+  // 表示する体験者数の優先順位（/api/dashboard と同じ）:
+  //   体験シート実データ ＞ 店長手動追記 ＞ hacomono自動算出。
+  // 「全体」ビューはAPI取得せず親（/api/dashboard）から受け取った合算値
+  // （既にこの優先順位が適用済み）をそのまま使う。
+  const effectiveTrial = isAll
+    ? (initialTrialCount ?? 0)
+    : trialSheetCount > 0
+      ? trialSheetCount
+      : manualTrial > 0
+        ? manualTrial
+        : autoTrial;
   const nonReferral = Math.max(0, effectiveTrial - trialReferral);
+  // 編集中は入力中の値(editTrial)を基準に紹介以外を計算する（保存前の効果値ではなく
+  // 今まさに入力している数値に追従させる）
+  const editNonReferral = Math.max(0, editTrial - trialReferral);
   const itemsTotal = otherItems.reduce((s, r) => s + (r.amount || 0), 0);
 
   useEffect(() => {
@@ -62,7 +82,8 @@ export function ManualEntrySection({
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (cancelled || !d) return;
-        setTrial(d.trial_count ?? 0);
+        setManualTrial(d.trial_count ?? 0);
+        setTrialSheetCount(d.trial_sheet_count ?? 0);
         setAutoTrial(d.auto_trial_count ?? 0);
         setTrialReferral(d.trial_referral_count ?? 0);
         setOtherSales(d.other_sales_amount ?? 0);
@@ -105,7 +126,7 @@ export function ManualEntrySection({
           year,
           month,
           store,
-          trial_count: trial,
+          trial_count: editTrial,
           trial_referral_count: trialReferral,
           other_sales_items: itemsPayload,
           // 互換のため合計値も送る（items が空の時のみ使われる）
@@ -114,6 +135,7 @@ export function ManualEntrySection({
       });
       if (res.ok) {
         const d = await res.json();
+        setManualTrial(d.trial_count ?? 0);
         setUpdatedBy(d.updated_by_name ?? null);
         setOtherSales(d.other_sales_amount ?? 0);
         const items: { amount: number; note: string | null }[] =
@@ -146,7 +168,12 @@ export function ManualEntrySection({
         <h2 className="text-lg font-bold text-gray-700">店長手動追記</h2>
         {!isAll && canEdit && !editing && loaded && (
           <button
-            onClick={() => setEditing(true)}
+            onClick={() => {
+              // 編集開始時は「現在表示している実効値」（体験シート優先の値）を
+              // 入力欄の初期値にする（星崎さん要望: 体験シートの値を反映しつつ編集可能に）
+              setEditTrial(effectiveTrial);
+              setEditing(true);
+            }}
             className="text-xs bg-white border rounded px-3 py-1 hover:bg-gray-50 text-gray-600"
           >
             修正
@@ -183,17 +210,17 @@ export function ManualEntrySection({
             title="体験者数"
             value={`${numFormat.format(effectiveTrial)}人`}
             color={COLORS.teal}
-            help="hacomono の体験経由フラグ(had_trial=1)から自動算出。修正ボタンから手動で上書き可能。紹介経由は店長手動入力、紹介以外は自動計算（体験者数 − 紹介経由）。"
+            help="優先順位: 体験シート実データ ＞ 店長手動追記 ＞ hacomono自動算出(体験経由フラグ had_trial=1)。修正ボタンから手動で上書き可能（体験シートがある月は他の集計画面では引き続き体験シートの値が使われます）。紹介経由は店長手動入力、紹介以外は自動計算（体験者数 − 紹介経由）。"
             sub={
               effectiveTrial > 0
                 ? `紹介経由: ${trialReferral}人 / 紹介以外: ${nonReferral}人${
-                    trial > 0 ? "（手動上書き中）" : "（自動算出）"
+                    trialSheetCount > 0
+                      ? "（体験シート由来）"
+                      : manualTrial > 0
+                        ? "（手動上書き中）"
+                        : "（自動算出）"
                   }`
-                : trial > 0
-                  ? "手動上書き中"
-                  : autoTrial > 0
-                    ? "自動算出（hacomono由来）"
-                    : undefined
+                : undefined
             }
           />
         ) : (
@@ -201,15 +228,17 @@ export function ManualEntrySection({
             <p className="text-xs text-gray-500 font-medium">
               体験者数
               <span className="ml-2 text-[10px] text-gray-400">
-                自動: {autoTrial}人（0のままなら自動値を使用）
+                {trialSheetCount > 0
+                  ? `体験シート: ${trialSheetCount}人 / hacomono自動: ${autoTrial}人`
+                  : `自動: ${autoTrial}人（0のままなら自動値を使用）`}
               </span>
             </p>
             <div className="flex items-center gap-1">
               <input
                 type="number"
                 min={0}
-                value={String(trial)}
-                onChange={(e) => setTrial(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                value={String(editTrial)}
+                onChange={(e) => setEditTrial(Math.max(0, parseInt(e.target.value, 10) || 0))}
                 className="text-xl font-bold mt-1 w-full border-b-2 border-blue-300 outline-none bg-transparent"
                 style={{ color: COLORS.teal }}
               />
@@ -219,20 +248,20 @@ export function ManualEntrySection({
               <p className="text-xs text-gray-500 font-medium">
                 うち紹介経由
                 <span className="ml-2 text-[10px] text-gray-400">
-                  紹介以外は自動計算: {nonReferral}人
+                  紹介以外は自動計算: {editNonReferral}人
                 </span>
               </p>
               <div className="flex items-center gap-1">
                 <input
                   type="number"
                   min={0}
-                  max={effectiveTrial}
+                  max={editTrial}
                   value={String(trialReferral)}
                   onChange={(e) =>
                     setTrialReferral(
                       Math.max(
                         0,
-                        Math.min(effectiveTrial, parseInt(e.target.value, 10) || 0),
+                        Math.min(editTrial, parseInt(e.target.value, 10) || 0),
                       ),
                     )
                   }
