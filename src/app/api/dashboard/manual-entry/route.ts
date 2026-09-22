@@ -5,7 +5,15 @@ import { trialDateMonthWhere } from "@/lib/csv-utils";
 
 /**
  * 店長手動追記（坪井さん要望）
- * - trial_count: 体験者数（hacomono 取込に無いため手動）
+ * - trial_count: 体験者数の手動入力値（生の ManualEntry.trialCount。0=未入力）
+ * - trial_sheet_count: 体験シート取込データからの件数（山本様要望 2026-09-20）
+ * - effective_trial_count: 画面に表示・編集初期値として使う実効値。優先順位は
+ *   体験シート実データ ＞ 店長手動追記 ＞ hacomono自動算出（/api/dashboard と同じ）。
+ *   星崎さん要望2026-09-23: 体験シートの値を「反映」しつつ、引き続き手動編集も
+ *   できるようにする（読み取り専用にはしない）。手動編集して保存した値は
+ *   ManualEntry に通常通り保存されるが、体験シートが存在する月は他の集計
+ *   （/api/dashboard, /api/dashboard/annual）では引き続き体験シートが優先される
+ *   （この優先順位を変更するかどうかは別途要検討・現時点では変更していない）。
  * - other_sales_items: 請求書ベースの「その他売上」を複数件記録
  *   （旧 other_sales_amount / other_sales_note は互換のため残しているが、
  *    items が1件以上あれば items の合計を優先する）
@@ -46,6 +54,19 @@ export async function GET(request: NextRequest) {
     where: { storeName: store, ...trialDateMonthWhere(year, month) },
   });
 
+  // 体験シート取込データ（山本様要望 2026-09-20〜）。/api/dashboard と同じ優先順位
+  // （体験シート実データ ＞ 店長手動追記 ＞ hacomono自動算出）で実効値を算出する。
+  const trialSheetCount = await prisma.trialSheetEntry.count({
+    where: { year, month, storeName: store },
+  });
+  const manualTrialCount = entry?.trialCount ?? 0;
+  const effectiveTrialCount =
+    trialSheetCount > 0
+      ? trialSheetCount
+      : manualTrialCount > 0
+        ? manualTrialCount
+        : autoTrialCount;
+
   // items 合計（あれば優先）
   const itemsTotal = items.reduce((s, r) => s + r.amount, 0);
   const otherSalesAmount =
@@ -55,7 +76,9 @@ export async function GET(request: NextRequest) {
     year,
     month,
     store,
-    trial_count: entry?.trialCount ?? 0,
+    trial_count: manualTrialCount,
+    trial_sheet_count: trialSheetCount,
+    effective_trial_count: effectiveTrialCount,
     auto_trial_count: autoTrialCount,
     trial_referral_count: entry?.trialReferralCount ?? 0,
     other_sales_amount: otherSalesAmount,
