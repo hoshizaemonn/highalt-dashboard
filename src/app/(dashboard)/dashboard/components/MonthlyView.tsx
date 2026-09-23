@@ -517,7 +517,7 @@ export default function MonthlyView({
       />
 
       {/* アンケート（認知経路・目的・頻度） */}
-      <EnqueteSection store={store} />
+      <EnqueteSection store={store} year={year} month={month} />
 
       {/* Plan Breakdown Pie Chart */}
       {!isAllStores && (
