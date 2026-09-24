@@ -24,15 +24,27 @@ interface EnqueteData {
 
 interface Props {
   store: string;
+  /** 単月集計時に指定（year+month）。期間集計時は months[] を使う（AttributesSectionと同じ規約）。 */
+  year?: number;
+  month?: number;
+  /** 通期/上期/下期等の期間集計用。"YYYY-MM" の配列。 */
+  months?: string[];
 }
 
-export function EnqueteSection({ store }: Props) {
+export function EnqueteSection({ store, year, month, months }: Props) {
   const [data, setData] = useState<EnqueteData | null>(null);
   const [loading, setLoading] = useState(true);
+  const monthsKey = months ? months.join(",") : "";
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
+    if (monthsKey) {
+      params.set("months", monthsKey);
+    } else if (year !== undefined && month !== undefined) {
+      params.set("year", String(year));
+      params.set("month", String(month));
+    }
     if (store && store !== "全体") params.set("store", store);
     fetch(`/api/dashboard/enquete?${params}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -41,7 +53,7 @@ export function EnqueteSection({ store }: Props) {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [store]);
+  }, [store, year, month, monthsKey]);
 
   if (loading) {
     return (
@@ -85,7 +97,7 @@ export function EnqueteSection({ store }: Props) {
         <SectionTitle>アンケート（認知経路・目的・頻度）</SectionTitle>
       </div>
       <p className="text-xs text-gray-500 mb-4 -mt-2">
-        体験・入会アンケート回答の集計（hacomono CSV 由来）。複数選択の質問は1人が複数項目にカウントされます。
+        体験・入会アンケート回答の集計（hacomono CSV 由来・選択中の期間の回答のみ）。複数選択の質問は1人が複数項目にカウントされます。
       </p>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="bg-white rounded-lg border shadow-sm p-4">

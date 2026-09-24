@@ -23,7 +23,16 @@ import {
 // 自販機手数料収入（PayPay銀行入金・is_revenue=1で分類）。
 // hacomono/Squareとは別経路の売上のため、他の売上4分類とは独立に集計する。
 const VENDING_REVENUE_CATEGORY = "自販機手数料収入";
-import { isPlOverrideMonth, PL_OVERRIDE_CATEGORIES } from "@/lib/pl-override";
+// PayPay銀行への直接振込による会費等（hacomono決済を経由しないため PL001/PS001 に
+// 現れない）。松尾さん指摘 2026-09-24: 春日8月の¥128,300不一致のうち¥16,100分は
+// この分類の入金が総売上に一切加算されていなかったことが原因の一つ。
+// 自販機手数料収入と同じ「PayPay入金(is_revenue=1)を売上に加算する」パターンを適用する。
+const DIRECT_SALES_REVENUE_CATEGORY = "売上";
+import {
+  isPlOverrideMonth,
+  PL_OVERRIDE_CATEGORIES,
+  PL_ALWAYS_CATEGORIES,
+} from "@/lib/pl-override";
 
 const CALENDAR_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
@@ -232,6 +241,34 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // PayPay銀行への直接振込（category="売上", is_revenue=1）。自販機手数料収入と
+    // 同じ仕組みで売上に加算する。
+    const directSalesRevenueRowsAll = await prisma.expenseData.findMany({
+      where: {
+        year: { in: [year - 1, year] },
+        isRevenue: 1,
+        category: DIRECT_SALES_REVENUE_CATEGORY,
+        OR: [
+          { storeName: storeNameFilter },
+          { splitRatios: { not: null } },
+        ],
+      },
+    });
+    const directSalesRevenueRows = directSalesRevenueRowsAll.filter((row) => {
+      const effYear = row.accrualYear ?? row.year;
+      const effMonth = row.accrualMonth ?? row.month;
+      if (effYear !== year) return false;
+      if (month !== undefined && effMonth !== month) return false;
+      return true;
+    });
+    let salesDirectTransfer = 0;
+    for (const row of directSalesRevenueRows) {
+      salesDirectTransfer += expenseRowShare(
+        { storeName: row.storeName, amount: row.deposit, splitRatios: row.splitRatios },
+        expenseTarget,
+      );
+    }
+
     const expenseByCategory: Record<string, number> = {};
     // PL反映対象月（〜2026/4）ぶんだけの内訳。
     // 年表示のとき「PL反映月だけを損益計算書で差し替え、2026/5以降の
@@ -337,6 +374,32 @@ export async function GET(request: NextRequest) {
         expenseByCategory[cat] = (expenseByCategory[cat] || 0) - replaced + plAmount;
         totalExpense += plAmount - replaced;
       }
+    }
+
+    // ── 非資金支出（減価償却費・開発費償却）: カットオフを無視して常時反映 ──
+    // 松尾さん・星崎さん決定 2026-09-24: PayPay/Amazon等の実データに絶対に現れず
+    // 他にデータ源が無いため、上記カットオフ(〜2026/4)に関わらず全期間で
+    // pl_actuals を正として反映する（5月以降への遡及反映も承認済み）。
+    const allMonthsForPlAlways = month !== undefined ? [month] : CALENDAR_MONTHS;
+    const plAlwaysRows = await prisma.plActual.findMany({
+      where: {
+        storeName: storeNameFilter,
+        category: { in: [...PL_ALWAYS_CATEGORIES] },
+        year,
+        month: { in: allMonthsForPlAlways },
+      },
+      select: { category: true, amount: true },
+    });
+    const plAlwaysByCat: Record<string, number> = {};
+    for (const r of plAlwaysRows) {
+      plAlwaysByCat[r.category] = (plAlwaysByCat[r.category] || 0) + r.amount;
+    }
+    for (const [cat, plAmount] of Object.entries(plAlwaysByCat)) {
+      // 実データ側（PayPay/Amazon/本部一括経費）にこの費目が入ることは通常無いが、
+      // 念のため既存分を差し替える形にして二重計上を防ぐ。
+      const replaced = expenseByCategory[cat] || 0;
+      expenseByCategory[cat] = (expenseByCategory[cat] || 0) - replaced + plAmount;
+      totalExpense += plAmount - replaced;
     }
 
     const expenseSummary = {
@@ -520,18 +583,37 @@ export async function GET(request: NextRequest) {
     const salesService = hasSquareItem
       ? squareItemByClass["サービス"] ?? 0
       : 0;
-    // その他 = hacomonoのスポット等 + 手動追記の請求書「その他」。
+    // Squareアイテム別売上の「その他」分類（物販/サービス/パーソナルに当たらない商品名）。
+    // 修正前はこの分類が総売上・内訳のどこにも加算されず取りこぼされていた
+    // （松尾さん指摘 2026-09-24・春日8月で¥112,200相当）。
+    const squareOther = hasSquareItem ? squareItemByClass["その他"] ?? 0 : 0;
+    // その他 = hacomonoのスポット等 + 手動追記の請求書「その他」+ Squareの「その他」分類。
     //   salesTotal(=hacomono売上合計) から差し引くのは hacomono由来分のみ
-    //   （squarePersonal は salesTotal に含まれないため差し引かない）。
+    //   （squarePersonal/squareOther は salesTotal に含まれないため差し引かない）。
     const salesOther =
-      salesTotal - salesMembership - hacomonoPersonal + manualOtherSales;
+      salesTotal - salesMembership - hacomonoPersonal + manualOtherSales + squareOther;
 
-    // 総売上: hacomono売上 + Square物販(square_sales) + Squareパーソナル + 手動その他 + 自販機手数料収入。
-    //   Squareパーソナルは square_sales(物販のみ) に含まれないため個別に算入する
-    //   （従来は総売上・パーソナルから取りこぼしていた）。
-    //   自販機手数料収入は経費明細（PayPay入金）で分類された分のみで、hacomono/Squareとは無関係。
+    // Square側の総売上への算入額。
+    //   アイテム別売上(SquareItemSales)を導入済みの店舗・月は、その全分類
+    //   （パーソナル/物販/サービス/その他）の合計を使う。
+    //   未導入（旧SquareSales集計のみ）の場合は squareTotal（物販扱い）のみ。
+    //   ※ 修正前は「squareTotal(旧テーブル。未導入店舗は0) + squarePersonal」のみを
+    //     加算しており、アイテム別売上を導入した店舗の「物販/サービス/その他」分類が
+    //     総売上から丸ごと漏れていた（松尾さん指摘 2026-09-24）。
+    const squareRevenueForTotal = hasSquareItem
+      ? squarePersonal + salesProduct + salesService + squareOther
+      : squareTotal;
+
+    // 総売上: hacomono売上 + Square(全分類) + 手動その他 + 自販機手数料収入
+    //   + PayPay直接振込（会費等・category="売上"）。
+    //   自販機手数料収入・PayPay直接振込は経費明細（PayPay入金）で分類された分のみで、
+    //   hacomono/Squareとは無関係（松尾さん指摘 2026-09-24・春日8月で¥16,100相当）。
     const totalRevenue =
-      salesTotal + squareTotal + squarePersonal + manualOtherSales + salesVending;
+      salesTotal +
+      squareRevenueForTotal +
+      manualOtherSales +
+      salesVending +
+      salesDirectTransfer;
 
     const revenueSummary = {
       total: Math.round(totalRevenue),
@@ -545,6 +627,7 @@ export async function GET(request: NextRequest) {
       service: Math.round(salesService),
       other: Math.round(salesOther),
       vending: Math.round(salesVending),
+      direct_transfer: Math.round(salesDirectTransfer),
       square_item_loaded: hasSquareItem,
       square_item_by_class: squareItemByClass,
     };

@@ -1346,8 +1346,12 @@ export default function PeriodView({
       />
 
       {/* 新規体験者属性（坪井さん要望14）: アンケート3問の集計 */}
-      {/* MonthlyView と同じ EnqueteSection を流用。アンケート回答も時点スナップショットのため期間不問。 */}
-      <EnqueteSection store={store} />
+      {/* MonthlyView と同じ EnqueteSection を流用。星崎さん要望 2026-09-24で
+          期間不問(累計)から選択期間に応じた集計に変更。 */}
+      <EnqueteSection
+        store={store}
+        months={annualData.effective_periods ?? annualData.periods ?? []}
+      />
     </>
   );
 }

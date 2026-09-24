@@ -18,7 +18,13 @@ import {
 // 自販機手数料収入（PayPay銀行入金・is_revenue=1で分類）。
 // hacomono/Squareとは別経路の売上のため、他の売上4分類とは独立に集計する。
 const VENDING_REVENUE_CATEGORY = "自販機手数料収入";
-import { isPlOverrideMonth, PL_OVERRIDE_CATEGORIES } from "@/lib/pl-override";
+// PayPay銀行への直接振込による会費等（松尾さん指摘 2026-09-24。dashboard/route.ts と同じ）
+const DIRECT_SALES_REVENUE_CATEGORY = "売上";
+import {
+  isPlOverrideMonth,
+  PL_OVERRIDE_CATEGORIES,
+  PL_ALWAYS_CATEGORIES,
+} from "@/lib/pl-override";
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
@@ -176,7 +182,7 @@ export async function GET(request: NextRequest) {
     // 影響を最小化）。逐次より速く、フル並列より他APIに優しい。
     const budgetWhere = { year: { in: years }, storeName: storeNameFilter };
     // バッチ1: 集計の主軸となる重めのデータ
-    const [allPayroll, allExpenses, allVendingRevenue, allSalesDetail, allRevenue, allSquare] = await Promise.all([
+    const [allPayroll, allExpenses, allVendingRevenue, allDirectSalesRevenue, allSalesDetail, allRevenue, allSquare] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: years }, ...storeWhere } }),
       // 発生月対応（依頼⑥）: 当年の前年も取得して跨年シフト分も拾う
       // splitRatios / categorySplits あり行は店舗フィルタを跨ぐため OR で展開
@@ -203,6 +209,18 @@ export async function GET(request: NextRequest) {
           ],
         },
       }),
+      // PayPay直接振込（会費等・category="売上", is_revenue=1）。松尾さん指摘 2026-09-24。
+      prisma.expenseData.findMany({
+        where: {
+          year: { in: [...years, ...years.map((y) => y - 1)] },
+          isRevenue: 1,
+          category: DIRECT_SALES_REVENUE_CATEGORY,
+          OR: [
+            { storeName: storeNameFilter },
+            { splitRatios: { not: null } },
+          ],
+        },
+      }),
       prisma.salesDetail.findMany({ where: { year: { in: years }, ...storeWhere } }),
       prisma.revenueData.findMany({ where: { year: { in: years }, ...storeWhere } }),
       prisma.squareSales.findMany({ where: { year: { in: years }, ...storeWhere } }),
@@ -216,6 +234,7 @@ export async function GET(request: NextRequest) {
       allMember,
       allBudget,
       allPlActual,
+      allPlActualAlways,
       allManualPayroll,
       allSquareItem,
       allTrialSheet,
@@ -249,6 +268,16 @@ export async function GET(request: NextRequest) {
         },
         select: { year: true, month: true, category: true, amount: true },
       }),
+      // 非資金支出（減価償却費・開発費償却）: カットオフを無視して常時反映
+      // （松尾さん・星崎さん決定 2026-09-24。他にデータ源が無いため）
+      prisma.plActual.findMany({
+        where: {
+          year: { in: years },
+          ...storeWhere,
+          category: { in: [...PL_ALWAYS_CATEGORIES] },
+        },
+        select: { year: true, month: true, category: true, amount: true },
+      }),
       // 手動人件費（人件費CSVに載らない社員・松尾さん依頼⑥）
       prisma.manualPayrollEntry.findMany({ where: { year: { in: years }, ...storeWhere } }),
       // Square アイテム別売上（パーソナル分を売上分類に合算・松尾さん依頼 2026-07）
@@ -265,6 +294,12 @@ export async function GET(request: NextRequest) {
     for (const r of allPlActual) {
       const k = `${r.year}-${r.month}-${r.category}`;
       plExpMap.set(k, (plExpMap.get(k) ?? 0) + r.amount);
+    }
+    // 非資金支出（減価償却費・開発費償却）用マップ。カットオフ無視で常時参照する。
+    const plAlwaysMap = new Map<string, number>();
+    for (const r of allPlActualAlways) {
+      const k = `${r.year}-${r.month}-${r.category}`;
+      plAlwaysMap.set(k, (plAlwaysMap.get(k) ?? 0) + r.amount);
     }
 
     const monthLabels = [
@@ -365,6 +400,16 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // 非資金支出（減価償却費・開発費償却）: カットオフを無視して常時反映
+      // （松尾さん・星崎さん決定 2026-09-24。5月以降への遡及反映も承認済み）
+      for (const cat of PL_ALWAYS_CATEGORIES) {
+        const plVal = plAlwaysMap.get(`${y}-${m}-${cat}`);
+        if (plVal === undefined) continue;
+        const old = expenseByCat[cat] || 0;
+        expenseByCat[cat] = plVal;
+        totalExpense += plVal - old;
+      }
+
       // Sales
       const sales = allSalesDetail.filter((r) => r.year === y && r.month === m);
       const rev = allRevenue.filter((r) => r.year === y && r.month === m);
@@ -453,10 +498,13 @@ export async function GET(request: NextRequest) {
       // Square決済のパーソナル分（松尾さん依頼 2026-07・hacomono決済分と合算）。
       // squareSales(物販のみ) には含まれないため、squareItemSales から個別集計する。
       const sqItem = allSquareItem.filter((r) => r.year === y && r.month === m);
-      const squarePersonal = sqItem.reduce(
-        (s, r) => (r.classification === "パーソナル" ? s + r.grossSales : s),
-        0,
-      );
+      const hasSquareItem = sqItem.length > 0;
+      const sqItemByClass: Record<string, number> = {};
+      for (const r of sqItem) {
+        const key = r.classification || "その他";
+        sqItemByClass[key] = (sqItemByClass[key] ?? 0) + r.grossSales;
+      }
+      const squarePersonal = hasSquareItem ? sqItemByClass["パーソナル"] ?? 0 : 0;
 
       // 自販機手数料収入（is_revenue=1側。経費明細で分類された分のみ、hacomono/Squareとは無関係）
       const vendingRows = allVendingRevenue.filter((r) => {
@@ -475,9 +523,21 @@ export async function GET(request: NextRequest) {
         0,
       );
 
-      // 総売上: hacomono売上 + Square物販 + Squareパーソナル + 手動その他 + 自販機手数料収入。
-      const totalRevenue =
-        salesTotal + squareTotal + squarePersonal + manualOther + salesVending;
+      // PayPay直接振込（会費等・category="売上"）。松尾さん指摘 2026-09-24。
+      const directSalesRows = allDirectSalesRevenue.filter((r) => {
+        const ey = r.accrualYear ?? r.year;
+        const em = r.accrualMonth ?? r.month;
+        return ey === y && em === m;
+      });
+      const salesDirectTransfer = directSalesRows.reduce(
+        (s, r) =>
+          s +
+          expenseRowShare(
+            { storeName: r.storeName, amount: r.deposit, splitRatios: r.splitRatios },
+            expenseTarget,
+          ),
+        0,
+      );
 
       // 売上4分類（坪井さん要望: 会費/パーソナル/物販/その他）
       const salesMembership =
@@ -485,10 +545,29 @@ export async function GET(request: NextRequest) {
       // パーソナル = hacomono売上明細のパーソナル分 + Square決済のパーソナル分
       const hacomonoPersonal = salesByCat["パーソナル"] ?? 0;
       const salesPersonal = hacomonoPersonal + squarePersonal;
-      const salesProduct = squareTotal;
-      // その他は salesTotal(hacomono) から hacomono由来分のみ差し引く
+      const salesProduct = hasSquareItem ? sqItemByClass["物販"] ?? 0 : squareTotal;
+      const salesService = hasSquareItem ? sqItemByClass["サービス"] ?? 0 : 0;
+      // Squareアイテム別売上の「その他」分類。修正前は総売上・内訳のどこにも
+      // 加算されず取りこぼされていた（松尾さん指摘 2026-09-24）。
+      const squareOther = hasSquareItem ? sqItemByClass["その他"] ?? 0 : 0;
+      // その他は salesTotal(hacomono) から hacomono由来分のみ差し引き、Squareその他を加える
       const salesOther =
-        salesTotal - salesMembership - hacomonoPersonal + manualOther;
+        salesTotal - salesMembership - hacomonoPersonal + manualOther + squareOther;
+
+      // Square側の総売上への算入額（dashboard/route.ts と同じロジック）。
+      // アイテム別売上導入済みなら全分類合計、未導入なら squareTotal（物販扱い）のみ。
+      const squareRevenueForTotal = hasSquareItem
+        ? squarePersonal + salesProduct + salesService + squareOther
+        : squareTotal;
+
+      // 総売上: hacomono売上 + Square(全分類) + 手動その他 + 自販機手数料収入
+      //   + PayPay直接振込（会費等）。松尾さん指摘 2026-09-24で修正。
+      const totalRevenue =
+        salesTotal +
+        squareRevenueForTotal +
+        manualOther +
+        salesVending +
+        salesDirectTransfer;
 
       // 月会費 (PS001 商品別売上から正確に算出 — 取込時のみ)
       const productSalesMonth = allProductSales.filter(
@@ -676,7 +755,17 @@ export async function GET(request: NextRequest) {
     const prevYears = [...new Set(prevPeriods.map((p) => p.year))];
 
     // 高速化: 前期データも Promise.all で並列取得
-    const [prevPayroll, prevExpenses, prevVendingRevenue, prevSales, prevRevenue, prevSquare, prevMonthlySummary] = await Promise.all([
+    const [
+      prevPayroll,
+      prevExpenses,
+      prevVendingRevenue,
+      prevDirectSalesRevenue,
+      prevSales,
+      prevRevenue,
+      prevSquare,
+      prevSquareItem,
+      prevMonthlySummary,
+    ] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
       prisma.expenseData.findMany({
         where: {
@@ -700,9 +789,24 @@ export async function GET(request: NextRequest) {
           ],
         },
       }),
+      // PayPay直接振込（会費等・category="売上"）。松尾さん指摘 2026-09-24。
+      prisma.expenseData.findMany({
+        where: {
+          year: { in: [...prevYears, ...prevYears.map((y) => y - 1)] },
+          isRevenue: 1,
+          category: DIRECT_SALES_REVENUE_CATEGORY,
+          OR: [
+            { storeName: storeNameFilter },
+            { splitRatios: { not: null } },
+          ],
+        },
+      }),
       prisma.salesDetail.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
       prisma.revenueData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
       prisma.squareSales.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
+      // Squareアイテム別売上（松尾さん指摘 2026-09-24: 8期にも実際には存在し、
+      // 「物販/サービス/その他」区分が前年比集計から漏れていた）
+      prisma.squareItemSales.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
       prisma.monthlySummary.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
     ]);
 
@@ -741,6 +845,23 @@ export async function GET(request: NextRequest) {
     const prevSquareTotal = prevSquare
       .filter((r) => isInPeriod(r.year, r.month))
       .reduce((s, r) => s + r.grossSales, 0);
+    // Squareアイテム別売上（松尾さん指摘 2026-09-24: 8期にも実際に存在する月があり、
+    // 「物販/サービス/その他」区分を旧squareTotalだけで代表させると漏れが生じていた）。
+    const prevSquareItemInPeriod = prevSquareItem.filter((r) =>
+      isInPeriod(r.year, r.month),
+    );
+    const prevHasSquareItem = prevSquareItemInPeriod.length > 0;
+    const prevSqItemByClass: Record<string, number> = {};
+    for (const r of prevSquareItemInPeriod) {
+      const key = r.classification || "その他";
+      prevSqItemByClass[key] = (prevSqItemByClass[key] ?? 0) + r.grossSales;
+    }
+    const prevSquarePersonal = prevHasSquareItem
+      ? prevSqItemByClass["パーソナル"] ?? 0
+      : 0;
+    const prevSquareOther = prevHasSquareItem
+      ? prevSqItemByClass["その他"] ?? 0
+      : 0;
     // 入金行は amount ではなく deposit 列に金額が入る
     const prevVendingTotal = prevVendingRevenue.reduce((s, r) => {
       const ey = r.accrualYear ?? r.year;
@@ -751,16 +872,38 @@ export async function GET(request: NextRequest) {
         prevExpenseTarget,
       );
     }, 0);
-    const prevRevenueTotal = prevSalesTotal + prevSquareTotal + prevVendingTotal;
+    // PayPay直接振込（会費等）。松尾さん指摘 2026-09-24。
+    const prevDirectTransferTotal = prevDirectSalesRevenue.reduce((s, r) => {
+      const ey = r.accrualYear ?? r.year;
+      const em = r.accrualMonth ?? r.month;
+      if (!isInPeriod(ey, em)) return s;
+      return s + expenseRowShare(
+        { storeName: r.storeName, amount: r.deposit, splitRatios: r.splitRatios },
+        prevExpenseTarget,
+      );
+    }, 0);
 
     const prevMembershipSales =
       (prevSalesByCat["月会費"] ?? 0) + (prevSalesByCat["入会金"] ?? 0);
-    // 前期(8期)のパーソナルは hacomono由来のみ。Square決済のパーソナル取込は
-    // 2026-07以降の新運用であり、前期には Square アイテム別売上が存在しないため
-    // （squarePersonal=0 相当）hacomono分のみで前期の実態と一致する。
-    const prevPersonalSales = prevSalesByCat["パーソナル"] ?? 0;
-    const prevProductSales = prevSquareTotal;
-    const prevOtherSales = prevSalesTotal - prevMembershipSales - prevPersonalSales;
+    const prevProductSales = prevHasSquareItem
+      ? prevSqItemByClass["物販"] ?? 0
+      : prevSquareTotal;
+    const prevServiceSales = prevHasSquareItem
+      ? prevSqItemByClass["サービス"] ?? 0
+      : 0;
+    // パーソナル = hacomono由来 + Square決済のパーソナル分
+    const prevPersonalSales = (prevSalesByCat["パーソナル"] ?? 0) + prevSquarePersonal;
+    const prevOtherSales =
+      prevSalesTotal -
+      prevMembershipSales -
+      (prevSalesByCat["パーソナル"] ?? 0) +
+      prevSquareOther;
+    // Square側の前期総売上への算入額（当期と同じロジック）。
+    const prevSquareRevenueForTotal = prevHasSquareItem
+      ? prevSquarePersonal + prevProductSales + prevServiceSales + prevSquareOther
+      : prevSquareTotal;
+    const prevRevenueTotal =
+      prevSalesTotal + prevSquareRevenueForTotal + prevVendingTotal + prevDirectTransferTotal;
 
     const prevNewSignups = prevMonthlySummary
       .filter((r) => isInPeriod(r.year, r.month))

@@ -38,6 +38,23 @@ const STORE_KEYWORDS: Record<string, string> = {
   春日町: "春日",
 };
 
+/**
+ * registeredAt文字列（"2026-09-22 19:37:11" 等、"/" 区切りの場合もある）から
+ * 年月を抽出する。星崎さん要望 2026-09-24: アンケートも月次スコープで
+ * 保存・表示できるようにするための削除スコープ判定に使う。
+ */
+function parseRegisteredYearMonth(
+  dateStr: string | null,
+): { year: number; month: number } | null {
+  if (!dateStr) return null;
+  const m = dateStr.match(/^(\d{4})[-/](\d{1,2})/);
+  if (!m) return null;
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  if (isNaN(year) || isNaN(month) || month < 1 || month > 12) return null;
+  return { year, month };
+}
+
 function detectStoreFromText(text: string | null | undefined): string | null {
   if (!text) return null;
   for (const k of Object.keys(STORE_KEYWORDS)) {
@@ -346,11 +363,46 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 既存データは enqueteCode 単位で全置換（CSVが最新スナップショット前提）
+    // 既存データは (enqueteCode, 年月) 単位で置換する（星崎さん要望 2026-09-24）。
+    // 従来は enqueteCode 単位の全置換だったため、アップロードしたCSVに含まれない
+    // 過去月の回答が再アップロード時に消えてしまうリスクがあった（実害は現時点で
+    // 確認されていないが、他アップロード機能と同じ(year,month)スコープの
+    // deleteMany→createManyパターンに揃える）。
+    // アップロード行の registeredAt から年月を抽出し、その年月分だけをスコープ
+    // 削除→再作成する（含まれない過去月はそのまま保持される）。
+    // registeredAt を解析できない行を含むコードは、安全側で従来通り全置換する。
+    const periodsByCode = new Map<string, Set<string>>();
+    const codeHasUnparseable = new Set<string>();
+    for (const r of records) {
+      const ym = parseRegisteredYearMonth(r.registeredAt);
+      if (!ym) {
+        codeHasUnparseable.add(r.enqueteCode);
+        continue;
+      }
+      if (!periodsByCode.has(r.enqueteCode)) {
+        periodsByCode.set(r.enqueteCode, new Set());
+      }
+      periodsByCode.get(r.enqueteCode)!.add(`${ym.year}-${ym.month}`);
+    }
+
     await prisma.$transaction(async (tx) => {
       for (const code of codesInFile) {
+        const periods = periodsByCode.get(code);
+        if (codeHasUnparseable.has(code) || !periods || periods.size === 0) {
+          // 日付が特定できない行がある/対象行が無い場合は安全側で全置換
+          await tx.enqueteAnswer.deleteMany({ where: { enqueteCode: code } });
+          continue;
+        }
+        const monthConds = Array.from(periods).flatMap((p) => {
+          const [y, m] = p.split("-").map(Number);
+          const mm = String(m).padStart(2, "0");
+          return [
+            { registeredAt: { startsWith: `${y}-${mm}-` } },
+            { registeredAt: { startsWith: `${y}/${mm}/` } },
+          ];
+        });
         await tx.enqueteAnswer.deleteMany({
-          where: { enqueteCode: code },
+          where: { enqueteCode: code, OR: monthConds },
         });
       }
       if (records.length > 0) {
