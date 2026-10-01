@@ -540,8 +540,10 @@ export async function GET(request: NextRequest) {
       );
 
       // 売上4分類（坪井さん要望: 会費/パーソナル/物販/その他）
-      const salesMembership =
-        (salesByCat["月会費"] ?? 0) + (salesByCat["入会金"] ?? 0);
+      // hacomono由来の会費（salesOther の差し引きにはこちらを使う）。
+      const hacomonoMembership = (salesByCat["月会費"] ?? 0) + (salesByCat["入会金"] ?? 0);
+      // PayPay直接振込（会費等）は「会費」の内訳表示に合算する（松尾さん指摘 2026-09-25）。
+      const salesMembership = hacomonoMembership + salesDirectTransfer;
       // パーソナル = hacomono売上明細のパーソナル分 + Square決済のパーソナル分
       const hacomonoPersonal = salesByCat["パーソナル"] ?? 0;
       const salesPersonal = hacomonoPersonal + squarePersonal;
@@ -550,9 +552,16 @@ export async function GET(request: NextRequest) {
       // Squareアイテム別売上の「その他」分類。修正前は総売上・内訳のどこにも
       // 加算されず取りこぼされていた（松尾さん指摘 2026-09-24）。
       const squareOther = hasSquareItem ? sqItemByClass["その他"] ?? 0 : 0;
-      // その他は salesTotal(hacomono) から hacomono由来分のみ差し引き、Squareその他を加える
+      // その他は salesTotal(hacomono) から hacomono由来分のみ差し引き、
+      // Squareの「その他」「サービス」分類を加える（サービスは独立行が無いため、
+      // 東日本橋で毎月発生している分を「その他」に含める。松尾さん指摘 2026-09-25）。
       const salesOther =
-        salesTotal - salesMembership - hacomonoPersonal + manualOther + squareOther;
+        salesTotal -
+        hacomonoMembership -
+        hacomonoPersonal +
+        manualOther +
+        squareOther +
+        salesService;
 
       // Square側の総売上への算入額（dashboard/route.ts と同じロジック）。
       // アイテム別売上導入済みなら全分類合計、未導入なら squareTotal（物販扱い）のみ。
@@ -883,8 +892,11 @@ export async function GET(request: NextRequest) {
       );
     }, 0);
 
-    const prevMembershipSales =
+    // hacomono由来の会費（prevOtherSales の差し引きにはこちらを使う）。
+    const prevHacomonoMembership =
       (prevSalesByCat["月会費"] ?? 0) + (prevSalesByCat["入会金"] ?? 0);
+    // PayPay直接振込（会費等）は「会費」の内訳表示に合算する（松尾さん指摘 2026-09-25）。
+    const prevMembershipSales = prevHacomonoMembership + prevDirectTransferTotal;
     const prevProductSales = prevHasSquareItem
       ? prevSqItemByClass["物販"] ?? 0
       : prevSquareTotal;
@@ -893,11 +905,13 @@ export async function GET(request: NextRequest) {
       : 0;
     // パーソナル = hacomono由来 + Square決済のパーソナル分
     const prevPersonalSales = (prevSalesByCat["パーソナル"] ?? 0) + prevSquarePersonal;
+    // 「サービス」は独立行が無いため「その他」に含める（松尾さん指摘 2026-09-25）。
     const prevOtherSales =
       prevSalesTotal -
-      prevMembershipSales -
+      prevHacomonoMembership -
       (prevSalesByCat["パーソナル"] ?? 0) +
-      prevSquareOther;
+      prevSquareOther +
+      prevServiceSales;
     // Square側の前期総売上への算入額（当期と同じロジック）。
     const prevSquareRevenueForTotal = prevHasSquareItem
       ? prevSquarePersonal + prevProductSales + prevServiceSales + prevSquareOther
