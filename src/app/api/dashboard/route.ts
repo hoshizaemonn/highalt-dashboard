@@ -567,8 +567,17 @@ export async function GET(request: NextRequest) {
     const hasSquareItem = squareItemRows.length > 0;
 
     // 売上4分類（坪井さん要望: 会費/パーソナル/物販/その他）
-    const salesMembership =
+    // hacomono由来の会費（月会費+入会金）。salesOther の差し引きにはこちらを使う
+    // （salesTotal に含まれるのはこの hacomono分のみのため）。
+    const hacomonoMembership =
       (salesByCategory["月会費"] ?? 0) + (salesByCategory["入会金"] ?? 0);
+    // PayPay直接振込（会費等・category="売上"）は「会費」の内訳表示に合算する
+    // （松尾さん指摘 2026-09-25: 総売上には算入されるが内訳表示のどの項目にも
+    // 現れておらず、内訳の合計(会費+パーソナル+物販+その他+自販機)が売上合計と
+    // 一致しなかった。新しい内訳項目を作らず既存の「会費」に含める指示）。
+    // ※ salesTotal には direct transfer は含まれないため、salesOther の差し引きには
+    //   hacomonoMembership（直接振込を含まない方）を使う。ここ(表示用)だけ合算する。
+    const salesMembership = hacomonoMembership + salesDirectTransfer;
     // パーソナル = hacomono売上明細のパーソナル分 ＋ Square決済のパーソナル分（松尾さん依頼 2026-07）。
     //   パーソナルは決済チャネルが hacomono / Square の2系統に分かれるため両方を合算する。
     //   hacomonoPersonal は salesTotal に含まれるが squarePersonal は含まれないため、
@@ -587,11 +596,18 @@ export async function GET(request: NextRequest) {
     // 修正前はこの分類が総売上・内訳のどこにも加算されず取りこぼされていた
     // （松尾さん指摘 2026-09-24・春日8月で¥112,200相当）。
     const squareOther = hasSquareItem ? squareItemByClass["その他"] ?? 0 : 0;
-    // その他 = hacomonoのスポット等 + 手動追記の請求書「その他」+ Squareの「その他」分類。
+    // その他 = hacomonoのスポット等 + 手動追記の請求書「その他」+ Squareの「その他」分類
+    //   + Squareの「サービス」分類（画面に「サービス」という独立行が無いため「その他」に含める。
+    //   東日本橋で毎月数千円規模発生しており、含めないと内訳合計が売上合計と一致しない）。
     //   salesTotal(=hacomono売上合計) から差し引くのは hacomono由来分のみ
-    //   （squarePersonal/squareOther は salesTotal に含まれないため差し引かない）。
+    //   （squarePersonal/squareOther/salesService は salesTotal に含まれないため差し引かない）。
     const salesOther =
-      salesTotal - salesMembership - hacomonoPersonal + manualOtherSales + squareOther;
+      salesTotal -
+      hacomonoMembership -
+      hacomonoPersonal +
+      manualOtherSales +
+      squareOther +
+      salesService;
 
     // Square側の総売上への算入額。
     //   アイテム別売上(SquareItemSales)を導入済みの店舗・月は、その全分類
