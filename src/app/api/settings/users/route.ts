@@ -108,11 +108,12 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, password, displayName } = body;
+    const { id, password, displayName, role, storeName } = body;
 
     if (!id) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
     }
+    const userId = parseInt(id, 10);
 
     const data: Record<string, unknown> = {};
     if (password && password.trim()) {
@@ -122,16 +123,91 @@ export async function PUT(request: NextRequest) {
       data.displayName = displayName || null;
     }
 
+    // ロール変更（店長⇄マネージャー）・担当店舗の変更（星崎さん依頼 2026-10-02）。
+    // manager は role 上は admin と同等に正規化されるため、他人の権限変更という
+    // 危険な操作はDB上の生ロール(rawRole)が本当に"admin"の場合のみ許可する。
+    const wantsRoleOrStoreChange = role !== undefined || storeName !== undefined;
+    if (wantsRoleOrStoreChange) {
+      if (session.rawRole !== "admin") {
+        return NextResponse.json(
+          { error: "ロール・担当店舗の変更はシステム管理者のみ実行できます" },
+          { status: 403 },
+        );
+      }
+
+      const target = await prisma.user.findUnique({ where: { id: userId } });
+      if (!target) {
+        return NextResponse.json(
+          { error: "ユーザーが見つかりません" },
+          { status: 404 },
+        );
+      }
+      if (target.role === "admin") {
+        return NextResponse.json(
+          { error: "管理者ユーザーのロール・担当店舗は変更できません" },
+          { status: 403 },
+        );
+      }
+
+      // 変更できるロールは 店長(store_manager) / マネージャー(manager) のみ
+      // （このUIから admin への昇格は不可。事故防止のためDB直接操作を要する）。
+      const CHANGEABLE_ROLES = ["store_manager", "manager"];
+      if (role !== undefined && !CHANGEABLE_ROLES.includes(role)) {
+        return NextResponse.json(
+          { error: "変更できるロールは店長・マネージャーのみです" },
+          { status: 400 },
+        );
+      }
+
+      const normalizedStoreName =
+        storeName === undefined
+          ? undefined
+          : Array.isArray(storeName)
+            ? storeName.filter(Boolean).join(",")
+            : (storeName as string) || "";
+
+      const resultingRole = role !== undefined ? role : target.role;
+
+      if (resultingRole === "manager") {
+        // マネージャーは全店舗が対象のため担当店舗は持たせない（指定されても無視せず明示的にnull化）。
+        data.role = "manager";
+        data.storeName = null;
+      } else {
+        // store_manager（店長）: 担当店舗が最終的に空だとログインしても
+        // 自店舗データが一切見えない「ロック状態」になるため、ここで必ず検証する。
+        const resultingStoreName =
+          normalizedStoreName !== undefined ? normalizedStoreName : target.storeName;
+        if (!resultingStoreName) {
+          return NextResponse.json(
+            {
+              error:
+                "店長への変更・店長の担当店舗変更には、担当店舗を1つ以上指定してください",
+            },
+            { status: 400 },
+          );
+        }
+        if (role !== undefined) data.role = "store_manager";
+        if (normalizedStoreName !== undefined) data.storeName = resultingStoreName;
+      }
+    }
+
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: "変更内容がありません" }, { status: 400 });
     }
 
-    await prisma.user.update({
-      where: { id: parseInt(id, 10) },
+    const updated = await prisma.user.update({
+      where: { id: userId },
       data,
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        storeName: true,
+        displayName: true,
+      },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, user: updated });
   } catch (error) {
     logError("Users PUT error:", error);
     return NextResponse.json(
