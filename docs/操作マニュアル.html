@@ -324,7 +324,7 @@
   </div>
   <h1>ハイアルチ PLダッシュボード</h1>
   <div class="subtitle">操作マニュアル</div>
-  <div class="meta">URL: https://highalt-dashboard.vercel.app &nbsp;|&nbsp; 最終更新: 2026年7月23日</div>
+  <div class="meta">URL: https://highalt-dashboard.vercel.app &nbsp;|&nbsp; 最終更新: 2026年10月2日</div>
 </header>
 
 <div class="container">
@@ -588,10 +588,12 @@
     <li><strong>客単価推移:</strong> 月会費売上 ÷ プラン契約者数（1人あたりの月会費収入）。予算を点線で重ねて表示</li>
     <li><strong>人件費・経費・営業利益の推移:</strong> 各月の推移に予算を重ねて表示</li>
     <li><strong>会員数系の推移:</strong> 在籍会員数（プラン契約者数）・新規入会数・退会数・退会率・入会率など</li>
+    <li><strong>入会率:</strong> 新規入会数 ÷ 体験者数。<strong>全体ビュー・月次ビューどちらでも</strong>表示され、店舗別の推移・予算線も確認できます（体験者数の算出方法は3.5「体験シート」参照）</li>
     <li><strong>前年比比較グラフ:</strong> 今期と前期を項目別（売上・人件費・広告宣伝費・消耗品費・営業利益）に並べて比較。「前年比◯%」を表示（全体・店舗別どちらでも表示されます）</li>
-    <li><strong>経費内訳:</strong> 勘定科目別の経費割合</li>
+    <li><strong>経費内訳:</strong> 勘定科目別の経費割合（福利厚生費は法定福利費と別の科目として集計されます）</li>
   </ul>
   <p class="tip">※ 人件費・消耗品費・広告宣伝費・前年比は、クライアント様公式の損益計算書（前年比PLタブで取込）を正データとして表示します。</p>
+  <p class="tip">※ 売上には「自販機手数料収入」（PayPay銀行口座への自販機収益の入金分）も別建ての項目として含まれます。会費・パーソナル・物販・その他の4分類とは別経路の売上です。</p>
 
   <h3>2.5 全体表示と店舗比較</h3>
   <p>店舗セレクタで「<strong>全体</strong>」を選ぶと、全7店舗を合算した数値・グラフが表示されます。個別店舗を選ぶとその店舗のみの表示に切り替わります。</p>
@@ -734,7 +736,36 @@
     <li><strong>パーソナル売上は hacomono の売上明細から集計</strong>しています（Square のパーソナル分類は、二重計上を避けるため物販には含めていません）。</li>
   </ul>
 
-  <h3>3.5 予算CSV</h3>
+  <div class="info-box info">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    <div>
+      <strong>自動連携（手動アップロード不要）:</strong> hacomono会員・売上・<strong>アンケート回答</strong>データは、裏側の自動連携により毎日自動で取り込まれています。通常はこのタブを手動で操作する必要はありません（即時に反映させたい場合のみ、このタブから手動アップロードしてください。手動アップロードした分は自動連携の値を上書きします）。<br>
+      アンケート回答は（アンケートコード・年月）単位で取り込まれるため、<strong>期間を指定して集計すると、その期間のアンケート回答だけが正しく表示されます</strong>（以前は累計で表示されてしまう不具合がありましたが修正済みです）。
+    </div>
+  </div>
+
+  <h3>3.5 体験シート</h3>
+  <p>「体験シート」タブに、各店舗で運用している体験予約管理シート（Googleスプレッドシート）をCSVでエクスポートしてドロップします。</p>
+  <p class="tip">※ hacomono（会員ML001）には「最終的に入会した人」しか含まれないため、体験者数・入会率の分母が不正確になります。各店舗の体験シートを正データとして取り込むことで、体験者数を正確に反映します。</p>
+  <ol class="steps">
+    <li><span class="step-num">1</span><span>「体験シート」タブを選択します</span></li>
+    <li><span class="step-num">2</span><span>店舗・対象年月を指定します（<strong>ファイル名から店舗・年月を自動検出</strong>し、初期値として入力されます。検出結果は画面に表示されるので、必ず内容を確認してください。誤っている場合は手動で修正できます）</span></li>
+    <li><span class="step-num">3</span><span>CSVファイルをドロップします（1店舗・1ヶ月につき1ファイル）</span></li>
+    <li><span class="step-num">4</span><span>内容を確認し、保存します</span></li>
+  </ol>
+  <div class="info-box warning">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <div><strong>船橋店の特殊フォーマット:</strong> 船橋店のみ、体験シートの列名・列順が他店舗と大きく異なる専用フォーマットです。店舗選択で「船橋」を選ぶと、自動的に専用の解析処理に切り替わります。</div>
+  </div>
+  <p><strong>体験者数・入会率の優先順位:</strong> ダッシュボードで使われる体験者数は、以下の優先順位で決まります。</p>
+  <ol class="steps">
+    <li><span class="step-num">1</span><span><strong>体験シート実データ</strong>（このタブで取り込んだ値）</span></li>
+    <li><span class="step-num">2</span><span>店長による手動追記（ダッシュボード画面の手動入力欄）</span></li>
+    <li><span class="step-num">3</span><span>hacomono自動算出（会員ML001由来・入会者のみのため参考値）</span></li>
+  </ol>
+  <p>体験シートを取り込んだ店舗・月は、以降は体験シートの値が自動的に優先されます。</p>
+
+  <h3>3.6 予算CSV</h3>
   <p>「予算」タブに、予算実績対比表の「予算書」CSV、または「販促報告」CSV をドロップします。<strong>店舗・年度・ファイルの種類は自動で判別</strong>されます（複数まとめて投入可）。</p>
   <ol class="steps">
     <li><span class="step-num">1</span><span>「予算」タブを選択します</span></li>
@@ -742,21 +773,28 @@
     <li><span class="step-num">3</span><span>「解析して保存する」をクリックします</span></li>
   </ol>
 
-  <h3>3.6 前年比PL（損益計算書・実績）</h3>
-  <p>「前年比PL」タブに、予算実績対比表の「損益計算書」または「開業からの実績累計（PL）」CSV をドロップします。前年比比較や、経費（広告宣伝費・賃借料・電気料など）の正データとして使用します（2026年4月以前のみ反映）。</p>
+  <h3>3.7 前年比PL（損益計算書・実績）</h3>
+  <p>「前年比PL」タブに、予算実績対比表の「損益計算書」または「開業からの実績累計（PL）」CSV をドロップします。前年比比較や、経費（広告宣伝費・賃借料・電気料など）の正データとして使用します（原則2026年4月分までの反映）。</p>
   <ol class="steps">
     <li><span class="step-num">1</span><span>「前年比PL」タブを選択します</span></li>
     <li><span class="step-num">2</span><span>対象店舗を選び、その店舗のCSVを取り込みます</span></li>
     <li><span class="step-num">3</span><span>「取り込む」をクリックします（既存データがある場合は上書き確認が出ます）</span></li>
   </ol>
+  <p class="tip">※ <strong>減価償却費・開発費償却の例外（遡及反映）:</strong> この2費目は非資金支出（現金の出入りがない会計処理）のため、PayPay銀行CSV等の実データには現れません。「2026年4月分まで」のカットオフの<strong>例外</strong>として扱われ、このタブで取り込んだ損益計算書の数値が<strong>2026年5月以降も遡及して</strong>経費に反映されます。</p>
 
-  <h3>3.7 手数料・電気料（一括取込）</h3>
+  <h3>3.8 手数料・電気料（一括取込）</h3>
   <p>「手数料・電気料」タブに、以下3種のファイルを<strong>まとめて1箇所にドロップ</strong>できます。ファイルの種類は自動判別され、店舗別・月次の経費（支払手数料 / 電気料）に反映されます。</p>
   <ul>
     <li>PAY.JP 決済手数料（店舗別サマリCSV）→ 支払手数料</li>
     <li>fincode 決済手数料（取引明細CSV）→ 支払手数料</li>
     <li>シンエナジー 電気料金明細（Excel）→ 電気料</li>
   </ul>
+  <div class="info-box info">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    <div>
+      <strong>自動連携（2026年8月分以降・手動アップロード不要）:</strong> PAY.JP・fincodeの決済手数料は、hacomonoの売上データから自動集計され、裏側の自動連携により毎日取り込まれています。2026年8月分以降は、通常このタブを手動で操作する必要はありません（2026年7月分までは松尾様による手動投入データです）。電気料金（シンエナジー）は引き続き手動アップロードが必要です。
+    </div>
+  </div>
 
   <a href="#top" class="back-top">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
@@ -867,9 +905,14 @@
     <li><strong>ユーザー一覧:</strong> 登録済みのユーザーが表示されます</li>
     <li><strong>新規追加:</strong> ユーザー名、パスワード、ロール（管理者 / マネージャー / 店長）、担当店舗を指定して作成します</li>
     <li><strong>マネージャー:</strong> 管理者と同等の権限を持つロールです（全店舗の閲覧・設定・アップロードが可能）</li>
-    <li><strong>編集:</strong> 既存ユーザーのロールや担当店舗を変更できます</li>
-    <li><strong>削除:</strong> ユーザーを削除できます</li>
+    <li><strong>編集（パスワード・表示名）:</strong> 既存ユーザーのパスワード・表示名を変更できます</li>
+    <li><strong>編集（ロール・担当店舗の変更）:</strong> 既存ユーザーのロール（店長⇄マネージャー）・担当店舗（店長の異動対応）を変更できます</li>
+    <li><strong>削除:</strong> ユーザーを削除できます（管理者ユーザーは削除できません）</li>
   </ul>
+  <div class="info-box warning">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <div><strong>ロール・担当店舗の変更は、システム管理者（admin）のみ実行できます。</strong>マネージャーが他人の権限を変更できてしまう事故を防ぐため、システム管理者としてログインした場合のみ、この変更欄が画面に表示されます（マネージャーには見えません）。</div>
+  </div>
 
   <h3>4.5 本部一括経費</h3>
   <p><strong>管理者・マネージャーのみ。</strong>電気代・水道代・家賃など、本部で一括支払いし各店のPayPay銀行CSVに現れない経費を月次で入力します。</p>
@@ -958,7 +1001,7 @@
     <div class="section-icon">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     </div>
-    <h2>6. FAQ（よくある質問）</h2>
+    <h2>5. FAQ（よくある質問）</h2>
   </div>
 
   <h3>ログインできない場合</h3>
@@ -1012,6 +1055,16 @@
   <div class="faq-item">
     <div class="faq-q"><span class="badge">Q</span>人件費の内訳が表示されません</div>
     <div class="faq-a">店長アカウントでは、他店舗の人件費内訳は閲覧できません。自店舗の内訳のみ表示されます。全店舗の内訳を確認するには管理者アカウントでログインしてください。</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>体験者数・入会率の数字が以前と変わりました</div>
+    <div class="faq-a">体験シート（3.5）を取り込んだ店舗・月は、その実データが最優先で使われるようになったためです。それ以前は、hacomonoの会員データ（入会者のみ）から算出した参考値を表示していたため、実際より少なく表示されていました。体験シートを取り込んでいない店舗・月は、従来どおり店長の手動入力またはhacomono自動算出の値が使われます。</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q"><span class="badge">Q</span>hacomonoのアンケート回答やPAY.JP/fincodeの決済手数料を毎回アップロードする必要がありますか？</div>
+    <div class="faq-a">いいえ。アンケート回答・決済手数料（2026年8月分以降）は裏側の自動連携により毎日自動で取り込まれます。通常は手動アップロードの必要はありません。即時に反映させたい場合のみ、該当タブから手動でアップロードしてください（手動アップロードした分が優先されます）。</div>
   </div>
 
   <div class="faq-item">
