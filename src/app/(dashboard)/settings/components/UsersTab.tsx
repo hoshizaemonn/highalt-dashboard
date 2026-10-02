@@ -45,6 +45,24 @@ export default function UsersTab() {
   const [editId, setEditId] = useState<number | null>(null);
   const [editPassword, setEditPassword] = useState("");
   const [editDisplayName, setEditDisplayName] = useState("");
+  // ロール・担当店舗の変更（システム管理者のみ・星崎さん依頼 2026-10-02）
+  const [editRole, setEditRole] = useState<"store_manager" | "manager">(
+    "store_manager",
+  );
+  const [editStoreNames, setEditStoreNames] = useState<string[]>([]);
+
+  // DB上の生ロール（manager は role 上は admin と同等に正規化されるため、
+  // 「本当にシステム管理者か」はこちらで判定する）
+  const [rawRole, setRawRole] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.rawRole) setRawRole(d.rawRole);
+      })
+      .catch(() => {});
+  }, []);
+  const isSystemAdmin = rawRole === "admin";
 
   // New user form
   // 作成する役割（店長 / マネージャー）。マネージャーは権限が管理者と同等・全店舗対象
@@ -251,6 +269,19 @@ export default function UsersTab() {
                   setEditPassword("");
                   const u = users.find((u) => u.id === id);
                   setEditDisplayName(u?.displayName || "");
+                  if (u && u.role !== "admin") {
+                    setEditRole(
+                      u.role === "manager" ? "manager" : "store_manager",
+                    );
+                    setEditStoreNames(
+                      u.storeName
+                        ? u.storeName.split(",").filter(Boolean)
+                        : [],
+                    );
+                  } else {
+                    setEditRole("store_manager");
+                    setEditStoreNames([]);
+                  }
                 }}
                 className="border border-gray-300 rounded px-2 py-2 text-sm"
               >
@@ -282,14 +313,24 @@ export default function UsersTab() {
                       setSaving(true);
                       setMessage("");
                       try {
+                        const targetUser = users.find((u) => u.id === editId);
+                        const body: Record<string, unknown> = {
+                          id: editId,
+                          password: editPassword || undefined,
+                          displayName: editDisplayName,
+                        };
+                        // ロール・担当店舗の変更はシステム管理者のみ・admin対象は変更不可
+                        if (isSystemAdmin && targetUser && targetUser.role !== "admin") {
+                          body.role = editRole;
+                          body.storeName =
+                            editRole === "manager"
+                              ? ""
+                              : editStoreNames.filter(Boolean).join(",");
+                        }
                         const res = await fetch("/api/settings/users", {
                           method: "PUT",
                           headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            id: editId,
-                            password: editPassword || undefined,
-                            displayName: editDisplayName,
-                          }),
+                          body: JSON.stringify(body),
                         });
                         const data = await res.json();
                         if (!res.ok) {
@@ -298,6 +339,7 @@ export default function UsersTab() {
                           setEditId(null);
                           setEditPassword("");
                           setEditDisplayName("");
+                          setEditStoreNames([]);
                           await fetchData();
                           setMessage("ユーザー情報を更新しました");
                         }
@@ -314,6 +356,73 @@ export default function UsersTab() {
                 </>
               )}
             </div>
+
+            {/* ロール・担当店舗の変更：システム管理者のみ。対象が管理者(admin)の場合は不可 */}
+            {editId &&
+              isSystemAdmin &&
+              users.find((u) => u.id === editId)?.role !== "admin" && (
+                <div className="mt-4 bg-amber-50 border border-amber-200 rounded p-3">
+                  <p className="text-xs font-medium text-gray-700 mb-2">
+                    権限（ロール）・担当店舗の変更（システム管理者のみ操作可）
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 mb-2">
+                    <select
+                      value={editRole}
+                      onChange={(e) =>
+                        setEditRole(
+                          e.target.value as "store_manager" | "manager",
+                        )
+                      }
+                      className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+                    >
+                      <option value="store_manager">店長</option>
+                      <option value="manager">
+                        マネージャー（管理者と同等）
+                      </option>
+                    </select>
+                  </div>
+                  {editRole === "manager" ? (
+                    <p className="text-xs text-gray-600">
+                      マネージャーに変更すると全店舗アクセス可能になり、担当店舗の指定は不要になります（保存時に自動でクリアされます）。
+                    </p>
+                  ) : (
+                    <div>
+                      <p className="text-xs font-medium text-gray-700 mb-1.5">
+                        担当店舗（複数選択可）
+                      </p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                        {allStores
+                          .filter((s) => s !== HQ_STORE)
+                          .map((s) => (
+                            <label
+                              key={s}
+                              className="inline-flex items-center gap-1.5 text-sm cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={editStoreNames.includes(s)}
+                                onChange={(e) => {
+                                  setEditStoreNames((prev) =>
+                                    e.target.checked
+                                      ? Array.from(new Set([...prev, s]))
+                                      : prev.filter((x) => x !== s),
+                                  );
+                                }}
+                                className="accent-[#567FC0]"
+                              />
+                              {s}
+                            </label>
+                          ))}
+                      </div>
+                      {editStoreNames.length === 0 && (
+                        <p className="text-xs text-red-600 mt-1.5">
+                          ※店長には担当店舗を1つ以上指定してください
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
           </div>
 
           {/* Delete user */}
