@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { LayoutDashboard } from "lucide-react";
 import { STORES } from "@/lib/constants";
+import { fiscalToCalendarYear } from "@/lib/fiscal-calendar";
 import {
   FISCAL_MONTHS,
   Skeleton,
@@ -120,9 +121,9 @@ export default function DashboardPage() {
   const getCalendarYearMonth = useCallback(
     (y: number, monthStr: string) => {
       const m = parseInt(monthStr, 10);
-      // The year selector represents the calendar year directly
-      // No fiscal year conversion needed for monthly view
-      return { calYear: y, calMonth: m };
+      // 年セレクタ y は会計年度末年（10月始まり。例: 2027 = 10期 2026/10〜2027/9）。
+      // 単月APIは暦年で保存されているため、10〜12月は前年の暦年に変換する（1〜9月は同年）。
+      return { calYear: fiscalToCalendarYear(y, m), calMonth: m };
     },
     [],
   );
@@ -247,7 +248,7 @@ export default function DashboardPage() {
             if (monthsWithMembers.length > 0) {
               const latestMonth = monthsWithMembers[0] as MonthlyEntry;
               // Determine calendar year for this month
-              const calYear = latestMonth.month >= 10 ? year - 1 : year;
+              const calYear = fiscalToCalendarYear(year, latestMonth.month);
               const planParams = new URLSearchParams({
                 year: String(calYear),
                 month: String(latestMonth.month),
