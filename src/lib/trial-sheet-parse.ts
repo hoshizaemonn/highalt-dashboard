@@ -54,6 +54,7 @@
  */
 
 import { STORES } from "@/lib/constants";
+import { fixSerialDateColumn } from "@/lib/trial-sheet-date-col";
 
 export type TrialResultType =
   | "即日入会"
@@ -316,6 +317,15 @@ export function parseTrialSheetCsv(
       warnings.push(
         "「日付」列見出しが見つからなかったため、氏名列の隣の無名列を日付列として扱いました。取込結果をご確認ください。",
       );
+    }
+  }
+
+  // 見出し「日付」が連番列と日付列にまたがる結合セルの店舗（祖師ヶ谷大蔵・中目黒等）: 左端の連番を日付と誤認しないよう右隣へ移す
+  if (cols.date !== -1) {
+    const fixed = fixSerialDateColumn(allRows, headerIdx, cols.date);
+    if (fixed.moved) {
+      cols.date = fixed.index;
+      warnings.push("「日付」列が連番列だったため、右隣の日付列を日付として読み取りました。取込結果をご確認ください。");
     }
   }
 
