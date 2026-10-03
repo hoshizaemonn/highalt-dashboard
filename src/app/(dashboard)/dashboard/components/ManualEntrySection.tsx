@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { COLORS, KPICard, formatYen, numFormat } from "./shared";
+import { trialWarnings } from "@/lib/trial-join-rate";
 
 interface Props {
   year: number;
@@ -64,6 +65,10 @@ export function ManualEntrySection({
         ? manualTrial
         : autoTrial;
   const nonReferral = Math.max(0, effectiveTrial - trialReferral);
+  // 警告（表示値は変えない）。個別店舗ビューのみ（全体ビューはAPIを取得しない）
+  const trialWarn = isAll
+    ? { diff: null, missing: null }
+    : trialWarnings({ sheetCount: trialSheetCount, manualRaw: manualTrial, autoCount: autoTrial });
   // 編集中は入力中の値(editTrial)を基準に紹介以外を計算する（保存前の効果値ではなく
   // 今まさに入力している数値に追従させる）
   const editNonReferral = Math.max(0, editTrial - trialReferral);
@@ -203,6 +208,21 @@ export function ManualEntrySection({
         )}
       </div>
 
+      {!isAll && loaded && trialSheetCount > 0 && (
+        <p className="text-xs text-gray-500 mb-2">
+          この月は体験シートの値が優先されます（体験シート → 手入力 → hacomono自動算出の順）。
+        </p>
+      )}
+      {trialWarn.diff && (
+        <div className="mb-2 px-3 py-2 rounded border border-amber-300 bg-amber-50 text-xs text-amber-800">
+          ⚠ {trialWarn.diff}。表示は体験シートの値です。
+        </div>
+      )}
+      {trialWarn.missing && (
+        <div className="mb-2 px-3 py-2 rounded border border-amber-300 bg-amber-50 text-xs text-amber-800">
+          ⚠ {trialWarn.missing}
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* 体験者数 */}
         {!editing ? (

@@ -13,6 +13,7 @@ import {
   getEffectiveStoreFilter,
 } from "@/lib/auth";
 import { trialDateMonthWhere } from "@/lib/csv-utils";
+import { summarizeTrialJoin } from "@/lib/trial-join-rate";
 import { loadSalesDetailWithSplit, storeFilterPredicate } from "@/lib/option-sales-split-loader";
 import {
   parseSplitRatios,
@@ -471,8 +472,10 @@ export async function GET(request: NextRequest) {
     };
     const trialSheetRows = await prisma.trialSheetEntry.findMany({
       where: trialSheetWhere,
-      select: { storeName: true },
+      select: { storeName: true, resultType: true },
     });
+    // 体験入会率（即日+後日 ÷ 体験シート件数）。表示のみで既存の体験者数の計算には使わない。
+    const trialJoin = summarizeTrialJoin(trialSheetRows);
     const trialSheetByStore = new Map<string, number>();
     for (const r of trialSheetRows) {
       trialSheetByStore.set(r.storeName, (trialSheetByStore.get(r.storeName) ?? 0) + 1);
@@ -709,6 +712,9 @@ export async function GET(request: NextRequest) {
             total_members: memberRows.reduce((s, r) => s + r.planSubscribers, 0),
             // 体験者数（坪井さん要望: 店長手動追記）。入会率 = 新規入会÷体験者数 の分母。
             trial_count: effectiveTrialCount,
+            // 体験シート由来の件数（体験入会率用。0 = 体験シートなし）
+            trial_sheet_count: trialJoin.sheetCount,
+            trial_sheet_joined_count: trialJoin.joinedCount,
           }
         : effectiveTrialCount > 0
         ? {
@@ -720,6 +726,8 @@ export async function GET(request: NextRequest) {
             plan_changes: 0,
             total_members: 0,
             trial_count: effectiveTrialCount,
+            trial_sheet_count: trialJoin.sheetCount,
+            trial_sheet_joined_count: trialJoin.joinedCount,
           }
         : null;
 
