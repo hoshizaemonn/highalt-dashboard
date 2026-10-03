@@ -6,9 +6,15 @@ import { decodeFileBuffer, parseCSV } from "@/lib/csv-utils";
 import {
   parsePayjpFee,
   parseFincodeFee,
-  parseSinenergyElectricity,
   type StoreAmount,
 } from "@/lib/fee-electricity-parse";
+import {
+  parseSinenergyInvoice,
+  planStoreImport,
+  invoiceNote,
+  type ParsedInvoice,
+  type PlanItem,
+} from "@/lib/sinenergy-invoice";
 import ExcelJS from "exceljs";
 
 /**
@@ -66,11 +72,15 @@ export async function POST(request: NextRequest) {
     const session = auth.session;
 
     const formData = await request.formData();
-    const year = parseInt(String(formData.get("year") ?? ""), 10);
-    const month = parseInt(String(formData.get("month") ?? ""), 10);
+    let year = parseInt(String(formData.get("year") ?? ""), 10);
+    let month = parseInt(String(formData.get("month") ?? ""), 10);
     const dryRun = formData.get("dryRun") === "true";
-    if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
-      return NextResponse.json({ error: "対象年月を指定してください" }, { status: 400 });
+    // 自動取込（GitHub Actions）: 計上月は請求書のタイトル行（口座引落月）から判定する。
+    const auto = formData.get("auto") === "true";
+    // 年月の指定は任意。シンエナジーの請求明細Excelだけを取り込むときは、省略するとタイトル行から判定する。
+    const ymGiven = !(isNaN(year) || isNaN(month) || month < 1 || month > 12);
+    if (!auto && !ymGiven && !(isNaN(year) && isNaN(month))) {
+      return NextResponse.json({ error: "対象年月が不正です" }, { status: 400 });
     }
 
     // ファイルは1つのドロップゾーンにまとめて受け取り、中身から自動判別する。
@@ -90,6 +100,10 @@ export async function POST(request: NextRequest) {
       if (e) return NextResponse.json({ error: `${f.name}: ${e}` }, { status: 400 });
     }
 
+    if (auto) {
+      return await handleAutoImport({ files, dryRun, session });
+    }
+
     // 各ファイルを中身（拡張子＋ヘッダ）から PAY.JP / fincode / シンエナジー に自動判別。
     // 支払手数料 = PAY.JP + fincode（合算）、電気料 = シンエナジー。
     const feeByStore = new Map<string, number>();
@@ -101,15 +115,30 @@ export async function POST(request: NextRequest) {
     // 同一ファイルの再取込＝更新／別の入金分ファイル＝加算行、の判定に使う）
     const feeFiles: string[] = [];
     const elecFiles: string[] = [];
+    const invoices: Array<{ name: string; inv: ParsedInvoice }> = [];
+    const warnings: string[] = [];
 
     for (const f of files) {
       const lower = f.name.toLowerCase();
       const isExcel = lower.endsWith(".xlsx") || lower.endsWith(".xls");
       try {
         if (isExcel) {
-          // Excel はシンエナジー電気料金明細
+          // Excel はシンエナジー電気料金明細。店舗は供給地点特定番号の対応表で判定し、
+          // 未登録の番号・合計不一致・月判定の失敗があれば、そのファイルは取り込まない（黙って捨てない）。
           const rows = await xlsxToRows(await f.arrayBuffer());
-          const list = parseSinenergyElectricity(rows);
+          const inv = parseSinenergyInvoice(rows);
+          if (inv.errors.length > 0) {
+            return NextResponse.json(
+              {
+                error: `${f.name} は取り込めません：${inv.errors.join(" / ")}`,
+                errors: inv.errors,
+                invoiceNo: inv.invoiceNo || null,
+              },
+              { status: 400 },
+            );
+          }
+          invoices.push({ name: f.name, inv });
+          const list = inv.byStore;
           mapPlus(elecByStore, list);
           sources.sinenergy =
             (sources.sinenergy ?? 0) + list.reduce((s, x) => s + x.amount, 0);
@@ -164,6 +193,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 年月が未指定なら、請求書のタイトル行（口座引落月）から判定する（複数の請求書は同じ月のときだけ）。
+    if (!ymGiven) {
+      const books = [...new Set(invoices.map((x) => `${x.inv.bookingYear}-${x.inv.bookingMonth}`))];
+      if (books.length !== 1) {
+        return NextResponse.json(
+          {
+            error:
+              books.length === 0
+                ? "対象年月を指定してください（請求明細Excelがないため月を判定できません）"
+                : `請求書の計上月が複数あります（${books.join(" / ")}）。月ごとに分けて取り込むか、対象年月を指定してください`,
+          },
+          { status: 400 },
+        );
+      }
+      [year, month] = books[0].split("-").map(Number);
+    } else {
+      // 指定された年月が請求書の引落月と違うときは警告する（取り込みは止めない。手動指定を優先）
+      for (const { name, inv } of invoices) {
+        if (inv.bookingYear !== year || inv.bookingMonth !== month) {
+          warnings.push(
+            `${name}: 指定の${year}年${month}月は、請求書の引落月（${inv.bookingYear}年${inv.bookingMonth}月＝${inv.usageYear}年${inv.usageMonth}月分）と異なります`,
+          );
+        }
+      }
+    }
+
     // 書き込み対象エントリを構築。
     // note に「取込元ファイル名」を記録し、これを重複判定キーにする。
     //  - 同じファイルを再取込 → 同じ note の行を update（二重計上しない）
@@ -209,6 +264,7 @@ export async function POST(request: NextRequest) {
         dryRun: true,
         year,
         month,
+        warnings,
         sources,
         detected,
         preview: entries.map((e) => {
@@ -277,6 +333,7 @@ export async function POST(request: NextRequest) {
       success: true,
       year,
       month,
+      warnings,
       sources,
       detected,
       recordCount: entries.length,
@@ -286,4 +343,108 @@ export async function POST(request: NextRequest) {
     logError("fee-electricity upload error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+
+/**
+ * 自動取込（シンエナジーの請求明細Excel1件）。GitHub Actions から `auto=true` で呼ぶ。
+ *  - 計上月は請求書のタイトル行の口座引落月（N月分の翌月）
+ *  - 同じ請求書番号の行は上書き（ファイル名に依存しない。二重計上しない）
+ *  - 同じ店舗・月に別の登録（手入力・過去の手動取込）がある場合は、加算も上書きもせずスキップして警告
+ *  - 前月比が極端（3倍超・1/3未満）の店舗は保留（取り込まず警告）
+ *  - 解析エラー（未登録の使用場所・合計不一致・月判定失敗・0件）のときは何も取り込まない（400）
+ *  - 削除はしない。書き込むのは該当店舗・月の電気料の行の作成／更新のみ
+ */
+async function handleAutoImport(args: {
+  files: File[];
+  dryRun: boolean;
+  session: { userId: number; displayName: string | null; storeName: string | null };
+}) {
+  const { files, dryRun, session } = args;
+  const f = files[0];
+  if (files.length !== 1 || !(f.name.toLowerCase().endsWith(".xlsx") || f.name.toLowerCase().endsWith(".xls"))) {
+    return NextResponse.json(
+      { error: "自動取込は請求明細Excel（.xlsx）を1ファイルだけ受け付けます" },
+      { status: 400 },
+    );
+  }
+  const inv = parseSinenergyInvoice(await xlsxToRows(await f.arrayBuffer()));
+  if (inv.errors.length > 0) {
+    return NextResponse.json(
+      { error: `取り込めません：${inv.errors.join(" / ")}`, errors: inv.errors, invoiceNo: inv.invoiceNo || null },
+      { status: 400 },
+    );
+  }
+  const year = inv.bookingYear;
+  const month = inv.bookingMonth;
+  const prevY = month === 1 ? year - 1 : year;
+  const prevM = month === 1 ? 12 : month - 1;
+  const stores = inv.byStore.map((x) => x.store);
+
+  const [existingRows, prevRows] = await Promise.all([
+    prisma.manualExpenseEntry.findMany({
+      where: { year, month, category: ELEC_CATEGORY, storeName: { in: stores } },
+      select: { storeName: true, totalAmount: true, note: true },
+    }),
+    prisma.manualExpenseEntry.findMany({
+      where: { year: prevY, month: prevM, category: ELEC_CATEGORY, storeName: { in: stores } },
+      select: { storeName: true, totalAmount: true },
+    }),
+  ]);
+  const prevByStore = new Map<string, number>();
+  for (const r of prevRows) prevByStore.set(r.storeName, (prevByStore.get(r.storeName) ?? 0) + r.totalAmount);
+
+  const items: PlanItem[] = inv.byStore.map(({ store, amount }) =>
+    planStoreImport({
+      store,
+      amount,
+      invoiceNo: inv.invoiceNo,
+      existing: existingRows
+        .filter((r) => r.storeName === store)
+        .map((r) => ({ amount: r.totalAmount, note: r.note })),
+      previousAmount: prevByStore.get(store) ?? null,
+    }),
+  );
+  const head = {
+    invoiceNo: inv.invoiceNo,
+    usage: { year: inv.usageYear, month: inv.usageMonth },
+    booking: { year, month },
+    items,
+  };
+  const writes = items.filter((i) => i.action === "create" || i.action === "update");
+  if (dryRun || writes.length === 0) {
+    return NextResponse.json({ dryRun, ...head, written: 0 });
+  }
+
+  const note = invoiceNote(inv.invoiceNo);
+  const updatedByName = session.displayName || session.storeName || "admin";
+  await prisma.$transaction(async (tx) => {
+    for (const w of writes) {
+      const row = await tx.manualExpenseEntry.findFirst({
+        where: { year, month, category: ELEC_CATEGORY, storeName: w.store, note },
+        select: { id: true },
+      });
+      if (row) {
+        await tx.manualExpenseEntry.update({ where: { id: row.id }, data: { totalAmount: w.amount, updatedByName } });
+      } else {
+        await tx.manualExpenseEntry.create({
+          data: { year, month, category: ELEC_CATEGORY, storeName: w.store, totalAmount: w.amount, note, updatedByName },
+        });
+      }
+    }
+    await tx.uploadLog.create({
+      data: {
+        userId: session.userId,
+        userName: updatedByName,
+        dataType: "fee_electricity",
+        storeName: null,
+        year,
+        month,
+        fileName: f.name,
+        recordCount: writes.length,
+        note: `電気料 自動取込 請求書番号${inv.invoiceNo}（${year}/${month}計上）`,
+      },
+    });
+  });
+  return NextResponse.json({ success: true, ...head, written: writes.length });
 }
