@@ -16,10 +16,27 @@ interface Item {
   enabled: boolean;
 }
 
+interface Unsplittable {
+  year: number;
+  month: number;
+  storeName: string;
+  count: number;
+}
+
 interface ApiResponse {
   items: Item[];
   stores: string[];
   minStart: { year: number; month: number };
+  unsplittable: Unsplittable[];
+}
+
+// 開始年月は仕様どおり 2026年10月を既定にする（データが入った月から反映される運用）
+function withDefaultStart(item: Item, minStart: { year: number; month: number }): Item {
+  return {
+    ...item,
+    startYear: item.startYear ?? minStart.year,
+    startMonth: item.startMonth ?? minStart.month,
+  };
 }
 
 export default function OptionSplitTab() {
@@ -37,7 +54,7 @@ export default function OptionSplitTab() {
       }
       const json: ApiResponse = await res.json();
       setData(json);
-      setDrafts(Object.fromEntries(json.items.map((i) => [i.productCode, { ...i }])));
+      setDrafts(Object.fromEntries(json.items.map((i) => [i.productCode, withDefaultStart(i, json.minStart)])));
     } catch {
       setMessage("読み込みに失敗しました");
     }
@@ -53,7 +70,7 @@ export default function OptionSplitTab() {
         }
         const json: ApiResponse = await res.json();
         setData(json);
-        setDrafts(Object.fromEntries(json.items.map((i) => [i.productCode, { ...i }])));
+        setDrafts(Object.fromEntries(json.items.map((i) => [i.productCode, withDefaultStart(i, json.minStart)])));
       })
       .catch(() => setMessage("読み込みに失敗しました"));
   }, []);
@@ -107,6 +124,36 @@ export default function OptionSplitTab() {
       {message && (
         <div className="px-4 py-2 bg-blue-50 text-blue-700 rounded text-sm">{message}</div>
       )}
+
+      <div className="border border-gray-200 rounded p-4">
+        <div className="text-sm font-medium text-gray-800 mb-2">按分できなかった売上（要確認）</div>
+        <p className="text-xs text-gray-500 mb-2">
+          対象商品を含む売上明細が、他の商品と1行にまとまっているため、按分せず元の店舗に残している件数です。
+          金額を按分したい場合は、hacomono側で商品ごとに分けて取り込んでください。
+        </p>
+        {data.unsplittable.length === 0 ? (
+          <p className="text-xs text-gray-600">該当なし</p>
+        ) : (
+          <table className="text-xs w-full">
+            <thead>
+              <tr className="text-left text-gray-600 border-b">
+                <th className="py-1 pr-3">年月</th>
+                <th className="py-1 pr-3">店舗</th>
+                <th className="py-1">件数</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.unsplittable.map((u) => (
+                <tr key={`${u.year}-${u.month}-${u.storeName}`} className="border-b border-gray-100">
+                  <td className="py-1 pr-3">{u.year}年{u.month}月</td>
+                  <td className="py-1 pr-3">{u.storeName}</td>
+                  <td className="py-1">{u.count}件</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
       {data.items.map((item) => {
         const d = drafts[item.productCode] ?? item;

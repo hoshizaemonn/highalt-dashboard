@@ -110,3 +110,31 @@ export function applyOptionSalesSplit<T extends SalesRowLike>(
   }
   return { rows: out, stats };
 }
+
+/** 未分割（1行に複数商品）の件数を、年月×店舗ごとに数える。按分設定画面の表示用。 */
+export interface UnsplittableCount {
+  year: number;
+  month: number;
+  storeName: string;
+  count: number;
+}
+
+export function summarizeUnsplittable(
+  rows: Array<Pick<SalesRowLike, "year" | "month" | "storeName" | "description">>,
+  namesByCode: Record<string, string[]>,
+): UnsplittableCount[] {
+  const names = Object.values(namesByCode).flat().filter(Boolean);
+  const map = new Map<string, UnsplittableCount>();
+  for (const r of rows) {
+    const desc = r.description ?? "";
+    if (!names.some((n) => desc.includes(n))) continue;
+    if (isSingleItemDescription(desc)) continue;
+    const key = `${r.year}-${r.month}-${r.storeName}`;
+    const cur = map.get(key);
+    if (cur) cur.count += 1;
+    else map.set(key, { year: r.year, month: r.month, storeName: r.storeName, count: 1 });
+  }
+  return [...map.values()].sort(
+    (a, b) => a.year - b.year || a.month - b.month || a.storeName.localeCompare(b.storeName, "ja"),
+  );
+}

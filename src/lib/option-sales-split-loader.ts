@@ -1,15 +1,35 @@
 // オプション売上按分を売上明細の集計に適用するローダー。
 // 按分ルールが1つも有効でない場合は base の結果をそのまま返す（従来の集計と完全一致）。
+// 按分ルール・商品名は数分キャッシュする（毎回のDB往復を減らす）。保存時は memoCacheDeletePrefix("optionSplit:") で即時失効。
 
 import { prisma } from "@/lib/prisma";
+import { memoCache } from "@/lib/memo-cache";
 import {
   applyOptionSalesSplit,
+  summarizeUnsplittable,
   type OptionSplitRule,
   type SalesRowLike,
   type SplitStats,
+  type UnsplittableCount,
 } from "@/lib/option-sales-split";
 
 export const OPTION_SPLIT_CODES = ["I0345", "I0346"] as const;
+export const OPTION_SPLIT_CACHE_PREFIX = "optionSplit:";
+const CONTEXT_TTL_MS = 5 * 60 * 1000;
+
+export type NamesByCode = Record<string, string[]>;
+
+/** 対象2商品の商品名（PS001由来）。摘要との照合に使う。 */
+export async function loadOptionProductNames(): Promise<NamesByCode> {
+  const products = await prisma.productSales.findMany({
+    where: { productCode: { in: [...OPTION_SPLIT_CODES] } },
+    select: { productCode: true, productName: true },
+    distinct: ["productCode", "productName"],
+  });
+  const out: NamesByCode = {};
+  for (const p of products) (out[p.productCode] ??= []).push(p.productName);
+  return out;
+}
 
 /** 按分ルール一覧（対象2商品のみ） */
 export async function loadOptionSplitRules(): Promise<OptionSplitRule[]> {
@@ -23,6 +43,14 @@ export async function loadOptionSplitRules(): Promise<OptionSplitRule[]> {
     startYear: r.startYear,
     startMonth: r.startMonth,
     enabled: r.enabled,
+  }));
+}
+
+/** ルールと商品名をまとめて数分キャッシュ */
+async function loadContext(): Promise<{ rules: OptionSplitRule[]; namesByCode: NamesByCode }> {
+  return memoCache(`${OPTION_SPLIT_CACHE_PREFIX}ctx`, CONTEXT_TTL_MS, async () => ({
+    rules: await loadOptionSplitRules(),
+    namesByCode: await loadOptionProductNames(),
   }));
 }
 
@@ -41,27 +69,17 @@ export async function loadSalesDetailWithSplit<T extends SalesRowLike>(opts: {
 }): Promise<{ rows: T[]; stats: SplitStats | null }> {
   const baseRows = await opts.base;
   // ルール取得に失敗しても（例: マイグレーション未適用）売上集計を止めない。失敗時は按分なしの従来結果。
-  let rules: OptionSplitRule[] = [];
+  let ctx: { rules: OptionSplitRule[]; namesByCode: NamesByCode };
   try {
-    rules = await loadOptionSplitRules();
+    ctx = await loadContext();
   } catch (e) {
     console.error("option-sales-split: rules load failed, split skipped", e instanceof Error ? e.message : e);
     return { rows: baseRows, stats: null };
   }
-  if (!rules.some((r) => r.enabled)) {
+  if (!ctx.rules.some((r) => r.enabled)) {
     return { rows: baseRows, stats: null };
   }
-
-  const products = await prisma.productSales.findMany({
-    where: { productCode: { in: [...OPTION_SPLIT_CODES] } },
-    select: { productCode: true, productName: true },
-    distinct: ["productCode", "productName"],
-  });
-  const namesByCode: Record<string, string[]> = {};
-  for (const p of products) {
-    (namesByCode[p.productCode] ??= []).push(p.productName);
-  }
-  const names = Object.values(namesByCode).flat();
+  const names = Object.values(ctx.namesByCode).flat();
   if (names.length === 0) {
     return { rows: baseRows, stats: null };
   }
@@ -82,7 +100,7 @@ export async function loadSalesDetailWithSplit<T extends SalesRowLike>(opts: {
     merged.push(r);
   }
 
-  const { rows, stats } = applyOptionSalesSplit(merged, rules, namesByCode);
+  const { rows, stats } = applyOptionSalesSplit(merged, ctx.rules, ctx.namesByCode);
   const filtered = rows.filter(
     (r) =>
       opts.years.includes(r.year) &&
@@ -90,6 +108,21 @@ export async function loadSalesDetailWithSplit<T extends SalesRowLike>(opts: {
       opts.keep(r),
   );
   return { rows: filtered, stats };
+}
+
+/**
+ * 未分割（1行に複数商品）の売上明細件数を年月×店舗で返す（按分設定画面の表示用）。
+ * 読み取りのみ。ルールの有効・無効に関係なく、対象商品を含む未分割行を数える。
+ */
+export async function loadUnsplittableCounts(): Promise<UnsplittableCount[]> {
+  const namesByCode = await loadOptionProductNames();
+  const names = Object.values(namesByCode).flat();
+  if (names.length === 0) return [];
+  const rows = await prisma.salesDetail.findMany({
+    where: { OR: names.map((n) => ({ description: { contains: n } })) },
+    select: { year: true, month: true, storeName: true, description: true },
+  });
+  return summarizeUnsplittable(rows, namesByCode);
 }
 
 /** Prisma の storeName 条件（文字列 / notIn / in）と同じ意味の JS 述語 */

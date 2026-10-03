@@ -3,7 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { STORES } from "@/lib/constants";
-import { OPTION_SPLIT_CODES } from "@/lib/option-sales-split-loader";
+import { memoCacheDeletePrefix } from "@/lib/memo-cache";
+import {
+  OPTION_SPLIT_CACHE_PREFIX,
+  OPTION_SPLIT_CODES,
+  loadOptionProductNames,
+  loadUnsplittableCounts,
+} from "@/lib/option-sales-split-loader";
+
+// 按分の結果を含む画面キャッシュ（保存時に即時失効させる）
+const SPLIT_AFFECTED_CACHE_PREFIXES = ["dashboard:", "annual:", "storeCompare:"];
 
 // オプション売上の店舗按分ルール（星崎さん指示 2026-10-02）。
 // 変更はシステム管理者（DB上の生ロール rawRole === "admin"）のみ。
@@ -23,19 +32,16 @@ export async function GET() {
     if (!(await requireAdmin())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const [rules, products] = await Promise.all([
+    const [rules, namesByCode, unsplittable] = await Promise.all([
       prisma.optionSalesSplitRule.findMany({
         where: { productCode: { in: [...OPTION_SPLIT_CODES] } },
       }),
-      prisma.productSales.findMany({
-        where: { productCode: { in: [...OPTION_SPLIT_CODES] } },
-        select: { productCode: true, productName: true },
-        distinct: ["productCode", "productName"],
-      }),
+      loadOptionProductNames(),
+      loadUnsplittableCounts(),
     ]);
     const items = OPTION_SPLIT_CODES.map((code) => {
       const r = rules.find((x) => x.productCode === code);
-      const name = products.find((p) => p.productCode === code)?.productName ?? null;
+      const name = namesByCode[code]?.[0] ?? null;
       return {
         productCode: code,
         productName: name,
@@ -50,6 +56,8 @@ export async function GET() {
       items,
       stores: [...STORES],
       minStart: MIN_START,
+      // 1行に複数商品がまとまっていて按分できなかった売上明細の件数（年月×店舗）
+      unsplittable,
     });
   } catch (error) {
     logError("OptionSalesSplit GET error:", error);
@@ -114,6 +122,10 @@ export async function PUT(request: NextRequest) {
       create: { productCode, ...data, targetStore: target || "" },
       update: data,
     });
+    // 反映遅れをなくす: 按分の影響を受ける画面キャッシュと商品名/ルールのキャッシュを即時失効
+    for (const p of [OPTION_SPLIT_CACHE_PREFIX, ...SPLIT_AFFECTED_CACHE_PREFIXES]) {
+      memoCacheDeletePrefix(p);
+    }
     return NextResponse.json({ success: true, rule: saved });
   } catch (error) {
     logError("OptionSalesSplit PUT error:", error);

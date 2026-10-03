@@ -2,7 +2,7 @@
 // 実行: node --experimental-strip-types src/lib/option-sales-split.test.ts
 // 保存則（総額・カテゴリ×月・店舗合計）と、無効/開始前/同店舗/複数商品行で変更しないことを検証する。
 // @ts-expect-error node --experimental-strip-types で直接実行するため .ts 拡張子が必要
-import { applyOptionSalesSplit, isRuleActiveFor, type OptionSplitRule, type SalesRowLike } from "./option-sales-split.ts";
+import { applyOptionSalesSplit, isRuleActiveFor, summarizeUnsplittable, type OptionSplitRule, type SalesRowLike } from "./option-sales-split.ts";
 import assert from "node:assert/strict";
 
 const NAMES = { I0345: ["HYROXオプション 月額費"], I0346: ["HYROXオプション（月4回） 初月額費"] };
@@ -95,4 +95,21 @@ const byStore = (rs: SalesRowLike[]) => rs.reduce<Record<string, number>>((m, r)
   assert.equal(isRuleActiveFor(rule(), 2026, 10), true);
   assert.equal(isRuleActiveFor(rule(), 2027, 1), true);
 }
-console.log("ALL TESTS PASSED");
+
+// 11. 未分割件数: 対象商品を含み複数商品が連結された行だけを年月×店舗で数える（単一商品・対象外は数えない）
+{
+  const rowsU = [
+    { year: 2026, month: 10, storeName: "春日", description: "HYROXオプション 月額費 (2026年10月)x1, 入会金x1" },
+    { year: 2026, month: 10, storeName: "春日", description: "HYROXオプション 月額費 (2026年10月)x1, 事務手数料x1" },
+    { year: 2026, month: 10, storeName: "春日", description: "HYROXオプション 月額費 (2026年10月)x1" },
+    { year: 2026, month: 11, storeName: "船橋", description: "HYROXチケット(既存会員様用)x1, 入会金x1" },
+    { year: 2026, month: 11, storeName: "船橋", description: "HYROXオプション（月4回） 初月額費 (2026年11月)x1, 入会金x1" },
+  ];
+  const got = summarizeUnsplittable(rowsU, NAMES);
+  assert.deepEqual(got, [
+    { year: 2026, month: 10, storeName: "春日", count: 2 },
+    { year: 2026, month: 11, storeName: "船橋", count: 1 },
+  ]);
+}
+console.log("ALL TESTS PASSED (incl. unsplittable summary)");
+
