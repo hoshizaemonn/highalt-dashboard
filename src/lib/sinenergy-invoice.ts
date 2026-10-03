@@ -195,7 +195,7 @@ export function isExtremeChange(current: number, previous: number | null | undef
   return ratio > 3 || ratio < 1 / 3;
 }
 
-export type ImportAction = "create" | "update" | "skip-existing" | "held";
+export type ImportAction = "create" | "update" | "unchanged" | "skip-existing" | "held";
 
 export interface ExistingRow {
   amount: number;
@@ -218,7 +218,8 @@ export function invoiceNote(invoiceNo: string): string {
 
 /**
  * 店舗ごとの取込計画。ファイル全体の errors が空のときだけ呼ぶ。
- *  - 同じ請求書番号の行が既にある → update（上書き。二重計上しない）
+ *  - 同じ請求書番号の行が既にあり、金額も同じ → unchanged（何も書かない。日次実行で毎日書き込みが走らないように）
+ *  - 同じ請求書番号の行が既にあり、金額が違う → update（上書き。二重計上しない）
  *  - 別の note の既存行（手入力・過去の手動取込）がある → skip-existing（加算も上書きもしない。金額の差は reason に出す）
  *  - 前月比が極端 → held（取り込まず警告）
  *  - それ以外 → create
@@ -246,7 +247,11 @@ export function planStoreImport(args: {
         : `既存の登録あり（登録額${sum}円／請求書${amount}円で不一致）。重複を避けるためスキップ。要確認`,
     };
   }
-  if (same) return { store, amount, action: "update", existingAmount, reason: null };
+  if (same) {
+    return same.amount === amount
+      ? { store, amount, action: "unchanged", existingAmount, reason: null }
+      : { store, amount, action: "update", existingAmount, reason: `請求書番号が同じで金額が違うため上書き（${same.amount}円→${amount}円）` };
+  }
   if (isExtremeChange(amount, previousAmount)) {
     return {
       store, amount, action: "held", existingAmount,
