@@ -7,6 +7,7 @@ import { expenseRowShareWithCategorySplit } from "@/lib/manual-expense-split";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
 import { signupsForMonth } from "@/lib/signup-count";
+import { loadSalesDetailWithSplit } from "@/lib/option-sales-split-loader";
 
 const CACHE_TTL_MS = 30_000;
 
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
           isRevenue: 0,
         },
       }),
-      prisma.salesDetail.findMany({ where: { year: { in: years } } }),
+      loadSalesDetailWithSplit({ years, base: prisma.salesDetail.findMany({ where: { year: { in: years } } }), keep: () => true }).then((x) => x.rows),
       prisma.revenueData.findMany({ where: { year: { in: years } } }),
       prisma.squareSales.findMany({ where: { year: { in: years } } }),
     ]);
