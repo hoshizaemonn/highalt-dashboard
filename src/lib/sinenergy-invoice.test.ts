@@ -88,7 +88,8 @@ const L123 = (a: number[]) => [line(1, "J0259642", a[0]), line(2, "J0245238", a[
   const NO = "218607900123202605";
   const mk = (existing: any[], prev: number | null, amount = 28814) => planStoreImport({ store: "巣鴨", amount, invoiceNo: NO, existing, previousAmount: prev });
   assert.equal(mk([], 21030).action, "create");
-  assert.equal(mk([{ amount: 28814, note: invoiceNote(NO) }], 21030).action, "update");            // 同じ請求書番号 → 上書き
+  assert.equal(mk([{ amount: 28814, note: invoiceNote(NO) }], 21030).action, "unchanged");         // 同じ請求書番号・同額 → 何もしない（日次実行で書き込みなし）
+  assert.equal(mk([{ amount: 20000, note: invoiceNote(NO) }], 21030).action, "update");            // 同じ請求書番号・金額が違う → 上書き
   const sk = mk([{ amount: 28814, note: "シンエナジー 自動取込（請求明細.xlsx）" }], 21030);          // 過去の手動取込 → スキップ
   assert.equal(sk.action, "skip-existing"); assert.ok(sk.reason!.includes("一致"));
   const sk2 = mk([{ amount: 21030, note: null }], 21030);                                          // 手入力・金額が違う → スキップして要確認
