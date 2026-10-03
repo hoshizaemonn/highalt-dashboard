@@ -313,6 +313,25 @@ model SquareItemSales {
   @@map("square_item_sales")
 }
 
+// ─── Option Sales Split (オプション売上の店舗按分ルール) ─────
+// hacomono 商品（HYROXオプション等）の売上を、所属店舗から別店舗へ付け替える。
+// 総額は変えず（所属店舗 -X / 按分先 +X）、総売上と内訳の両方に同じ比率で反映する。
+// start_year/start_month より前の月は一切変更しない（既存実績を動かさない）。
+// enabled=false（既定）の間は集計結果に一切影響しない。
+model OptionSalesSplitRule {
+  id            Int      @id @default(autoincrement())
+  productCode   String   @unique @map("product_code")
+  targetStore   String   @map("target_store")
+  ratioPercent  Int      @default(50) @map("ratio_percent")
+  startYear     Int?     @map("start_year")
+  startMonth    Int?     @map("start_month")
+  enabled       Boolean  @default(false)
+  updatedByName String?  @map("updated_by_name")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("option_sales_split_rule")
+}
+
 // ─── Manual Expense Entry (本部一括経費の手動入力) ──────────
 //
 // 電気代・水道代・家賃など、本部で一括契約・支払いされ各店の PayPay 銀行 CSV

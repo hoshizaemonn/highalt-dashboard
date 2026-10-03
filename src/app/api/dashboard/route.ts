@@ -13,6 +13,7 @@ import {
   getEffectiveStoreFilter,
 } from "@/lib/auth";
 import { trialDateMonthWhere } from "@/lib/csv-utils";
+import { loadSalesDetailWithSplit, storeFilterPredicate } from "@/lib/option-sales-split-loader";
 import {
   parseSplitRatios,
   expenseRowShareWithCategorySplit,
@@ -415,8 +416,13 @@ export async function GET(request: NextRequest) {
       storeName: storeNameFilter,
     };
 
-    const salesDetailRows = await prisma.salesDetail.findMany({
-      where: commonWhere,
+    // オプション売上の店舗按分（I0345/I0346）を適用。ルール無効時は従来のクエリ結果そのまま。
+    const sdStoreMatch = storeFilterPredicate(storeNameFilter);
+    const { rows: salesDetailRows } = await loadSalesDetailWithSplit({
+      years: [year],
+      month,
+      base: prisma.salesDetail.findMany({ where: commonWhere }),
+      keep: (r) => sdStoreMatch(r.storeName),
     });
 
     const revenueRows = await prisma.revenueData.findMany({
@@ -828,10 +834,15 @@ export async function GET(request: NextRequest) {
           month: m,
           ...(store && { storeName: storeNameFilter }),
         };
-        const sd = await prisma.salesDetail.aggregate({
-          _sum: { amount: true },
-          where: cw,
+        // 按分込みの売上明細合計（ルール無効時は従来の aggregate と同値）
+        const sdMatch = store ? storeFilterPredicate(storeNameFilter) : () => true;
+        const sdRowsMonth = await loadSalesDetailWithSplit({
+          years: [y],
+          month: m,
+          base: prisma.salesDetail.findMany({ where: cw }),
+          keep: (r) => sdMatch(r.storeName),
         });
+        const sd = { _sum: { amount: sdRowsMonth.rows.reduce((s, r) => s + r.amount, 0) } };
         const rev = await prisma.revenueData.aggregate({
           _sum: { amount: true },
           where: cw,

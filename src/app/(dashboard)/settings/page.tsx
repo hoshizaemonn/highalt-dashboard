@@ -6,11 +6,26 @@ import OverridesTab from "./components/OverridesTab";
 import ExpenseRulesTab from "./components/ExpenseRulesTab";
 import AmazonMasterTab from "./components/AmazonMasterTab";
 import UsersTab from "./components/UsersTab";
+import OptionSplitTab from "./components/OptionSplitTab";
 import StoreNamesTab from "./components/StoreNamesTab";
 import ManualExpenseTab from "./components/ManualExpenseTab";
 import ManualPayrollTab from "./components/ManualPayrollTab";
 
 // ─── Helper: get session role from cookie (lightweight) ─────────────
+
+// DB上の生ロール（manager を含む）。按分など「本当のadminのみ」の画面判定に使う
+function useRawRole() {
+  const [rawRole, setRawRole] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.rawRole) setRawRole(d.rawRole);
+      })
+      .catch(() => {});
+  }, []);
+  return rawRole;
+}
 
 function useSessionRole() {
   const [role, setRole] = useState<string>("store_manager");
@@ -41,6 +56,7 @@ const TABS = [
   { key: "manual-expense", label: "本部一括経費" },
   { key: "manual-payroll", label: "手動人件費" },
   { key: "users", label: "ユーザー管理" },
+  { key: "option-split", label: "オプション売上按分" },
   { key: "store-names", label: "店舗名管理" },
   { key: "overrides", label: "従業員→店舗マッピング" },
 ] as const;
@@ -56,12 +72,15 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("expense-rules");
 
   // 店舗名管理 / 本部一括経費 / ユーザー管理は admin のみ表示
+  // オプション按分は生ロール(rawRole)が admin のみ表示（manager は role 上 admin に正規化されるため別判定）
+  const rawRole = useRawRole();
   const visibleTabs =
     role === "admin"
-      ? TABS
+      ? TABS.filter((t) => t.key !== "option-split" || rawRole === "admin")
       : TABS.filter(
           (t) =>
             t.key !== "users" &&
+            t.key !== "option-split" &&
             t.key !== "store-names" &&
             t.key !== "manual-expense" &&
             t.key !== "manual-payroll",
@@ -105,6 +124,7 @@ export default function SettingsPage() {
           <ManualPayrollTab />
         )}
         {activeTab === "users" && role === "admin" && <UsersTab />}
+        {activeTab === "option-split" && rawRole === "admin" && <OptionSplitTab />}
         {activeTab === "store-names" && role === "admin" && <StoreNamesTab />}
       </div>
     </div>

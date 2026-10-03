@@ -29,6 +29,7 @@ import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
 import { signupsForMonth } from "@/lib/signup-count";
+import { loadSalesDetailWithSplit, storeFilterPredicate } from "@/lib/option-sales-split-loader";
 
 const CACHE_TTL_MS = 30_000; // 30秒
 
@@ -176,6 +177,7 @@ export async function GET(request: NextRequest) {
       notHqOrHidden,
     );
     const storeWhere = { storeName: storeNameFilter };
+    const annualSdMatch = storeFilterPredicate(storeNameFilter);
 
     // 高速化: 独立した取得を並列化。ただしSupabaseプール(connection_limit=5)を
     // 圧迫しないよう、5クエリ並列のチャンクで分割実行（5並列ユーザー時の他リクエストへの
@@ -221,7 +223,7 @@ export async function GET(request: NextRequest) {
           ],
         },
       }),
-      prisma.salesDetail.findMany({ where: { year: { in: years }, ...storeWhere } }),
+      loadSalesDetailWithSplit({ years, base: prisma.salesDetail.findMany({ where: { year: { in: years }, ...storeWhere } }), keep: (r) => annualSdMatch(r.storeName) }).then((x) => x.rows),
       prisma.revenueData.findMany({ where: { year: { in: years }, ...storeWhere } }),
       prisma.squareSales.findMany({ where: { year: { in: years }, ...storeWhere } }),
     ]);
@@ -810,7 +812,7 @@ export async function GET(request: NextRequest) {
           ],
         },
       }),
-      prisma.salesDetail.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
+      loadSalesDetailWithSplit({ years: prevYears, base: prisma.salesDetail.findMany({ where: { year: { in: prevYears }, ...storeWhere } }), keep: (r) => annualSdMatch(r.storeName) }).then((x) => x.rows),
       prisma.revenueData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
       prisma.squareSales.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
       // Squareアイテム別売上（松尾さん指摘 2026-09-24: 8期にも実際には存在し、

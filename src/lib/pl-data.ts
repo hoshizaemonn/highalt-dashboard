@@ -3,6 +3,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { HQ_STORE } from "@/lib/constants";
+import { loadSalesDetailWithSplit, storeFilterPredicate } from "@/lib/option-sales-split-loader";
 import { toFiscalIndex, type PlMonthlyData } from "@/lib/pl-xlsx";
 import {
   singleStoreShare,
@@ -40,6 +41,7 @@ export async function aggregatePlForFiscalYear(
     })
   ).map((r) => r.storeName);
   const notHqOrHidden = { notIn: [HQ_STORE, ...hiddenStores] };
+  const plSdMatch = storeFilterPredicate(store ? store : notHqOrHidden);
 
   const [
     allPayroll,
@@ -82,12 +84,16 @@ export async function aggregatePlForFiscalYear(
         ],
       },
     }),
-    prisma.salesDetail.findMany({
-      where: {
-        year: { in: years },
-        ...(store ? { storeName: store } : { storeName: notHqOrHidden }),
-      },
-    }),
+    loadSalesDetailWithSplit({
+      years,
+      base: prisma.salesDetail.findMany({
+        where: {
+          year: { in: years },
+          ...(store ? { storeName: store } : { storeName: notHqOrHidden }),
+        },
+      }),
+      keep: (r) => plSdMatch(r.storeName),
+    }).then((x) => x.rows),
     prisma.revenueData.findMany({
       where: {
         year: { in: years },

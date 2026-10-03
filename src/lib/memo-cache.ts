@@ -38,3 +38,19 @@ export async function memoCache<T>(
   }
   return value;
 }
+
+/**
+ * 指定プレフィックスのキャッシュを即時削除する（設定変更の反映用）。
+ * 例: 按分ルール保存時に "dashboard:" "annual:" "storeCompare:" を消す。
+ * 同一インスタンス内のみ有効。他インスタンスは ttlMs 以内に自然失効する。
+ */
+export function memoCacheDeletePrefix(prefix: string): number {
+  let n = 0;
+  for (const k of [...store.keys()]) {
+    if (k.startsWith(prefix)) {
+      store.delete(k);
+      n += 1;
+    }
+  }
+  return n;
+}
