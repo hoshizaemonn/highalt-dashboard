@@ -175,6 +175,10 @@ export interface DashboardData {
     total_members: number;
     /** 体験者数（店長手動追記） */
     trial_count?: number;
+    /** 体験シート由来の件数（0 = 体験シートなし）。体験入会率の分母 */
+    trial_sheet_count?: number;
+    /** 体験シートのうち 即日入会 + 後日入会。体験入会率の分子 */
+    trial_sheet_joined_count?: number;
   } | null;
   budget: Record<string, number>;
   /** 前月の合計KPI（KPIカードの前月比表示に使用、データなしの場合 null） */

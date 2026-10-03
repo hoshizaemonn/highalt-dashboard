@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatTrialJoinRate } from "@/lib/trial-join-rate";
 import {
   COLORS,
   PIE_COLORS,
@@ -263,6 +264,15 @@ export function EditableMemberSection({
             color={COLORS.green}
             help="全店舗合算の新規入会数 ÷ 体験者数。"
           />
+          <KPICard
+            title="体験入会率"
+            value={formatTrialJoinRate({
+              sheetCount: data?.trial_sheet_count ?? 0,
+              joinedCount: data?.trial_sheet_joined_count ?? 0,
+            })}
+            color={COLORS.teal}
+            help="全店舗合算。体験シートの体験者のうち、入会した人（即日入会＋後日入会）の割合。体験シートの件数が分母で、検討中・入会しないは入会に数えません。体験シートがない月は「-」。新規入会数（hacomonoの入会日時ベース）÷体験者数の「入会率」とは別の指標です。"
+          />
         </div>
       </>
     );
@@ -331,6 +341,15 @@ export function EditableMemberSection({
           }
           color={COLORS.green}
           help="新規入会数 ÷ 体験者数。体験者数は下部「体験者数」欄の値（自動算出または手動入力）を使用。"
+        />
+        <KPICard
+          title="体験入会率"
+          value={formatTrialJoinRate({
+            sheetCount: data?.trial_sheet_count ?? 0,
+            joinedCount: data?.trial_sheet_joined_count ?? 0,
+          })}
+          color={COLORS.teal}
+          help="体験シートの体験者のうち、入会した人（即日入会＋後日入会）の割合。体験シートの件数が分母で、検討中・入会しないは入会に数えません。体験シートがない月は「-」。新規入会数（hacomonoの入会日時ベース）÷体験者数の「入会率」とは別の指標です。"
         />
       </div>
 

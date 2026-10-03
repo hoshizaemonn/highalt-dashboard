@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, effectiveStoreScope } from "@/lib/auth";
 import { trialDateMonthWhere } from "@/lib/csv-utils";
+import { summarizeTrialJoin } from "@/lib/trial-join-rate";
 
 /**
  * 店長手動追記（坪井さん要望）
@@ -56,9 +57,12 @@ export async function GET(request: NextRequest) {
 
   // 体験シート取込データ（山本様要望 2026-09-20〜）。/api/dashboard と同じ優先順位
   // （体験シート実データ ＞ 店長手動追記 ＞ hacomono自動算出）で実効値を算出する。
-  const trialSheetCount = await prisma.trialSheetEntry.count({
+  const trialSheetRows = await prisma.trialSheetEntry.findMany({
     where: { year, month, storeName: store },
+    select: { storeName: true, resultType: true },
   });
+  const trialSheetCount = trialSheetRows.length;
+  const trialJoin = summarizeTrialJoin(trialSheetRows);
   const manualTrialCount = entry?.trialCount ?? 0;
   const effectiveTrialCount =
     trialSheetCount > 0
@@ -78,6 +82,7 @@ export async function GET(request: NextRequest) {
     store,
     trial_count: manualTrialCount,
     trial_sheet_count: trialSheetCount,
+    trial_sheet_joined_count: trialJoin.joinedCount,
     effective_trial_count: effectiveTrialCount,
     auto_trial_count: autoTrialCount,
     trial_referral_count: entry?.trialReferralCount ?? 0,
