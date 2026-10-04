@@ -321,6 +321,9 @@ model SquareItemSales {
 model OptionSalesSplitRule {
   id            Int      @id @default(autoincrement())
   productCode   String   @unique @map("product_code")
+  // 摘要に含まれる商品名（画面で入力）。空なら productCode の hacomono 商品名（PS001）で照合する。
+  // 照合は全角/半角・空白・英字の大小を無視する。
+  matchName     String?  @map("match_name")
   targetStore   String   @map("target_store")
   ratioPercent  Int      @default(50) @map("ratio_percent")
   startYear     Int?     @map("start_year")

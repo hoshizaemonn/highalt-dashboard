@@ -6,6 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { memoCache } from "@/lib/memo-cache";
 import {
   applyOptionSalesSplit,
+  descriptionMatchesAny,
+  isRuleUsable,
+  namesForRule,
   summarizeUnsplittable,
   type OptionSplitRule,
   type SalesRowLike,
@@ -13,7 +16,11 @@ import {
   type UnsplittableCount,
 } from "@/lib/option-sales-split";
 
-export const OPTION_SPLIT_CODES = ["I0345", "I0346"] as const;
+// I0345 / I0346: hacomono の商品（HYROXオプション 月額費 / 月4回 初月額費）。商品名は PS001 から取得。
+// NAME1: 商品コードに依らず、画面で入力した商品名（摘要に含まれる名前）で指定する枠（例: 「HYROXオプション下北沢(月4回)」）。
+export const OPTION_SPLIT_CODES = ["I0345", "I0346", "NAME1"] as const;
+/** 按分の開始年月の下限（この月より前の実績は動かさない） */
+export const OPTION_SPLIT_MIN_START = { year: 2026, month: 10 } as const;
 export const OPTION_SPLIT_CACHE_PREFIX = "optionSplit:";
 const CONTEXT_TTL_MS = 5 * 60 * 1000;
 
@@ -38,6 +45,7 @@ export async function loadOptionSplitRules(): Promise<OptionSplitRule[]> {
   });
   return rows.map((r) => ({
     productCode: r.productCode,
+    matchName: r.matchName,
     targetStore: r.targetStore,
     ratioPercent: r.ratioPercent,
     startYear: r.startYear,
@@ -79,18 +87,23 @@ export async function loadSalesDetailWithSplit<T extends SalesRowLike>(opts: {
   if (!ctx.rules.some((r) => r.enabled)) {
     return { rows: baseRows, stats: null };
   }
-  const names = Object.values(ctx.namesByCode).flat();
+  const usable = ctx.rules.filter(isRuleUsable);
+  const names = [...new Set(usable.flatMap((r) => namesForRule(r, ctx.namesByCode)).filter(Boolean))];
   if (names.length === 0) {
     return { rows: baseRows, stats: null };
   }
 
-  // 按分先店舗の行（別店舗の所属行）を取り込むため、対象商品の摘要を全店舗から読む
-  const extra = (await prisma.salesDetail.findMany({
-    where: {
-      year: { in: opts.years },
-      OR: names.map((n) => ({ description: { contains: n } })),
-    },
-  })) as unknown as T[];
+  // 按分先店舗の行（別店舗の所属行）を取り込む。商品名は全角/半角・空白の違いを無視して照合したいので、
+  // DB側ではなく、ルールの開始月以降の売上明細を読んでメモリ上で照合する（開始前の月は按分しないため読まない）。
+  const startKey = Math.min(...usable.map((r) => (r.startYear as number) * 12 + (r.startMonth as number)));
+  const monthFilters = opts.years.flatMap((y) => {
+    if (y * 12 + 12 < startKey) return [];
+    return y * 12 + 1 >= startKey ? [{ year: y }] : [{ year: y, month: { gte: startKey - y * 12 } }];
+  });
+  const candidates = monthFilters.length
+    ? ((await prisma.salesDetail.findMany({ where: { OR: monthFilters } })) as unknown as T[])
+    : [];
+  const extra = candidates.filter((r) => descriptionMatchesAny(r.description ?? "", names));
 
   const seen = new Set<number>();
   const merged: T[] = [];
@@ -115,14 +128,14 @@ export async function loadSalesDetailWithSplit<T extends SalesRowLike>(opts: {
  * 読み取りのみ。ルールの有効・無効に関係なく、対象商品を含む未分割行を数える。
  */
 export async function loadUnsplittableCounts(): Promise<UnsplittableCount[]> {
-  const namesByCode = await loadOptionProductNames();
-  const names = Object.values(namesByCode).flat();
-  if (names.length === 0) return [];
+  const [namesByCode, rules] = await Promise.all([loadOptionProductNames(), loadOptionSplitRules()]);
+  const { year: y0, month: m0 } = OPTION_SPLIT_MIN_START;
+  // 開始の下限（2026年10月）以降だけを対象にする（それ以前は按分しないため）
   const rows = await prisma.salesDetail.findMany({
-    where: { OR: names.map((n) => ({ description: { contains: n } })) },
+    where: { OR: [{ year: y0, month: { gte: m0 } }, { year: { gt: y0 } }] },
     select: { year: true, month: true, storeName: true, description: true },
   });
-  return summarizeUnsplittable(rows, namesByCode);
+  return summarizeUnsplittable(rows, namesByCode, rules);
 }
 
 /** Prisma の storeName 条件（文字列 / notIn / in）と同じ意味の JS 述語 */

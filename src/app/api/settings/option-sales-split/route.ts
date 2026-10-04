@@ -44,7 +44,8 @@ export async function GET() {
       const name = namesByCode[code]?.[0] ?? null;
       return {
         productCode: code,
-        productName: name,
+        productName: code === "NAME1" ? "商品名で指定（画面で入力した商品名で照合）" : name,
+        matchName: r?.matchName ?? "",
         targetStore: r?.targetStore ?? "",
         ratioPercent: r?.ratioPercent ?? 50,
         startYear: r?.startYear ?? null,
@@ -72,7 +73,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const body = await request.json();
-    const { productCode, targetStore, ratioPercent, startYear, startMonth, enabled } = body ?? {};
+    const { productCode, targetStore, ratioPercent, startYear, startMonth, enabled, matchName } = body ?? {};
 
     if (!(OPTION_SPLIT_CODES as readonly string[]).includes(productCode)) {
       return NextResponse.json({ error: "対象外の商品コードです" }, { status: 400 });
@@ -101,7 +102,18 @@ export async function PUT(request: NextRequest) {
     if (target && !(STORES as readonly string[]).includes(target)) {
       return NextResponse.json({ error: "按分先の店舗が不正です" }, { status: 400 });
     }
+    // 商品名（摘要に含まれる名前）。空なら hacomono の商品名（PS001）で照合する。照合は全角/半角・空白の違いを無視する。
+    const mn = typeof matchName === "string" ? matchName.trim() : "";
+    if (mn.length > 100 || /[\u0000-\u001f]/.test(mn)) {
+      return NextResponse.json({ error: "商品名は100文字以内で、改行などを含めないでください" }, { status: 400 });
+    }
     const isEnabled = enabled === true;
+    if (isEnabled && productCode === "NAME1" && !mn) {
+      return NextResponse.json(
+        { error: "「商品名で指定」のルールを有効にするには、商品名の入力が必要です" },
+        { status: 400 },
+      );
+    }
     if (isEnabled && (!target || sy == null || sm == null)) {
       return NextResponse.json(
         { error: "有効化するには按分先店舗と開始年月の指定が必要です" },
@@ -110,6 +122,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const data = {
+      matchName: mn || null,
       targetStore: target,
       ratioPercent: ratio,
       startYear: sy,

@@ -9,6 +9,8 @@ import { useState, useEffect, useCallback } from "react";
 interface Item {
   productCode: string;
   productName: string | null;
+  /** 画面で入力した商品名（摘要に含まれる名前）。空なら hacomono の商品名で照合 */
+  matchName: string;
   targetStore: string;
   ratioPercent: number;
   startYear: number | null;
@@ -92,6 +94,7 @@ export default function OptionSplitTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productCode: code,
+          matchName: d.matchName,
           targetStore: d.targetStore,
           ratioPercent: d.ratioPercent,
           startYear: d.startYear,
@@ -169,6 +172,27 @@ export default function OptionSplitTab() {
               >
                 {item.enabled ? "有効" : "無効"}
               </span>
+            </div>
+            <div className="mb-3">
+              <label className="flex flex-wrap items-center gap-2 text-sm">
+                商品名（売上の摘要に含まれる名前）
+                <input
+                  type="text"
+                  value={d.matchName}
+                  maxLength={100}
+                  placeholder={
+                    item.productCode === "NAME1"
+                      ? "例: HYROXオプション下北沢(月4回)"
+                      : "空欄なら hacomono の商品名で照合"
+                  }
+                  onChange={(e) => update(item.productCode, { matchName: e.target.value })}
+                  className="border border-gray-300 rounded px-2 py-1 w-96 max-w-full"
+                />
+              </label>
+              <p className="text-xs text-gray-500 mt-1">
+                全角・半角（括弧・英数）やスペースの違い、英字の大小は区別せずに照合します。商品名の一部（例: 「下北沢(月4回)」）でも一致しますが、
+                他の商品名にも含まれる短い名前にすると、意図しない商品まで按分されます。
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <label className="flex items-center gap-1">
