@@ -9,6 +9,7 @@ import {
   descriptionMatchesAny,
   isRuleUsable,
   namesForRule,
+  parseTargetsJson,
   summarizeUnsplittable,
   type OptionSplitRule,
   type SalesRowLike,
@@ -16,9 +17,9 @@ import {
   type UnsplittableCount,
 } from "@/lib/option-sales-split";
 
-// I0345 / I0346: hacomono の商品（HYROXオプション 月額費 / 月4回 初月額費）。商品名は PS001 から取得。
-// NAME1: 商品コードに依らず、画面で入力した商品名（摘要に含まれる名前）で指定する枠（例: 「HYROXオプション下北沢(月4回)」）。
-export const OPTION_SPLIT_CODES = ["I0345", "I0346", "NAME1"] as const;
+// 旧形式: 商品名を空にした I0345 / I0346 のルールは、hacomono の商品名（PS001）で照合する（現在は登録なし）。
+// 通常のルールは、画面で入力した商品名（摘要に含まれる名前）で照合し、何件でも追加できる。
+export const LEGACY_PS001_CODES = ["I0345", "I0346"] as const;
 /** 按分の開始年月の下限（この月より前の実績は動かさない） */
 export const OPTION_SPLIT_MIN_START = { year: 2026, month: 10 } as const;
 export const OPTION_SPLIT_CACHE_PREFIX = "optionSplit:";
@@ -29,7 +30,7 @@ export type NamesByCode = Record<string, string[]>;
 /** 対象2商品の商品名（PS001由来）。摘要との照合に使う。 */
 export async function loadOptionProductNames(): Promise<NamesByCode> {
   const products = await prisma.productSales.findMany({
-    where: { productCode: { in: [...OPTION_SPLIT_CODES] } },
+    where: { productCode: { in: [...LEGACY_PS001_CODES] } },
     select: { productCode: true, productName: true },
     distinct: ["productCode", "productName"],
   });
@@ -38,14 +39,13 @@ export async function loadOptionProductNames(): Promise<NamesByCode> {
   return out;
 }
 
-/** 按分ルール一覧（対象2商品のみ） */
+/** 按分ルール一覧（登録順） */
 export async function loadOptionSplitRules(): Promise<OptionSplitRule[]> {
-  const rows = await prisma.optionSalesSplitRule.findMany({
-    where: { productCode: { in: [...OPTION_SPLIT_CODES] } },
-  });
+  const rows = await prisma.optionSalesSplitRule.findMany({ orderBy: { id: "asc" } });
   return rows.map((r) => ({
     productCode: r.productCode,
     matchName: r.matchName,
+    targets: parseTargetsJson(r.targets),
     targetStore: r.targetStore,
     ratioPercent: r.ratioPercent,
     startYear: r.startYear,

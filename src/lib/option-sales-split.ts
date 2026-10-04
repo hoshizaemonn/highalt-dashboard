@@ -12,10 +12,19 @@
 //
 // 依存を持たない純粋関数として書く（Node の型ストリップで単体テスト可能にするため）。
 
+/** 按分先（店舗と比率%）。所属店舗の売上のうち、この店舗へ付け替える割合 */
+export interface SplitTarget {
+  store: string;
+  ratio: number;
+}
+
 export interface OptionSplitRule {
+  /** ルールの識別子（自動採番の文字列）。I0345/I0346 は旧形式（空の商品名なら hacomono の商品名で照合） */
   productCode: string;
   /** 摘要に含まれる商品名（画面で入力）。空なら productCode の hacomono 商品名（PS001）を使う */
   matchName?: string | null;
+  /** 按分先（複数可）。無ければ targetStore / ratioPercent（旧形式の1件）を使う */
+  targets?: SplitTarget[] | null;
   targetStore: string;
   ratioPercent: number;
   startYear: number | null;
@@ -46,8 +55,47 @@ export interface SplitStats {
 export function isRuleUsable(rule: OptionSplitRule): boolean {
   if (!rule.enabled) return false;
   if (rule.startYear == null || rule.startMonth == null) return false;
-  if (!rule.targetStore) return false;
-  return Number.isInteger(rule.ratioPercent) && rule.ratioPercent > 0 && rule.ratioPercent <= 100;
+  return validateTargets(ruleTargets(rule)) === null;
+}
+
+/** DBに保存した按分先のJSON文字列を読む。壊れていたら null（旧形式の1件にフォールバックさせる） */
+export function parseTargetsJson(raw: string | null | undefined): SplitTarget[] | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    if (!Array.isArray(v)) return null;
+    const out: SplitTarget[] = [];
+    for (const x of v) {
+      if (!x || typeof x.store !== "string" || typeof x.ratio !== "number") return null;
+      out.push({ store: x.store, ratio: x.ratio });
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/** ルールの按分先（targets があればそれ、無ければ旧形式の targetStore / ratioPercent の1件） */
+export function ruleTargets(rule: OptionSplitRule): SplitTarget[] {
+  const t = (rule.targets ?? []).filter((x) => x && x.store);
+  if (t.length > 0) return t;
+  return rule.targetStore ? [{ store: rule.targetStore, ratio: rule.ratioPercent }] : [];
+}
+
+/** 按分先の検証。問題があれば理由（日本語）、問題なければ null */
+export function validateTargets(targets: SplitTarget[]): string | null {
+  if (targets.length === 0) return "按分先の店舗を1つ以上指定してください";
+  const seen = new Set<string>();
+  let sum = 0;
+  for (const t of targets) {
+    if (!t.store) return "按分先の店舗が未選択です";
+    if (seen.has(t.store)) return `按分先の店舗が重複しています（${t.store}）`;
+    seen.add(t.store);
+    if (!Number.isInteger(t.ratio) || t.ratio < 1 || t.ratio > 100) return "按分比率は1〜100の整数で指定してください";
+    sum += t.ratio;
+  }
+  if (sum > 100) return `按分比率の合計が100%を超えています（${sum}%）`;
+  return null;
 }
 
 /** ルールが今回の年月に適用されるか */
@@ -79,6 +127,11 @@ export function namesForRule(rule: OptionSplitRule, namesByCode: Record<string, 
   return mn ? [mn] : (namesByCode[rule.productCode] ?? []);
 }
 
+/** 具体性（照合する商品名のうち最長の、正規化後の文字数）。長いほど具体的なルール */
+function specificity(names: string[]): number {
+  return names.reduce((mx, n) => Math.max(mx, normalizeForMatch(n ?? "").length), 0);
+}
+
 /** 売上明細の摘要が「単一商品」か（複数商品が ", " で連結された行は按分対象外） */
 export function isSingleItemDescription(description: string): boolean {
   return !description.includes(", ");
@@ -103,13 +156,23 @@ export function applyOptionSalesSplit<T extends SalesRowLike>(
   let syntheticSeq = 0;
   for (const row of rows) {
     const desc = row.description ?? "";
-    const rule = activeRules.find(
-      (r) =>
-        descriptionMatchesAny(desc, namesForRule(r, namesByCode)) &&
-        isRuleActiveFor(r, row.year, row.month) &&
-        row.storeName !== r.targetStore,
+    // 一致するルールを集め、「最も具体的な（照合する商品名が長い）1件」だけを適用する。
+    // 同じ長さなら識別子の昇順（DBの返却順に依存しない）。これで、複数のルールが同じ売上に一致しても二重に按分されない。
+    const candidates = activeRules
+      .map((r) => ({ r, names: namesForRule(r, namesByCode) }))
+      .filter(({ r, names }) => descriptionMatchesAny(desc, names) && isRuleActiveFor(r, row.year, row.month));
+    if (candidates.length === 0) {
+      out.push(row);
+      continue;
+    }
+    candidates.sort(
+      (x, y) =>
+        specificity(y.names) - specificity(x.names) || x.r.productCode.localeCompare(y.r.productCode),
     );
-    if (!rule) {
+    const rule = candidates[0].r;
+    // 所属店舗と同じ按分先は動かさない（その分は所属店舗に残る＝二重計上しない）
+    const targets = ruleTargets(rule).filter((t) => t.store !== row.storeName);
+    if (targets.length === 0) {
       out.push(row);
       continue;
     }
@@ -118,18 +181,32 @@ export function applyOptionSalesSplit<T extends SalesRowLike>(
       out.push(row);
       continue;
     }
-    const moved = Math.round((row.amount * rule.ratioPercent) / 100);
-    if (moved === 0) {
+    // 各按分先へ「元の金額 × 比率」を移す。端数の丸めで移動合計が元の金額を超えないよう、残りを上限にする。
+    // 返金（負の金額）も符号を保って同じ比率で分ける。
+    const sign = row.amount < 0 ? -1 : 1;
+    let remaining = Math.abs(row.amount);
+    const moves: Array<{ store: string; amount: number }> = [];
+    for (const t of targets) {
+      const m = Math.min(remaining, Math.round((Math.abs(row.amount) * t.ratio) / 100));
+      if (m > 0) {
+        moves.push({ store: t.store, amount: sign * m });
+        remaining -= m;
+      }
+    }
+    if (moves.length === 0) {
       out.push(row);
       continue;
     }
+    const movedTotal = moves.reduce((acc, m) => acc + m.amount, 0);
     stats.split += 1;
-    stats.movedTotal += moved;
+    stats.movedTotal += movedTotal;
     // 所属店舗側: 付け替え分を差し引く
-    out.push({ ...row, amount: row.amount - moved });
+    out.push({ ...row, amount: row.amount - movedTotal });
     // 按分先側: 付け替え分を加算（合成行。id は元行と衝突しない負の値）
-    syntheticSeq += 1;
-    out.push({ ...row, id: -syntheticSeq, storeName: rule.targetStore, amount: moved });
+    for (const m of moves) {
+      syntheticSeq += 1;
+      out.push({ ...row, id: -syntheticSeq, storeName: m.store, amount: m.amount });
+    }
   }
   return { rows: out, stats };
 }
