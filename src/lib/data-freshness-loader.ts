@@ -12,7 +12,12 @@ import {
 // ジョブが緑でも、売上や取込記録が古ければ stale になる。
 
 const DAILY_DAYS = 2; // 2日以上更新が無ければ警告（定時実行が1回抜けた時点で赤）
-const TRIAL_SHEET_STORES = ["巣鴨", "中目黒", "祖師ヶ谷大蔵", "下北沢"]; // 体験シート連携の対象4店舗
+const TRIAL_SHEET_STORES = ["巣鴨", "中目黒", "祖師ヶ谷大蔵", "下北沢"]; // 体験シートの自動取込が稼働中の4店舗
+// 2026-10-04 に自動取込の対象へ追加した店舗。記入がまだ無い間は取込が発生しないため、
+// 「自動取込で1回でも成功した」店舗だけを判定対象にする（それまでは「更新なし」で赤にしない）。
+// 初回の自動取込が成功した後は、上の4店舗と同じに扱う。
+const TRIAL_SHEET_NEW_STORES = ["東日本橋", "春日", "船橋"];
+const AUTO_IMPORT_USER_PREFIX = "自動取込";
 
 const HACOMONO_IMPORTS: { type: string; label: string }[] = [
   { type: "hacomono_pl001", label: "売上一覧（PL001）取込" },
@@ -69,7 +74,16 @@ export async function loadDataFreshness(now: Date = new Date()): Promise<{ gener
       );
     }
   }
-  for (const store of TRIAL_SHEET_STORES) {
+  const autoTrial = await prisma.uploadLog.groupBy({
+    by: ["storeName"],
+    where: { dataType: "trial_sheet", userName: { startsWith: AUTO_IMPORT_USER_PREFIX }, storeName: { in: TRIAL_SHEET_NEW_STORES } },
+    _count: { _all: true },
+  });
+  const trialStores = [
+    ...TRIAL_SHEET_STORES,
+    ...TRIAL_SHEET_NEW_STORES.filter((s) => autoTrial.some((a) => a.storeName === s && a._count._all > 0)),
+  ];
+  for (const store of trialStores) {
     items.push(
       judgeByDate(
         { key: "trial_sheet", label: "体験シート取込", store, thresholdDays: DAILY_DAYS, basis: "最後に取り込まれた日" },
