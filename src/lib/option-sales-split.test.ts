@@ -2,7 +2,7 @@
 // 実行: node --experimental-strip-types src/lib/option-sales-split.test.ts
 // 保存則（総額・カテゴリ×月・店舗合計）と、無効/開始前/同店舗/複数商品行で変更しないことを検証する。
 // @ts-expect-error node --experimental-strip-types で直接実行するため .ts 拡張子が必要
-import { applyOptionSalesSplit, isRuleActiveFor, summarizeUnsplittable, normalizeForMatch, descriptionMatchesAny, type OptionSplitRule, type SalesRowLike } from "./option-sales-split.ts";
+import { validateTargets, parseTargetsJson, applyOptionSalesSplit, isRuleActiveFor, summarizeUnsplittable, normalizeForMatch, descriptionMatchesAny, type OptionSplitRule, type SalesRowLike } from "./option-sales-split.ts";
 import assert from "node:assert/strict";
 
 const NAMES = { I0345: ["HYROXオプション 月額費"], I0346: ["HYROXオプション（月4回） 初月額費"] };
@@ -152,6 +152,41 @@ const byStore = (rs: SalesRowLike[]) => rs.reduce<Record<string, number>>((m, r)
   // 未分割件数: 画面入力の商品名（括弧違い）でも数える
   const un = summarizeUnsplittable([{ year: 2026, month: 10, storeName: "春日", description: "HYROXオプション下北沢（月4回）x1, 事務手数料x1" }], NAMES2, [ruleN()]);
   assert.deepEqual(un, [{ year: 2026, month: 10, storeName: "春日", count: 1 }]);
+}
+
+// --- 動的ルール: 複数按分先・最も具体的なルール1件のみ・順序非依存・検証 ---
+{
+  const mk = (code: string, name: string, targets: { store: string; ratio: number }[]): OptionSplitRule => ({
+    productCode: code, matchName: name, targets, targetStore: targets[0].store, ratioPercent: targets[0].ratio,
+    startYear: 2026, startMonth: 10, enabled: true,
+  });
+  const base = row({ id: 1, description: "HYROXオプション下北沢(月4回)x1", amount: 10000 });
+  // 複数按分先: 春日の10,000円 -> 下北沢30% / 中目黒20% / 春日に50%残る。総額不変
+  const multi = applyOptionSalesSplit([base], [mk("R-a", "HYROXオプション下北沢", [{ store: "下北沢", ratio: 30 }, { store: "中目黒", ratio: 20 }])], {});
+  assert.deepEqual(byStore(multi.rows), { 春日: 5000, 下北沢: 3000, 中目黒: 2000 });
+  assert.equal(sum(multi.rows), 10000);
+  // 重複一致: 短い名前と長い名前の両方に一致 -> 長い方1件だけ（二重按分しない）。ルール順を入れ替えても同じ結果
+  const broad = mk("R-b", "HYROXオプション", [{ store: "中目黒", ratio: 100 }]);
+  const narrow = mk("R-a", "HYROXオプション下北沢(月4回)", [{ store: "下北沢", ratio: 50 }]);
+  const r1_ = applyOptionSalesSplit([base], [broad, narrow], {});
+  const r2_ = applyOptionSalesSplit([base], [narrow, broad], {});
+  assert.deepEqual(byStore(r1_.rows), { 春日: 5000, 下北沢: 5000 });
+  assert.deepEqual(byStore(r2_.rows), byStore(r1_.rows));
+  assert.equal(sum(r1_.rows), 10000);
+  // 按分先が所属店舗と同じ場合はその分を動かさない
+  const self = applyOptionSalesSplit([base], [mk("R-c", "HYROXオプション下北沢", [{ store: "春日", ratio: 40 }, { store: "下北沢", ratio: 10 }])], {});
+  assert.deepEqual(byStore(self.rows), { 春日: 9000, 下北沢: 1000 });
+  // 返金（負数）も符号を保って按分
+  const neg = applyOptionSalesSplit([row({ id: 2, description: "HYROXオプション下北沢(月4回)x1", amount: -10000 })], [mk("R-a", "HYROXオプション下北沢", [{ store: "下北沢", ratio: 50 }])], {});
+  assert.deepEqual(byStore(neg.rows), { 春日: -5000, 下北沢: -5000 });
+  // 検証
+  assert.equal(validateTargets([{ store: "下北沢", ratio: 60 }, { store: "中目黒", ratio: 50 }]) !== null, true); // 合計100超
+  assert.equal(validateTargets([{ store: "下北沢", ratio: 50 }, { store: "下北沢", ratio: 10 }]) !== null, true); // 重複店舗
+  assert.equal(validateTargets([{ store: "", ratio: 50 }]) !== null, true);
+  assert.equal(validateTargets([{ store: "下北沢", ratio: 0 }]) !== null, true);
+  assert.equal(validateTargets([{ store: "下北沢", ratio: 70 }, { store: "中目黒", ratio: 30 }]), null);
+  assert.equal(parseTargetsJson("not json"), null);
+  assert.deepEqual(parseTargetsJson('[{"store":"下北沢","ratio":50}]'), [{ store: "下北沢", ratio: 50 }]);
 }
 
 console.log("ALL TESTS PASSED (incl. unsplittable summary / name normalization)");

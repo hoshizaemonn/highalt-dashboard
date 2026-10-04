@@ -324,6 +324,9 @@ model OptionSalesSplitRule {
   // 摘要に含まれる商品名（画面で入力）。空なら productCode の hacomono 商品名（PS001）で照合する。
   // 照合は全角/半角・空白・英字の大小を無視する。
   matchName     String?  @map("match_name")
+  // 按分先（複数可）のJSON文字列: [{"store":"下北沢","ratio":50}, ...]。無ければ target_store / ratio_percent（1件）を使う。
+  // target_store / ratio_percent は、先頭の按分先を写して常に入れておく（旧コードとの互換）。
+  targets       String?  @map("targets")
   targetStore   String   @map("target_store")
   ratioPercent  Int      @default(50) @map("ratio_percent")
   startYear     Int?     @map("start_year")
