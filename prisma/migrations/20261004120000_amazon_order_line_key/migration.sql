@@ -6,8 +6,10 @@
 ALTER TABLE "amazon_orders" ADD COLUMN "tracking_no" TEXT NOT NULL DEFAULT '',
 ADD COLUMN "line_seq" INTEGER NOT NULL DEFAULT 0;
 
--- DropIndex
-DROP INDEX "amazon_orders_order_id_product_name_key";
+-- DropIndex（本番では旧一意キーが「制約」として存在し、インデックスだけは削除できないため、制約→インデックスの順に両対応で削除する。
+-- どちらの形で作られていても、旧キー（注文番号+商品名）が無くなるという結果は同じ）
+ALTER TABLE "amazon_orders" DROP CONSTRAINT IF EXISTS "amazon_orders_order_id_product_name_key";
+DROP INDEX IF EXISTS "amazon_orders_order_id_product_name_key";
 
 -- CreateIndex
 CREATE UNIQUE INDEX "amazon_orders_order_id_asin_tracking_no_line_seq_key" ON "amazon_orders"("order_id", "asin", "tracking_no", "line_seq");
