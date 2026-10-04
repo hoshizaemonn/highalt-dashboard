@@ -3,59 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { decodeFileBuffer, parseCSV, buildHeaderMap, safeInt } from "@/lib/csv-utils";
-
-const AMAZON_ACCOUNT_USER_MAP: Record<string, string> = {
-  "東日本橋スタジオ": "東日本橋",
-  "春日スタジオ": "春日",
-  "船橋スタジオ": "船橋",
-  "巣鴨スタジオ": "巣鴨",
-  "ハイアルチ祖師ヶ谷大蔵スタジオ": "祖師ヶ谷大蔵",
-  "下北沢スタジオ": "下北沢",
-  "中目黒スタジオ": "中目黒",
-  "東陽町スタジオ": "東陽町",
-  "High Altitude Management株式会社": "本部",
-};
-
-/**
- * Detect store from account_user field using AMAZON_ACCOUNT_USER_MAP.
- */
-function detectStoreFromAccountUser(accountUser: string): string | null {
-  if (!accountUser) return null;
-  const trimmed = accountUser.trim();
-  if (AMAZON_ACCOUNT_USER_MAP[trimmed]) {
-    return AMAZON_ACCOUNT_USER_MAP[trimmed];
-  }
-  // Partial match
-  for (const [key, value] of Object.entries(AMAZON_ACCOUNT_USER_MAP)) {
-    if (trimmed.includes(key) || key.includes(trimmed)) {
-      return value;
-    }
-  }
-  return null;
-}
-
-/**
- * Detect store from delivery address.
- */
-function detectStoreFromAddress(address: string): string | null {
-  if (!address) return null;
-  const storeKeywords: Record<string, string> = {
-    "東日本橋": "東日本橋",
-    "春日": "春日",
-    "船橋": "船橋",
-    "巣鴨": "巣鴨",
-    "祖師ヶ谷": "祖師ヶ谷大蔵",
-    "下北沢": "下北沢",
-    "中目黒": "中目黒",
-    "東陽町": "東陽町",
-  };
-  for (const [keyword, store] of Object.entries(storeKeywords)) {
-    if (address.includes(keyword)) {
-      return store;
-    }
-  }
-  return null;
-}
+import {
+  applyAmazonImport,
+  assignLineSeq,
+  parseAmazonOrderRows,
+  planAmazonImport,
+  type AmazonParsedRecord,
+} from "@/lib/amazon-orders";
 
 export async function POST(request: NextRequest) {
   try {
@@ -110,43 +64,22 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Also save to amazon_orders if full order data is provided
-      for (const rec of inputRecords) {
-        if (rec.orderId && rec.productName) {
-          await prisma.amazonOrder.upsert({
-            where: {
-              orderId_productName: {
-                orderId: rec.orderId,
-                productName: rec.productName,
-              },
-            },
-            update: {
-              asin: rec.asin || "",
-              shortName: rec.shortName || "",
-              expenseCategory: rec.expenseCategory || "",
-              amazonCategory: rec.amazonCategory || "",
-            },
-            create: {
-              orderDate: rec.orderDate || null,
-              orderId: rec.orderId,
-              storeName: rec.storeName || null,
-              productName: rec.productName,
-              shortName: rec.shortName || null,
-              amount: rec.amount || 0,
-              orderTotal: rec.orderTotal || 0,
-              paymentDate: rec.paymentDate || null,
-              deliveryAddress: rec.deliveryAddress || null,
-              asin: rec.asin || "",
-              amazonCategory: rec.amazonCategory || "",
-              expenseCategory: rec.expenseCategory || "",
-              quantity: rec.quantity || 1,
-              taxAmount: rec.taxAmount || 0,
-              taxRate: rec.taxRate || "",
-              accountUser: rec.accountUser || "",
-              invoiceNumber: rec.invoiceNumber || "",
-            },
-          });
-        }
+      // 注文データ（orderId・productName つき）が渡された場合は、注文番号ごとに差し替える
+      // （画面からの保存は商品マスタのみで、ここは通らない。API直接利用向け）。
+      const orderRecords: AmazonParsedRecord[] = inputRecords
+        .filter((rec: { orderId?: string; productName?: string }) => rec.orderId && rec.productName)
+        .map((rec: Partial<AmazonParsedRecord>) => ({
+          orderDate: rec.orderDate || "", orderId: rec.orderId || "", storeName: rec.storeName || "",
+          productName: rec.productName || "", shortName: rec.shortName || "", asin: rec.asin || "",
+          amazonCategory: rec.amazonCategory || "", expenseCategory: rec.expenseCategory || "",
+          amount: rec.amount || 0, orderTotal: rec.orderTotal || 0, quantity: rec.quantity || 1,
+          taxAmount: rec.taxAmount || 0, taxRate: rec.taxRate || "", accountUser: rec.accountUser || "",
+          deliveryAddress: rec.deliveryAddress || "", paymentDate: rec.paymentDate || "",
+          invoiceNumber: rec.invoiceNumber || "", trackingNo: rec.trackingNo || "", lineSeq: 0,
+        }));
+      assignLineSeq(orderRecords);
+      if (orderRecords.length > 0) {
+        await prisma.$transaction((tx) => applyAmazonImport(tx, orderRecords));
       }
 
       await prisma.uploadLog.create({
@@ -193,147 +126,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const header = allRows[0];
-    const hmap = buildHeaderMap(header);
-    const dataRows = allRows.slice(1);
-
     // Load existing product master for auto-classification
     const productMaster = await prisma.amazonProductMaster.findMany();
     const masterByAsin = new Map(productMaster.map((p) => [p.asin, p]));
 
-    const getVal = (row: string[], colName: string): string => {
-      const idx = hmap[colName];
-      return idx !== undefined && idx < row.length ? row[idx].trim() : "";
-    };
+    const { records, autoClassified } = parseAmazonOrderRows(allRows, masterByAsin, {
+      buildHeaderMap,
+      safeInt,
+    });
 
-    interface AmazonParsedRecord {
-      orderDate: string;
-      orderId: string;
-      storeName: string;
-      productName: string;
-      shortName: string;
-      asin: string;
-      amazonCategory: string;
-      expenseCategory: string;
-      amount: number;
-      orderTotal: number;
-      quantity: number;
-      taxAmount: number;
-      taxRate: string;
-      accountUser: string;
-      deliveryAddress: string;
-      paymentDate: string;
-      invoiceNumber: string;
-    }
+    // 取込計画（ファイルに含まれる注文番号の既存行の集計と比べる）。書き込みなしの dryRun でもこれを返す。
+    const orderIds = [...new Set(records.filter((r) => r.orderId && r.productName).map((r) => r.orderId))];
+    const grouped = orderIds.length
+      ? await prisma.amazonOrder.groupBy({
+          by: ["orderId"],
+          where: { orderId: { in: orderIds } },
+          _count: { _all: true },
+          _sum: { amount: true },
+        })
+      : [];
+    const plan = planAmazonImport(
+      records,
+      grouped.map((g) => ({ orderId: g.orderId ?? "", lines: g._count._all, total: g._sum.amount ?? 0 })),
+    );
 
-    const records: AmazonParsedRecord[] = [];
-    let autoClassified = 0;
-
-    for (const row of dataRows) {
-      if (row.length < 5) continue;
-
-      const orderDate = getVal(row, "注文日");
-      const orderId = getVal(row, "注文番号");
-      const productName = getVal(row, "商品名");
-      const asin = getVal(row, "ASIN") || getVal(row, "ASIN/ISBN");
-      const amazonCategory = getVal(row, "商品カテゴリー") || getVal(row, "カテゴリー");
-      const accountUser = getVal(row, "アカウントユーザー") || getVal(row, "注文者");
-      const deliveryAddress = getVal(row, "配送先住所") || getVal(row, "届け先住所");
-      const paymentDate = getVal(row, "支払い確定日") || getVal(row, "支払い日");
-      const invoiceNumber = getVal(row, "適格請求書（または支払い明細書）番号") || getVal(row, "請求書番号");
-      const quantity = safeInt(getVal(row, "商品の数量") || getVal(row, "数量")) || 1;
-      const amount = safeInt(getVal(row, "商品および配送料の合計（税込）") || getVal(row, "商品小計"));
-      const orderTotal = safeInt(getVal(row, "注文の合計（税込）") || getVal(row, "合計"));
-      const taxAmount = safeInt(getVal(row, "商品の小計（消費税）") || getVal(row, "税額"));
-      const taxRate = getVal(row, "商品の小計（税率）") || getVal(row, "税率");
-
-      // Detect store
-      let storeName =
-        detectStoreFromAccountUser(accountUser) ||
-        detectStoreFromAddress(deliveryAddress) ||
-        "";
-
-      // Short name: truncate product name to 30 chars (matching Streamlit version)
-      const cleaned = productName.replace(/\s*[\[【（(].*?[\]】）)]/g, "").trim();
-      const shortName =
-        cleaned.length > 30
-          ? cleaned.substring(0, 30) + "…"
-          : cleaned;
-
-      // Auto-classify from product master
-      let expenseCategory = "";
-      const master = masterByAsin.get(asin);
-      if (master && master.expenseCategory) {
-        expenseCategory = master.expenseCategory;
-        autoClassified++;
-      }
-
-      records.push({
-        orderDate,
-        orderId,
-        storeName,
-        productName,
-        shortName,
-        asin,
-        amazonCategory,
-        expenseCategory,
-        amount,
-        orderTotal,
-        quantity,
-        taxAmount,
-        taxRate,
-        accountUser,
-        deliveryAddress,
-        paymentDate,
-        invoiceNumber,
+    if (formData.get("dryRun") === "true") {
+      // 書き込みなし。個人情報（住所など）を含む records は返さず、集計だけを返す。
+      const { perOrder: _perOrder, ...summary } = plan;
+      void _perOrder;
+      return NextResponse.json({
+        dryRun: true,
+        plan: summary,
+        changedOrders: plan.perOrder.filter((p) => p.status === "changed"),
+        autoClassified,
       });
     }
 
-    // Also save all parsed records to amazon_orders for expense breakdown matching
-    for (const rec of records) {
-      if (rec.orderId && rec.productName) {
-        await prisma.amazonOrder.upsert({
-          where: {
-            orderId_productName: {
-              orderId: rec.orderId,
-              productName: rec.productName,
-            },
-          },
-          update: {
-            asin: rec.asin || "",
-            shortName: rec.shortName || "",
-            storeName: rec.storeName || null,
-            amount: rec.amount || 0,
-            orderTotal: rec.orderTotal || 0,
-            paymentDate: rec.paymentDate || null,
-            amazonCategory: rec.amazonCategory || "",
-          },
-          create: {
-            orderDate: rec.orderDate || null,
-            orderId: rec.orderId,
-            storeName: rec.storeName || null,
-            productName: rec.productName,
-            shortName: rec.shortName || null,
-            amount: rec.amount || 0,
-            orderTotal: rec.orderTotal || 0,
-            paymentDate: rec.paymentDate || null,
-            deliveryAddress: rec.deliveryAddress || null,
-            asin: rec.asin || "",
-            amazonCategory: rec.amazonCategory || "",
-            expenseCategory: rec.expenseCategory || "",
-            quantity: rec.quantity || 1,
-            taxAmount: rec.taxAmount || 0,
-            taxRate: rec.taxRate || "",
-            accountUser: rec.accountUser || "",
-            invoiceNumber: rec.invoiceNumber || "",
-          },
-        });
-      }
-    }
+    // 注文番号ごとに差し替え（その注文の既存行を削除して、新しい行を投入）。他の注文には触れない。
+    const applied = await prisma.$transaction((tx) => applyAmazonImport(tx, records));
 
     return NextResponse.json({
       records,
       autoClassified,
+      import: {
+        orders: applied.orders,
+        deleted: applied.deleted,
+        created: applied.created,
+        warnings: plan.shrunkOrders.length
+          ? [`既存より行数が減った注文が${plan.shrunkOrders.length}件あります（部分的なエクスポートの可能性）`]
+          : [],
+      },
     });
   } catch (error) {
     logError("Amazon upload error:", error);
