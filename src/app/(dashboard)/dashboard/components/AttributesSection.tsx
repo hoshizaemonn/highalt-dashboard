@@ -94,7 +94,9 @@ export function AttributesSection({
       <div className="mt-8">
         <SectionTitle>{title}</SectionTitle>
         <div className="bg-white rounded-lg border shadow-sm p-8 text-center text-gray-400 text-sm">
-          対象データがありません
+          {trialOnly
+            ? "この期間に体験を受けた新規の方が、まだいません（体験日が選択期間に入る会員が0人）"
+            : "対象データがありません"}
         </div>
       </div>
     );

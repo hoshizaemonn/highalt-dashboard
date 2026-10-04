@@ -20,6 +20,10 @@ interface EnqueteData {
   purposes: Record<string, number>;
   frequency: Record<string, number>;
   has_data: boolean;
+  /** 期間に関係なく、店舗（または全体）の累計回答数。0 なら本当に未取込 */
+  all_total?: number;
+  /** 期間に関係なく最新の回答日時 */
+  latest_registered_at?: string | null;
 }
 
 interface Props {
@@ -67,16 +71,32 @@ export function EnqueteSection({ store, year, month, months }: Props) {
   }
 
   if (!data || data.total === 0 || !data.has_data) {
+    // 「未取込」（累計0件）と「この期間は回答なし／回答内容なし」（累計はある）を区別する
+    const imported = (data?.all_total ?? 0) > 0;
+    const periodLabel = months && months.length > 1 ? "選択した期間" : "この月";
     return (
       <div className="mt-8">
         <SectionTitle>アンケート（認知経路・目的・頻度）</SectionTitle>
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-800 text-sm">
-          <p className="font-medium">⚠️ アンケート回答が未取込です</p>
-          <p className="mt-1 text-xs">
-            アップロード画面の「アンケート」タブから hacomono の enquete_answer
-            CSV を取り込むと、ここに認知経路・目的・頻度の構成比が表示されます。
-          </p>
-        </div>
+        {imported ? (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-gray-700 text-sm">
+            <p className="font-medium">{periodLabel}は、集計できるアンケート回答がありません</p>
+            <p className="mt-1 text-xs">
+              {data && data.total > 0
+                ? `${periodLabel}の回答 ${data.total} 件は、認知経路・目的・頻度が未回答のため集計に含まれません。`
+                : `${periodLabel}の回答はまだありません。`}
+              アンケートは毎朝自動で取り込まれています（累計 {numFormat.format(data?.all_total ?? 0)} 件
+              {data?.latest_registered_at ? `・最新の回答 ${data.latest_registered_at.slice(0, 10)}` : ""}）。
+            </p>
+          </div>
+        ) : (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-800 text-sm">
+            <p className="font-medium">⚠️ アンケート回答が未取込です</p>
+            <p className="mt-1 text-xs">
+              この店舗のアンケート回答がまだ取り込まれていません。毎朝の自動取込（hacomono）の実行結果を確認するか、
+              アップロード画面の「アンケート」タブから hacomono の enquete_answer CSV を取り込んでください。
+            </p>
+          </div>
+        )}
       </div>
     );
   }

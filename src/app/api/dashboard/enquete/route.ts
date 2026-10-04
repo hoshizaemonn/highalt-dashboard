@@ -23,7 +23,9 @@ import { requireSession, effectiveStoreScope } from "@/lib/auth";
  *   awareness: { ラベル: 件数, ... }
  *   purposes: { ラベル: 件数, ... }
  *   frequency: { ラベル: 件数, ... }
- *   has_data: 1件でも回答があれば true
+ *   has_data: 選択期間に、認知経路・目的・頻度のいずれかが入った回答が1件でもあれば true
+ *   all_total: 期間に関係なく、その店舗（または全体）の回答の累計件数（0なら本当に未取込）
+ *   latest_registered_at: 期間に関係なく最新の回答日時（hacomono側の登録日時）
  */
 
 /** registeredAt が指定年月に該当するかの Prisma where 条件（"-" / "/" 区切り両対応） */
@@ -108,9 +110,17 @@ export async function GET(request: NextRequest) {
     Object.keys(purposes).length > 0 ||
     Object.keys(frequency).length > 0;
 
+  // 「未取込」と「この期間は回答なし」を区別するため、期間に関係なく店舗の累計と最新回答日を返す（個人情報なし）
+  const [allTotal, latest] = await Promise.all([
+    prisma.enqueteAnswer.count({ where: storeFilter }),
+    prisma.enqueteAnswer.aggregate({ where: storeFilter, _max: { registeredAt: true } }),
+  ]);
+
   return NextResponse.json({
     store: scopedStore ?? null,
     total: rows.length,
+    all_total: allTotal,
+    latest_registered_at: latest._max.registeredAt ?? null,
     awareness,
     purposes,
     frequency,
