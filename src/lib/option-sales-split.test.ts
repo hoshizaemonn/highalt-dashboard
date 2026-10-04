@@ -2,7 +2,7 @@
 // 実行: node --experimental-strip-types src/lib/option-sales-split.test.ts
 // 保存則（総額・カテゴリ×月・店舗合計）と、無効/開始前/同店舗/複数商品行で変更しないことを検証する。
 // @ts-expect-error node --experimental-strip-types で直接実行するため .ts 拡張子が必要
-import { applyOptionSalesSplit, isRuleActiveFor, summarizeUnsplittable, type OptionSplitRule, type SalesRowLike } from "./option-sales-split.ts";
+import { applyOptionSalesSplit, isRuleActiveFor, summarizeUnsplittable, normalizeForMatch, descriptionMatchesAny, type OptionSplitRule, type SalesRowLike } from "./option-sales-split.ts";
 import assert from "node:assert/strict";
 
 const NAMES = { I0345: ["HYROXオプション 月額費"], I0346: ["HYROXオプション（月4回） 初月額費"] };
@@ -111,5 +111,48 @@ const byStore = (rs: SalesRowLike[]) => rs.reduce<Record<string, number>>((m, r)
     { year: 2026, month: 11, storeName: "船橋", count: 1 },
   ]);
 }
-console.log("ALL TESTS PASSED (incl. unsplittable summary)");
+// 12. 商品名の正規化: 全角/半角（括弧・英数）・スペース・英字の大小を無視して照合する
+{
+  const base = normalizeForMatch("HYROXオプション下北沢(月4回)");
+  for (const v of ["HYROXオプション下北沢（月4回）", "ＨＹＲＯＸオプション 下北沢(月4回)", "hyroxオプション　下北沢（月4回）", " HYROX オプション 下北沢 ( 月4回 ) "]) {
+    assert.equal(normalizeForMatch(v), base, v);
+  }
+  assert.notEqual(normalizeForMatch("HYROXオプション（月4回） 初月額費"), base);          // 下北沢が無い別商品は一致しない
+  assert.equal(descriptionMatchesAny("HYROXオプション下北沢（月4回） 月額費 (2026年10月)x1", ["HYROXオプション下北沢(月4回)"]), true);
+  assert.equal(descriptionMatchesAny("HYROXオプション 月額費 (2026年10月)x1", ["HYROXオプション下北沢(月4回)"]), false);
+  assert.equal(descriptionMatchesAny("何でも", [""]), false);                               // 空の商品名は一致しない
+}
+// 13. 画面で入力した商品名のルール: 括弧・スペースの違いに関わらず按分される。PS001の商品名は使わない
+{
+  const NAMES2 = { NAME1: [] as string[], I0345: ["HYROXオプション 月額費"] };
+  const ruleN = (o: Partial<OptionSplitRule> = {}): OptionSplitRule => ({ productCode: "NAME1", matchName: "HYROXオプション下北沢(月4回)", targetStore: "下北沢", ratioPercent: 50, startYear: 2026, startMonth: 10, enabled: true, ...o });
+  const r1 = (id: number, d: string, store = "春日", month = 10): SalesRowLike => ({ id, year: 2026, month, storeName: store, description: d, category: "月会費", amount: 6000 });
+  for (const d of ["HYROXオプション下北沢(月4回) 月額費 (2026年10月)x1", "HYROXオプション下北沢（月4回）x1", "ＨＹＲＯＸオプション 下北沢（月4回） 初月額費x1"]) {
+    const out = applyOptionSalesSplit([r1(1, d)], [ruleN()], NAMES2);
+    assert.equal(out.stats.split, 1, d);
+    assert.deepEqual(byStore(out.rows), { 春日: 3000, 下北沢: 3000 });
+    assert.equal(sum(out.rows), 6000);
+  }
+  // 一致しない商品（下北沢の文字がない既存オプション・別商品）は触らない
+  const keep = [r1(2, "HYROXオプション 月額費 (2026年10月)x1"), r1(3, "HYROXオプション（月4回） 初月額費 (2026年10月)x1"), r1(4, "プレミアムS会員 月会費 (202610)x1")];
+  const o2 = applyOptionSalesSplit(keep, [ruleN()], NAMES2);
+  assert.deepEqual(o2.rows, keep); assert.equal(o2.stats.split, 0);                  // 行は1つも変わらない
+  // 開始月より前（9月）は商品名が一致しても変更しない／所属が按分先（下北沢）なら変更しない／複数商品の行は按分せず件数のみ
+  assert.equal(applyOptionSalesSplit([r1(5, "HYROXオプション下北沢(月4回)x1", "春日", 9)], [ruleN()], NAMES2).stats.split, 0);
+  assert.equal(applyOptionSalesSplit([r1(6, "HYROXオプション下北沢(月4回)x1", "下北沢")], [ruleN()], NAMES2).stats.split, 0);
+  const o3 = applyOptionSalesSplit([r1(7, "HYROXオプション下北沢(月4回)x1, 入会金x1")], [ruleN()], NAMES2);
+  assert.equal(o3.stats.unsplittable, 1); assert.equal(o3.stats.split, 0);
+  // 無効のルールは何もしない
+  const dis = [r1(8, "HYROXオプション下北沢(月4回)x1")];
+  assert.equal(applyOptionSalesSplit(dis, [ruleN({ enabled: false })], NAMES2).rows, dis);
+  // matchName が空なら、従来どおり PS001 の商品名（I0345）で照合
+  const ruleI = (): OptionSplitRule => ({ productCode: "I0345", matchName: "", targetStore: "下北沢", ratioPercent: 50, startYear: 2026, startMonth: 10, enabled: true });
+  assert.equal(applyOptionSalesSplit([r1(9, "HYROXオプション 月額費 (2026年10月)x1")], [ruleI()], NAMES2).stats.split, 1);
+  assert.equal(applyOptionSalesSplit([r1(10, "ＨＹＲＯＸオプション　月額費x1")], [ruleI()], NAMES2).stats.split, 1);   // PS001名も全角/空白の違いを吸収
+  // 未分割件数: 画面入力の商品名（括弧違い）でも数える
+  const un = summarizeUnsplittable([{ year: 2026, month: 10, storeName: "春日", description: "HYROXオプション下北沢（月4回）x1, 事務手数料x1" }], NAMES2, [ruleN()]);
+  assert.deepEqual(un, [{ year: 2026, month: 10, storeName: "春日", count: 1 }]);
+}
+
+console.log("ALL TESTS PASSED (incl. unsplittable summary / name normalization)");
 
