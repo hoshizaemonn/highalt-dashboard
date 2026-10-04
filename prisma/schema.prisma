@@ -432,8 +432,12 @@ model AmazonOrder {
   taxRate         String  @default("") @map("tax_rate")
   accountUser     String  @default("") @map("account_user")
   invoiceNumber   String  @default("") @map("invoice_number")
+  // 行キー: 注文番号 + ASIN + 配送業者の問い合わせ番号 + 同一グループ内の連番。
+  // 旧キー（注文番号 + 商品名）では、同じ注文に同じ商品が複数行あると1行に潰れていた（2026-10 修正）。
+  trackingNo      String  @default("") @map("tracking_no")
+  lineSeq         Int     @default(0) @map("line_seq")
 
-  @@unique([orderId, productName])
+  @@unique([orderId, asin, trackingNo, lineSeq])
   @@map("amazon_orders")
 }
 
