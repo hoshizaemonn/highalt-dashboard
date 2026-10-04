@@ -10,6 +10,7 @@ import OptionSplitTab from "./components/OptionSplitTab";
 import StoreNamesTab from "./components/StoreNamesTab";
 import ManualExpenseTab from "./components/ManualExpenseTab";
 import ManualPayrollTab from "./components/ManualPayrollTab";
+import DataFreshnessTab from "./components/DataFreshnessTab";
 
 // ─── Helper: get session role from cookie (lightweight) ─────────────
 
@@ -59,6 +60,7 @@ const TABS = [
   { key: "option-split", label: "オプション売上按分" },
   { key: "store-names", label: "店舗名管理" },
   { key: "overrides", label: "従業員→店舗マッピング" },
+  { key: "data-freshness", label: "データ更新状況" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -83,7 +85,8 @@ export default function SettingsPage() {
             t.key !== "option-split" &&
             t.key !== "store-names" &&
             t.key !== "manual-expense" &&
-            t.key !== "manual-payroll",
+            t.key !== "manual-payroll" &&
+            t.key !== "data-freshness",
         );
 
   return (
@@ -126,6 +129,7 @@ export default function SettingsPage() {
         {activeTab === "users" && role === "admin" && <UsersTab />}
         {activeTab === "option-split" && rawRole === "admin" && <OptionSplitTab />}
         {activeTab === "store-names" && role === "admin" && <StoreNamesTab />}
+        {activeTab === "data-freshness" && role === "admin" && <DataFreshnessTab />}
       </div>
     </div>
   );
