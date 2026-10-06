@@ -70,6 +70,10 @@ export function BudgetTab({
           msgs.push(
             `${f.name}: ${dst}${dy}販促報告KPI予算 ${data.records}件（${(data.categories || []).join("・")}）`,
           );
+        } else if (data.detected === "member_income") {
+          msgs.push(
+            `${f.name}: ${dst}${dy}会員数・収入算出 ${data.records}件（休会数・退会率のみ。売上・経費の予算は別途『予算書』または『予算実績対比表』のCSVを取り込んでください）`,
+          );
         } else {
           msgs.push(
             `${f.name}: ${dst}${dy}予算実績対比表 ${data.records}件 / ${data.categories?.length || 0}カテゴリ`,

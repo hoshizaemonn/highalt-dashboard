@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireStoreUploadAccess } from "@/lib/auth";
 import { BUDGET_ITEMS, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
-import { decodeFileBuffer, parseCSV, safeInt } from "@/lib/csv-utils";
+import { decodeFileBuffer, parseCSV } from "@/lib/csv-utils";
 import {
   isPromotionReportCsv,
   extractPromotionBudgetRecords,
@@ -15,6 +15,14 @@ import {
   MEMBER_KPI_BUDGET_CATEGORIES,
 } from "@/lib/member-income-budget-parse";
 import { parseBudgetFilename } from "@/lib/budget-filename";
+
+// 決算年度の12ヶ月だけに限定する（暦年単位では前後の年度も消えてしまう）。
+function fiscalBudgetScope(fiscalYear: number) {
+  return [
+    { year: fiscalYear - 1, month: { gte: 10, lte: 12 } },
+    { year: fiscalYear, month: { gte: 1, lte: 9 } },
+  ];
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +41,7 @@ export async function GET(request: NextRequest) {
     if (auth.error) return auth.error;
 
     const count = await prisma.budgetData.count({
-      where: { storeName: store, year: fiscalYear },
+      where: { storeName: store, OR: fiscalBudgetScope(fiscalYear) },
     });
 
     return NextResponse.json({
@@ -128,13 +136,12 @@ export async function POST(request: NextRequest) {
           { status: 400 },
         );
       }
-      const kpiYears = [...new Set(kpiRecords.map((r) => r.year))];
       await prisma.$transaction(async (tx) => {
         // 対象カテゴリ（休会数・退会率）だけをスコープ削除→挿入（売上/経費予算は温存）
         await tx.budgetData.deleteMany({
           where: {
             storeName: store,
-            year: { in: kpiYears },
+            OR: fiscalBudgetScope(fiscalYear),
             category: { in: [...MEMBER_KPI_BUDGET_CATEGORIES] },
           },
         });
@@ -181,12 +188,11 @@ export async function POST(request: NextRequest) {
           { status: 400 },
         );
       }
-      const promoYears = [...new Set(promoRecords.map((r) => r.year))];
       await prisma.$transaction(async (tx) => {
         await tx.budgetData.deleteMany({
           where: {
             storeName: store,
-            year: { in: promoYears },
+            OR: fiscalBudgetScope(fiscalYear),
             category: { in: [...PROMOTION_BUDGET_CATEGORIES] },
           },
         });
@@ -278,7 +284,7 @@ export async function POST(request: NextRequest) {
         if (colIdx === undefined || colIdx >= row.length) continue;
 
         const valStr = row[colIdx].trim().replace(/,/g, "").replace(/"/g, "").replace(/ /g, "");
-        if (!valStr || valStr === "0" || valStr === "-") continue;
+        if (!valStr || valStr === "-") continue;
 
         const amount = parseInt(valStr, 10) * 1000; // 千円単位 → 円
         if (isNaN(amount)) continue;
@@ -293,8 +299,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (records.length === 0) {
+      return NextResponse.json(
+        { error: "予算データを検出できませんでした。『方針とスケジュール』ではなく、売上・経費の月別予算が載った『予算書』または『予算実績対比表』をCSVにしてアップロードしてください。既存の予算は変更していません。" },
+        { status: 400 },
+      );
+    }
+
     // Delete + insert inside a transaction to prevent partial state
-    const years = [...new Set(records.map((r) => r.year))];
 
     // 接続プール枯渇を避けるため、upsertループ → createMany バッチに変更。
     // 削除→一括insert で 1 + 1 + 1 = 3クエリ（旧: 1 + N + 1 = 191クエリ）。
@@ -303,7 +315,7 @@ export async function POST(request: NextRequest) {
       await tx.budgetData.deleteMany({
         where: {
           storeName: store,
-          year: { in: years },
+          OR: fiscalBudgetScope(fiscalYear),
           category: { not: BUDGET_CATEGORY_UNIT_PRICE },
         },
       });
