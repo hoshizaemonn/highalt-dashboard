@@ -11,6 +11,7 @@ interface Props {
   store: string;
   /** 編集権限を持つか（admin = 任意の店、店長 = 自店舗のみ） */
   canEdit: boolean;
+  budget?: Record<string, number>;
   /** 親側で受け取る合算データ。集計値の表示用 */
   initialTrialCount?: number;
   initialOtherSales?: number;
@@ -30,6 +31,7 @@ export function ManualEntrySection({
   month,
   store,
   canEdit,
+  budget,
   initialTrialCount,
   initialOtherSales,
   newSignupsCount,
@@ -228,6 +230,7 @@ export function ManualEntrySection({
         {!editing ? (
           <KPICard
             title="体験者数"
+            budget={budget ? { amount: budget["体験者数"] ?? budget["新規体験者数"] ?? null, actual: effectiveTrial, unit: "人" } : undefined}
             value={`${numFormat.format(effectiveTrial)}人`}
             color={COLORS.teal}
             help="優先順位: 体験シート実データ ＞ 店長手動追記 ＞ hacomono自動算出(体験経由フラグ had_trial=1)。修正ボタンから手動で上書き可能（体験シートがある月は他の集計画面では引き続き体験シートの値が使われます）。紹介経由は店長手動入力、紹介以外は自動計算（体験者数 − 紹介経由）。"
@@ -297,6 +300,7 @@ export function ManualEntrySection({
         {/* 新規入会数（山本様依頼: 体験者数の隣に並べて計算式が見えるように） */}
         <KPICard
           title="新規入会数"
+          budget={budget ? { amount: budget["新規入会数"] ?? budget["新規入会"] ?? null, actual: newSignupsCount ?? null, unit: "人" } : undefined}
           value={`${numFormat.format(newSignupsCount ?? 0)}人`}
           color={COLORS.blue}
           help="hacomono MA002由来。左の体験者数とは集計元が異なる別データのため、

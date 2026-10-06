@@ -1,5 +1,7 @@
 "use client";
 
+import BudgetIndicator, { type CardBudget } from "./BudgetIndicator";
+
 import {
   ResponsiveContainer,
   BarChart,
@@ -374,6 +376,7 @@ export function KPICard({
   salesRatioOf,
   /** previousYear の delta ラベル。デフォルトは「前年同月比」、期間ビューでは「前年比」を渡す */
   previousYearLabel = "前年同月比",
+  budget,
 }: {
   title: string;
   value: string;
@@ -388,6 +391,7 @@ export function KPICard({
   lowerIsBetter?: boolean;
   salesRatioOf?: { numerator: number; revenue: number };
   previousYearLabel?: string;
+  budget?: CardBudget;
 }) {
   const showDelta = current !== undefined && (
     (previousMonth !== undefined && previousMonth !== null) ||
@@ -405,6 +409,7 @@ export function KPICard({
       </p>
       <div className="flex items-end justify-between gap-2">
         <p className="text-xl font-bold mt-1" style={{ color }}>
+          {budget && <span className="text-[10px] font-medium text-gray-500 mr-1">実績</span>}
           {value}
         </p>
         {salesRatioPct !== null && (
@@ -418,6 +423,7 @@ export function KPICard({
         )}
       </div>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      {budget && <BudgetIndicator {...budget} />}
       {showDelta && (
         <div className="mt-2 pt-2 border-t border-gray-100 flex flex-col gap-0.5">
           {previousMonth !== undefined && previousMonth !== null && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import BudgetIndicator from "./BudgetIndicator";
 import { formatTrialJoinRate } from "@/lib/trial-join-rate";
 import {
   COLORS,
@@ -133,6 +134,7 @@ interface MemberFields {
 
 export interface EditableMemberSectionProps {
   data: DashboardData["member"];
+  budget?: Record<string, number>;
   isAllStores: boolean;
   year: number;
   month: number;
@@ -142,6 +144,7 @@ export interface EditableMemberSectionProps {
 
 export function EditableMemberSection({
   data,
+  budget,
   isAllStores,
   year,
   month,
@@ -197,6 +200,26 @@ export function EditableMemberSection({
     }
   };
 
+  const budgetKeys: Partial<Record<keyof MemberFields, string[]>> = {
+    plan_subscribers: ["有効在籍数"],
+    new_plan_signups: ["新規入会数", "新規入会"],
+    cancellations: ["退会数", "退会"],
+    suspensions: ["休会数", "休会"],
+    cancellation_rate: ["退会率"],
+  };
+  const memberBudget = (key: keyof MemberFields) => {
+    const keys = budgetKeys[key];
+    if (!budget || !keys) return undefined;
+    const raw = data?.[key];
+    const actual = raw === undefined || raw === "" ? null : Number(String(raw).replace(/[%％,\s]/g, ""));
+    return {
+      amount: keys.map(k => budget[k]).find(v => v !== undefined) ?? null,
+      actual: actual !== null && Number.isFinite(actual) ? actual : null,
+      unit: key === "cancellation_rate" ? "%" as const : "人" as const,
+      lowerIsBetter: ["cancellations", "suspensions", "cancellation_rate"].includes(key),
+    };
+  };
+
   const setField = (key: keyof MemberFields, value: string) => {
     setFields((prev) => ({
       ...prev,
@@ -220,6 +243,7 @@ export function EditableMemberSection({
       return (
         <KPICard
           title={title}
+          budget={memberBudget(fieldKey)}
           value={isRate ? (String(val) || "-") : `${numFormat.format(Number(val))}人`}
           color={color}
         />
@@ -368,10 +392,13 @@ export function EditableMemberSection({
                 style={{ color }}
               />
             ) : (
-              <span className="text-xl font-bold" style={{ color }}>
-                {numFormat.format(Number(fields[fieldKey]))}
-                <span className="text-sm font-normal text-gray-500 ml-1">人</span>
-              </span>
+              <div className="min-w-28 text-right">
+                <span className="text-xl font-bold" style={{ color }}>
+                  {numFormat.format(Number(fields[fieldKey]))}
+                  <span className="text-sm font-normal text-gray-500 ml-1">人</span>
+                </span>
+                {memberBudget(fieldKey) && <BudgetIndicator {...memberBudget(fieldKey)!} />}
+              </div>
             )}
           </div>
         ))}
