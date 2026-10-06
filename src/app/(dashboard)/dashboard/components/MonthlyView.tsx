@@ -29,7 +29,7 @@ import { ManualEntrySection } from "./ManualEntrySection";
 import { PlComparisonSection } from "./PlComparisonSection";
 import { AttributesSection } from "./AttributesSection";
 import { EnqueteSection } from "./EnqueteSection";
-import MonthlyBudgetSection from "./MonthlyBudgetSection";
+import { monthlyBudgetTotals } from "@/lib/monthly-budget";
 
 export interface MonthlyViewProps {
   data: DashboardData;
@@ -89,6 +89,9 @@ export default function MonthlyView({
   const laborValue = usePl ? plLaborCur! : data.total_labor;
   const laborPrevMonth = usePl ? plLaborMonth(prevCalMonth, "current") ?? undefined : data.prev_month_totals?.labor;
   const laborPrevYear = usePl ? plLaborMonth(month, "prev") ?? undefined : data.prev_year_totals?.labor;
+  const budgetTotals = monthlyBudgetTotals(data.budget);
+  const cardBudget = (amount: number | null, actual: number, lowerIsBetter = false) =>
+    isAllStores ? undefined : { amount, actual, lowerIsBetter };
   const profitValue = usePl ? data.total_revenue - laborValue - data.total_expense : data.operating_profit;
 
   return (
@@ -97,6 +100,7 @@ export default function MonthlyView({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <KPICard
           title="売上合計"
+          budget={cardBudget(budgetTotals.revenue, data.total_revenue)}
           value={formatYen(data.total_revenue)}
           color={COLORS.blue}
           help="月会費・パーソナル・物販・体験・スポット等の売上合計（Square含む）。"
@@ -106,6 +110,7 @@ export default function MonthlyView({
         />
         <KPICard
           title="人件費合計"
+          budget={cardBudget(budgetTotals.labor, laborValue, true)}
           value={formatYen(laborValue)}
           color={COLORS.red}
           help={usePl ? "クライアント公式PL基準（正社員・契約社員給与＋賞与＋通勤手当＋法定福利費）。前年同月比もPL同士で比較。" : "正社員・契約社員給与の課税支給合計＋法定福利費＋通勤手当の合計。"}
@@ -117,6 +122,7 @@ export default function MonthlyView({
         />
         <KPICard
           title="経費合計"
+          budget={cardBudget(budgetTotals.expense, data.total_expense, true)}
           value={formatYen(data.total_expense)}
           color={COLORS.orange}
           help="広告宣伝費・賃借料・水道光熱費・消耗品費など、人件費以外の経費の合計。"
@@ -128,6 +134,7 @@ export default function MonthlyView({
         />
         <KPICard
           title="営業利益"
+          budget={cardBudget(budgetTotals.profit, profitValue)}
           value={formatYen(profitValue)}
           // 赤字（営業利益マイナス）の場合は赤色で警告。緑固定だとミスリード。
           color={profitValue >= 0 ? COLORS.green : COLORS.red}
@@ -138,20 +145,6 @@ export default function MonthlyView({
           salesRatioOf={{ numerator: profitValue, revenue: data.total_revenue }}
         />
       </div>
-
-      {!isAllStores && (
-        <MonthlyBudgetSection
-          budget={data.budget}
-          revenue={data.total_revenue}
-          labor={laborValue}
-          expense={data.total_expense}
-          profit={profitValue}
-          expenseByCategory={data.expense.by_category}
-          member={data.member}
-          year={year}
-          month={month}
-        />
-      )}
 
       {/* PL Table */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -474,6 +467,7 @@ export default function MonthlyView({
       {/* Member Info (editable) */}
       <EditableMemberSection
         data={data.member}
+        budget={isAllStores ? undefined : data.budget}
         isAllStores={isAllStores}
         year={year}
         month={month}
@@ -488,6 +482,7 @@ export default function MonthlyView({
         store={store}
         // admin = 任意店舗で編集可、店長 = 自店舗のみ編集可
         canEdit={isAdmin || (sessionStoreName !== null && sessionStoreName === store)}
+        budget={isAllStores ? undefined : data.budget}
         initialTrialCount={data.member?.trial_count ?? 0}
         newSignupsCount={data.member?.new_plan_signups ?? 0}
         onSaved={onRefresh}
