@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Download } from "lucide-react";
 import {
   COLORS,
@@ -12,7 +12,6 @@ import {
   ChartTooltip,
   MaskedAmount,
   DashboardData,
-  buildBudgetRows,
   ResponsiveContainer,
   BarChart,
   Bar,
@@ -30,6 +29,7 @@ import { ManualEntrySection } from "./ManualEntrySection";
 import { PlComparisonSection } from "./PlComparisonSection";
 import { AttributesSection } from "./AttributesSection";
 import { EnqueteSection } from "./EnqueteSection";
+import MonthlyBudgetSection from "./MonthlyBudgetSection";
 
 export interface MonthlyViewProps {
   data: DashboardData;
@@ -52,23 +52,6 @@ export default function MonthlyView({
   sessionStoreName,
   onRefresh,
 }: MonthlyViewProps) {
-  const budgetRows = useMemo(() => {
-    if (isAllStores || Object.keys(data.budget).length === 0) return [];
-    return buildBudgetRows(
-      data.budget,
-      data.revenue.by_category,
-      data.payroll,
-      data.expense.by_category,
-      data.total_revenue,
-      data.total_expense,
-      data.operating_profit,
-    );
-  }, [data, isAllStores]);
-
-  // 予算 vs 実績セクション削除済み（坪井さん指示）。
-  // budgetRows は予算データのフェッチを残してあるが、UI 表示は無し。
-  void budgetRows;
-
   // 社員給与の黒塗り（安蒜さん依頼）: 店長など非admin には社員の給与額を見せない。
   // サーバ側で payroll_masked が立ち、対象金額は 0 に伏せて返ってくる。
   const payrollMasked = data.payroll_masked === true || !isAdmin;
@@ -155,6 +138,20 @@ export default function MonthlyView({
           salesRatioOf={{ numerator: profitValue, revenue: data.total_revenue }}
         />
       </div>
+
+      {!isAllStores && (
+        <MonthlyBudgetSection
+          budget={data.budget}
+          revenue={data.total_revenue}
+          labor={laborValue}
+          expense={data.total_expense}
+          profit={profitValue}
+          expenseByCategory={data.expense.by_category}
+          member={data.member}
+          year={year}
+          month={month}
+        />
+      )}
 
       {/* PL Table */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -553,8 +550,6 @@ export default function MonthlyView({
         isAllStores={isAllStores}
       />
 
-      {/* 「予算 vs 実績」セクションは削除（坪井さん指示）。
-          予算情報は各推移グラフの折れ線オーバーレイで確認する運用。 */}
 
       {/* Recalculate store assignments (admin only) */}
       {isAdmin && (
