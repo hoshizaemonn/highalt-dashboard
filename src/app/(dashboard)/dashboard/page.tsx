@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { LayoutDashboard } from "lucide-react";
-import { STORES } from "@/lib/constants";
+import { currentDashboardPeriod, DASHBOARD_SELECTION_KEY, restoreDashboardSelection } from "@/lib/dashboard-selection";
 import { fiscalToCalendarYear } from "@/lib/fiscal-calendar";
 import {
   FISCAL_MONTHS,
@@ -18,10 +18,6 @@ import PeriodSelector from "./components/PeriodSelector";
 import MonthlyView from "./components/MonthlyView";
 import PeriodView from "./components/PeriodView";
 import { useStoreDisplayName } from "./useStoreDisplayName";
-
-// ─── Constants ──────────────────────────────────────────────
-
-const STORE_OPTIONS = [...STORES, "全体"] as const;
 
 // ─── Error message helpers ─────────────────────────────────
 // API由来のステータスコードを人が読める文言に変換する。
@@ -42,8 +38,10 @@ function humanizeFetchError(status: number): string {
 // ─── Main Dashboard Page ────────────────────────────────────
 
 export default function DashboardPage() {
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [period, setPeriod] = useState("通期");
+  const [initialPeriod] = useState(() => currentDashboardPeriod());
+  const [year, setYear] = useState(initialPeriod.year);
+  const [period, setPeriod] = useState(initialPeriod.period);
+  const [selectionUserId, setSelectionUserId] = useState<number | null>(null);
   const [store, setStore] = useState("全体");
   const { display: displayStore } = useStoreDisplayName();
 
@@ -62,7 +60,9 @@ export default function DashboardPage() {
     fetch("/api/auth/session")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
-        if (data?.role === "admin" || data?.role === "manager") {
+        const allStores = data?.role === "admin" || data?.role === "manager";
+        const assignedStores = (data?.storeName ?? "").split(",").map((s: string) => s.trim()).filter(Boolean);
+        if (allStores) {
           setIsAdmin(data.role === "admin");
           setCanViewAll(true);
         } else if (data?.storeName) {
@@ -71,8 +71,20 @@ export default function DashboardPage() {
           setSessionStoreName(data.storeName);
           const firstStore = data.storeName.split(",")[0]?.trim() ?? data.storeName;
           setStore(firstStore);
-          const m = new Date().getMonth() + 1;
-          setPeriod(String(m));
+        }
+        if (data?.userId) {
+          setSelectionUserId(data.userId);
+          try {
+            const saved = restoreDashboardSelection(
+              sessionStorage.getItem(DASHBOARD_SELECTION_KEY), data.userId,
+              allStores ? null : assignedStores,
+            );
+            if (saved) {
+              setYear(saved.year);
+              setPeriod(saved.period);
+              setStore(saved.store);
+            }
+          } catch { /* Storage disabled: use this month's defaults. */ }
         }
         setSessionReady(true);
       })
@@ -80,6 +92,16 @@ export default function DashboardPage() {
         setSessionReady(true);
       });
   }, []);
+
+  // Keep selections across navigation/reload in this tab, scoped to the signed-in user.
+  useEffect(() => {
+    if (!sessionReady || !selectionUserId) return;
+    try {
+      sessionStorage.setItem(DASHBOARD_SELECTION_KEY, JSON.stringify({
+        userId: selectionUserId, year, period, store,
+      }));
+    } catch { /* Storage disabled: dashboard still works. */ }
+  }, [sessionReady, selectionUserId, year, period, store]);
 
   // Monthly data (single month selected)
   const [monthlyData, setMonthlyData] = useState<DashboardData | null>(null);
