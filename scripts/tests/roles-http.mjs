@@ -14,7 +14,7 @@ const files=fs.readdirSync('src/app/api',{recursive:true}).filter(x=>x.endsWith(
 const mutations=[];for(const file of files){const path='/api/'+file.replace(/\/route.ts$/,'');if(path.startsWith('/api/auth/'))continue;const code=fs.readFileSync('src/app/api/'+file,'utf8');for(const m of code.matchAll(/export async function (POST|PUT|PATCH|DELETE)\(/g))mutations.push([path,m[1]]);}
 for(const user of [manager,store,multi,empty]){
  const c=user===manager?oldCookie:cookie(user);
- for(const [path,method] of mutations){assert.equal((await req(path,c,method,{})).status,403,`${user.username} ${method} ${path}`);assertions++;}
+ for(const [path,method] of mutations.filter(([p,m])=>!(p==='/api/dashboard/expenses' && m==='PUT'))){assert.equal((await req(path,c,method,{})).status,403,`${user.username} ${method} ${path}`);assertions++;}
  for(const path of ['/upload','/settings','/promotion']){const v=await req(path,c);assert.equal(v.status,307);assert.equal(new URL(v.location,base).href,base+'/dashboard');assertions++;}
  for(const path of ['/api/settings/users','/api/settings/manual-payroll','/api/upload/hacomono']){assert.equal((await req(path,c)).status,403);assertions++;}
 }

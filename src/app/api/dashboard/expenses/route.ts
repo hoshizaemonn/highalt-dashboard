@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth";
+import { canViewAllStores } from "@/lib/permissions";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
+    const auth = await requireSession();
     if (auth.error) return auth.error;
 
     const body = await request.json();
@@ -164,7 +164,7 @@ export async function PUT(request: NextRequest) {
         | null;
     }> = body.updates ?? [body];
 
-    if (!updates.length || !updates[0].id) {
+    if (!Array.isArray(updates) || !updates.length || updates.some(u => !u || !Number.isInteger(u.id) || u.id <= 0)) {
       return NextResponse.json(
         { error: "id is required" },
         { status: 400 },
@@ -174,7 +174,8 @@ export async function PUT(request: NextRequest) {
     // 非adminの書込スコープ = GETの可視条件と一致させる（自店舗 or 按分に自店を含む共有行）。
     // session.storeName は複数店舗担当だとカンマ区切りになるため、完全一致ではなく担当店舗リストで判定する。
     const isAdmin = auth.session.role === "admin";
-    const allowedStores = isAdmin
+    const allStores = canViewAllStores(auth.session.role);
+    const allowedStores = allStores
       ? []
       : getSessionAllowedStores(auth.session);
 
@@ -208,6 +209,22 @@ export async function PUT(request: NextRequest) {
       };
       return inObj(row.splitRatios) || inObj(row.categorySplits);
     };
+
+    // Validate the entire batch before any row is written.
+    if (!allStores) {
+      const rows = await prisma.expenseData.findMany({
+        where: { id: { in: updates.map(u => u.id) } },
+        select: { id: true, storeName: true, splitRatios: true, categorySplits: true },
+      });
+      if (updates.some(u => !rows.some(r => r.id === u.id && splitIncludesAllowedStore(r)))) {
+        return NextResponse.json({ error: "他店舗のデータは編集できません" }, { status: 403 });
+      }
+      // Store managers may update amounts/notes, but cannot allocate them to other stores.
+      if (updates.some(u => [u.splitRatios, ...(u.categorySplits ?? []).map(c => c.splitRatios)]
+        .some(r => r && Object.keys(r).some(store => !allowedStores.includes(store))))) {
+        return NextResponse.json({ error: "他店舗への按分はマネージャーに依頼してください" }, { status: 403 });
+      }
+    }
 
     // Run updates sequentially (Supabase connection pool limit)
     const results = [];
@@ -285,7 +302,7 @@ export async function PUT(request: NextRequest) {
       if (Object.keys(data).length === 0) continue;
 
       // 非adminは、自店舗の行 または 按分に自店を含む共有行のみ更新可（GETの可視条件と一致）
-      if (!isAdmin) {
+      if (!allStores) {
         const existing = await prisma.expenseData.findUnique({
           where: { id: update.id },
           select: { storeName: true, splitRatios: true, categorySplits: true },
@@ -305,7 +322,7 @@ export async function PUT(request: NextRequest) {
       results.push(result);
 
       // Auto-register expense rule when category is set
-      if (update.category && result.description) {
+      if (isAdmin && update.category && result.description) {
         const rawDesc = result.description.trim();
 
         // Extract a meaningful keyword from the description

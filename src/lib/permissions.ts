@@ -8,6 +8,8 @@ export function isAdminPage(path: string): boolean {
 }
 export function isRestrictedApi(path: string, method: string): boolean {
   if (!path.startsWith("/api/")) return false;
+  // Expense entry is allowed; the route enforces each row's store scope.
+  if (path === "/api/dashboard/expenses" && method === "PUT") return false;
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) return true;
   if (path.startsWith("/api/upload")) return true;
   // Dashboard selectors read these metadata endpoints; no settings UI is exposed.
