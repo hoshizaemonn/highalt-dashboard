@@ -1,3 +1,6 @@
+import { canViewAllStores } from "@/lib/permissions";
+import { getSessionAllowedStores } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
@@ -19,7 +22,9 @@ export async function GET() {
   });
   const mapping: Record<string, string> = {};
   const hidden: Record<string, boolean> = {};
+  const allowed = getSessionAllowedStores(auth.session);
   for (const r of rows) {
+    if (!canViewAllStores(auth.session.role) && !allowed.includes(r.storeName)) continue;
     mapping[r.storeName] = r.displayName;
     if (r.hidden) hidden[r.storeName] = true;
   }
@@ -27,7 +32,7 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
-  const auth = await requireSession();
+  const auth = await requireAdmin();
   if (auth.error) return auth.error;
   if (auth.session.role !== "admin") {
     return NextResponse.json({ error: "admin only" }, { status: 403 });

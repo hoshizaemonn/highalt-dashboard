@@ -38,6 +38,7 @@ export interface MonthlyViewProps {
   month: number;
   store: string;
   isAdmin: boolean;
+  canViewAll: boolean;
   sessionStoreName: string | null;
   onRefresh: () => void;
 }
@@ -49,12 +50,13 @@ export default function MonthlyView({
   month,
   store,
   isAdmin,
+  canViewAll,
   sessionStoreName,
   onRefresh,
 }: MonthlyViewProps) {
   // 社員給与の黒塗り（安蒜さん依頼）: 店長など非admin には社員の給与額を見せない。
   // サーバ側で payroll_masked が立ち、対象金額は 0 に伏せて返ってくる。
-  const payrollMasked = data.payroll_masked === true || !isAdmin;
+  const payrollMasked = data.payroll_masked === true || !canViewAll;
 
   // 前年比は「クライアント公式PL」を正とする（坪井さん決定）。
   // 当月の人件費をPLに差し替え、KPI（人件費合計・営業利益）と前年同月比をPL基準に揃える。
@@ -149,7 +151,7 @@ export default function MonthlyView({
       {/* PL Table */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <SectionTitle>損益計算書 (PL)</SectionTitle>
-        <button
+        {isAdmin && <button
           onClick={() => {
             // 暦上の (year, month) から会計年度（10月始まり）を逆算
             const fiscalYear = month >= 10 ? year + 1 : year;
@@ -164,7 +166,7 @@ export default function MonthlyView({
         >
           <Download size={14} />
           損益計算書（PL書式・CSV）
-        </button>
+        </button>}
       </div>
       <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
         <table className="w-full text-sm">
@@ -472,6 +474,7 @@ export default function MonthlyView({
         year={year}
         month={month}
         store={store}
+        canEdit={isAdmin}
         onSaved={onRefresh}
       />
 
@@ -481,7 +484,7 @@ export default function MonthlyView({
         month={month}
         store={store}
         // admin = 任意店舗で編集可、店長 = 自店舗のみ編集可
-        canEdit={isAdmin || (sessionStoreName !== null && sessionStoreName === store)}
+        canEdit={isAdmin}
         budget={isAllStores ? undefined : data.budget}
         initialTrialCount={data.member?.trial_count ?? 0}
         newSignupsCount={data.member?.new_plan_signups ?? 0}
@@ -560,6 +563,7 @@ export default function MonthlyView({
           month={month}
           store={store}
           isAdmin={isAdmin}
+          canViewAll={canViewAll}
           sessionStoreName={sessionStoreName}
           onRefresh={onRefresh}
         />
@@ -586,7 +590,7 @@ export default function MonthlyView({
 
       {/* Expense Detail (per-store only) */}
       {!isAllStores && (
-        <ExpenseDetailSection year={year} month={month} store={store} />
+        <ExpenseDetailSection year={year} month={month} store={store} canEdit={isAdmin} />
       )}
     </>
   );

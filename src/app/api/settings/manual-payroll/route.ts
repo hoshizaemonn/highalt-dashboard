@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const auth = await requireSession();
+  const auth = await requireAdmin();
   if (auth.error) return auth.error;
   if (!isAdmin(auth.session.role)) {
     return NextResponse.json({ error: "admin only" }, { status: 403 });
@@ -166,7 +167,7 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireSession();
+  const auth = await requireAdmin();
   if (auth.error) return auth.error;
   if (!isAdmin(auth.session.role)) {
     return NextResponse.json({ error: "admin only" }, { status: 403 });

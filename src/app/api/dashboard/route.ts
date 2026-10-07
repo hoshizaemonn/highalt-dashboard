@@ -1,3 +1,5 @@
+import { filterPlanSummaries, PLAN_FILTER_NOTE } from "@/lib/plan-contracts";
+import { canViewAllStores } from "@/lib/permissions";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -661,10 +663,10 @@ export async function GET(request: NextRequest) {
     const memberWhere = {
       ...(month !== undefined && { year, month }),
       ...(month === undefined && { year }),
-      ...(store && { storeName: storeNameFilter }),
+      storeName: storeNameFilter,
     };
 
-    const memberRows = await prisma.monthlySummary.findMany({
+    const rawMemberRows = await prisma.monthlySummary.findMany({
       where: memberWhere,
       orderBy: [{ year: "desc" }, { month: "desc" }],
     });
@@ -673,9 +675,10 @@ export async function GET(request: NextRequest) {
     // 全月算出、未取込の店舗はMA002にフォールバック（松尾さん②・マスタ方式）。
     // マスタは(year,month)スナップではないので、店舗スコープのみで取得し年月では絞らない。
     const memberDataRows = await prisma.memberData.findMany({
-      where: { ...(store && { storeName: storeNameFilter }) },
-      select: { joinDate: true },
+      where: { storeName: storeNameFilter },
+      select: { joinDate: true, year: true, month: true, storeName: true, planName: true, isActive: true },
     });
+    const memberRows = filterPlanSummaries(rawMemberRows, memberDataRows);
     const hasMaster = memberDataRows.length > 0;
     const signupMonthKeys = new Set(
       memberRows.map((r) => `${r.year}-${r.month}`),
@@ -699,6 +702,9 @@ export async function GET(request: NextRequest) {
     const memberSummary =
       memberRows.length > 0
         ? {
+            plan_filter_note: PLAN_FILTER_NOTE,
+            plan_filter_complete: memberRows.every(r => r.planFilterApplied),
+            active_plan_subscribers: memberRows.reduce((s,r) => s + r.activePlanSubscribers, 0),
             plan_subscribers: memberRows.reduce((s, r) => s + r.planSubscribers, 0),
             new_plan_signups: newSignupsTotal,
             cancellations: memberRows.reduce((s, r) => s + r.cancellations, 0),
@@ -735,7 +741,7 @@ export async function GET(request: NextRequest) {
     const budgetWhere = {
       year,
       ...(month !== undefined && { month }),
-      ...(store && { storeName: storeNameFilter }),
+      storeName: storeNameFilter,
     };
 
     const budgetRows = await prisma.budgetData.findMany({
@@ -840,7 +846,7 @@ export async function GET(request: NextRequest) {
         const cw = {
           year: y,
           month: m,
-          ...(store && { storeName: storeNameFilter }),
+          storeName: storeNameFilter,
         };
         // 按分込みの売上明細合計（ルール無効時は従来の aggregate と同値）
         const sdMatch = store ? storeFilterPredicate(storeNameFilter) : () => true;
@@ -912,7 +918,7 @@ export async function GET(request: NextRequest) {
     // 課税支給合計（基本給+役職手当+残業代の合算・社員/アルバイト混在）は店長にも表示するため伏せない。
     // アルバイト（契約社員給与）・通勤手当・法定福利費・総勤務時間・人件費合計も従来どおり表示。
     // ※ responseData はキャッシュ共有オブジェクトのため破壊的に変更せず、コピーを返す。
-    if (auth.session.role !== "admin") {
+    if (!canViewAllStores(auth.session.role)) {
       const masked = {
         ...responseData,
         payroll: {

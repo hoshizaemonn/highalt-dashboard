@@ -65,7 +65,7 @@ export default function UsersTab() {
   const isSystemAdmin = rawRole === "admin";
 
   // New user form
-  // 作成する役割（店長 / マネージャー）。マネージャーは権限が管理者と同等・全店舗対象
+  // 作成する役割（店長 / マネージャー）。マネージャーは権限が全店舗の閲覧のみ（アップロード・設定不可）・全店舗対象
   const [newRole, setNewRole] = useState<"store_manager" | "manager">(
     "store_manager",
   );
@@ -377,7 +377,7 @@ export default function UsersTab() {
                     >
                       <option value="store_manager">店長</option>
                       <option value="manager">
-                        マネージャー（管理者と同等）
+                        マネージャー（全店舗の閲覧のみ（アップロード・設定不可））
                       </option>
                     </select>
                   </div>
@@ -524,7 +524,7 @@ export default function UsersTab() {
                   className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
                 >
                   <option value="store_manager">店長</option>
-                  <option value="manager">マネージャー（管理者と同等）</option>
+                  <option value="manager">マネージャー（全店舗の閲覧のみ（アップロード・設定不可））</option>
                 </select>
                 <button
                   onClick={handleCreateUser}
@@ -541,7 +541,7 @@ export default function UsersTab() {
               </div>
               {newRole === "manager" && (
                 <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-gray-700">
-                  <strong>マネージャー</strong>は<strong>管理者と同等の権限</strong>で、
+                  <strong>マネージャー</strong>は<strong>全店舗の閲覧のみ（アップロード・設定不可）の権限</strong>で、
                   全店舗のデータ閲覧・アップロード・ユーザー管理ができます（担当店舗の指定は不要）。
                 </div>
               )}

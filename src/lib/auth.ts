@@ -1,6 +1,9 @@
 import bcrypt from "bcryptjs";
 import { createHmac, timingSafeEqual, randomBytes } from "crypto";
 import { cookies } from "next/headers";
+import { cache } from "react";
+import { prisma } from "./prisma";
+import { canViewAllStores } from "./permissions";
 
 const SESSION_COOKIE = "highalt_session";
 const SESSION_MAX_AGE = 60 * 60 * 24; // 24 hours in seconds
@@ -64,26 +67,12 @@ function verifySignedPayload(value: string): string | null {
   return payload;
 }
 
-/**
- * ロール定義。
- * - admin        : 管理者
- * - manager      : マネージャー（権限は管理者と同等・松尾さん依頼 2026-07）
- * - store_manager: 店長（自店舗のみ）
- *
- * manager は「管理者と同等」のため、セッション上の実効ロール(role)は "admin" に
- * 正規化する。これにより API 各所の `role === "admin"` 判定（多数）を書き換えずに済み、
- * 判定漏れによる権限ホールを構造的に防ぐ。表示用の元ロールは rawRole に保持する。
- */
-export const ADMIN_EQUIVALENT_ROLES = ["admin", "manager"] as const;
-
-/** DBロール → セッション上の実効ロール（manager は admin と同等に扱う） */
-export function toEffectiveRole(role: string): string {
-  return role === "manager" ? "admin" : role;
-}
+/** admin: 全操作 / manager: 全店舗閲覧 / store_manager: 担当店舗閲覧。 */
+export function toEffectiveRole(role: string): string { return role; }
 
 export interface SessionUser {
   userId: number;
-  /** 実効ロール（manager は "admin" に正規化済み）。権限判定はこれを使う */
+  /** DBの最新ロール。managerとadminを区別する */
   role: string;
   /** DB上の元ロール（"manager" 等）。表示用 */
   rawRole?: string;
@@ -112,7 +101,7 @@ export async function createSession(
   const cookieStore = await cookies();
   const session: SessionUser = {
     userId,
-    // manager は admin と同等の実効ロールにする（権限判定は role を見る）
+    // DBのロールをそのまま保持する
     role: toEffectiveRole(role),
     rawRole: role,
     storeName,
@@ -131,7 +120,7 @@ export async function createSession(
   });
 }
 
-export async function getSession(): Promise<SessionUser | null> {
+export const getSession = cache(async function getSession(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE);
 
@@ -151,16 +140,19 @@ export async function getSession(): Promise<SessionUser | null> {
       return null;
     }
 
-    // 発行済みCookieに manager が入っている場合も admin 相当へ正規化（取りこぼし防止）
-    return {
-      ...session,
-      role: toEffectiveRole(session.role),
-      rawRole: session.rawRole ?? session.role,
-    };
+    // Old manager cookies carry role=admin. Always use the current DB role and scope,
+    // so changes/deletions take effect without waiting for the cookie to expire.
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { role: true, storeName: true, displayName: true },
+    });
+    if (!user || !["admin", "manager", "store_manager"].includes(user.role)) return null;
+    return { ...session, ...user, rawRole: user.role };
+
   } catch {
     return null;
   }
-}
+});
 
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
@@ -214,7 +206,7 @@ export async function requireAdmin(): Promise<
  * 書き込み系 API 用：要求された店舗が許可されているか厳密に検証する。
  *
  * - admin: 任意の店舗（または店舗指定なし）を許可
- * - store_manager: requestedStore が session.storeName と一致しない場合は 403
+ * - manager / store_manager: 店舗によらず 403
  *
  * UI 側で店舗セレクタをロックしていても、curl や DevTools 直叩きで
  * 他店舗のデータを書き換えられないよう、サーバ側で必ず本関数を通す。
@@ -225,30 +217,14 @@ export async function requireStoreUploadAccess(
   | { session: SessionUser; error?: never }
   | { session?: never; error: Response }
 > {
-  const result = await requireSession();
-  if (result.error) return result;
-  if (result.session.role === "admin") return result;
-  // 店長: 店舗未指定 or 担当店舗（カンマ区切りで複数可）に含まれていなければ拒否
-  const allowedStores = (result.session.storeName ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (!requestedStore || !allowedStores.includes(requestedStore)) {
-    const { NextResponse } = await import("next/server");
-    return {
-      error: NextResponse.json(
-        { error: "他店舗のデータは操作できません" },
-        { status: 403 }
-      ),
-    };
-  }
-  return result;
+  void requestedStore; // All writes now require admin, regardless of store.
+  return requireAdmin();
 }
 
 /**
  * 読み取り系 API 用：非 admin の閲覧スコープを自店舗に強制する。
  *
- * - admin: requestedStore をそのまま返す（null なら全店舗集計）
+ * - admin / manager: requestedStore をそのまま返す（null なら全店舗集計）
  * - store_manager: 何が要求されても session.storeName を返す（silent override）
  *
  * 403 にしてしまうと UI が壊れるため、読み取りは silent override を採用する。
@@ -258,7 +234,7 @@ export function effectiveStoreScope(
   session: SessionUser,
   requestedStore: string | null | undefined,
 ): string | null {
-  if (session.role === "admin") {
+  if (canViewAllStores(session.role)) {
     return requestedStore || null;
   }
   // 店長: 担当店舗（カンマ区切りで複数可）の中に要求店舗があればそれを返す。
@@ -269,14 +245,8 @@ export function effectiveStoreScope(
   if (requestedStore && allowedStores.includes(requestedStore)) {
     return requestedStore;
   }
-  // 複数店舗担当 + 「全体」or 担当外要求 → admin と同じく null（全店舗ビュー）を返す
-  // 単店担当の場合は自店舗にロック（従来通り）
-  const isAggregateRequest =
-    !requestedStore || requestedStore === "全体";
-  if (allowedStores.length > 1 && isAggregateRequest) {
-    return null;
-  }
-  return allowedStores[0] ?? session.storeName;
+  // APIs requiring a single store default to the first assigned store; never all stores.
+  return allowedStores[0] ?? "__NO_ASSIGNED_STORE__";
 }
 
 /**
@@ -313,7 +283,7 @@ export function getEffectiveStoreFilter(
   const isAggregateRequest =
     !normalizedRequest || normalizedRequest === "全体";
 
-  if (session.role === "admin") {
+  if (canViewAllStores(session.role)) {
     return isAggregateRequest ? notHqOrHidden : normalizedRequest;
   }
   const allowedStores = getSessionAllowedStores(session);
@@ -328,6 +298,6 @@ export function getEffectiveStoreFilter(
   if (allowedStores.length === 1) {
     return allowedStores[0];
   }
-  // 複数店舗担当 + 「全体」 → 全店舗（非表示・本部除く）を閲覧可能（書き込みは別途 requireStoreUploadAccess で担当店舗のみに制限）
-  return notHqOrHidden;
+  // 複数店舗でも担当外には広げない。
+  return { in: allowedStores.filter(s => !notHqOrHidden.notIn.includes(s)) };
 }

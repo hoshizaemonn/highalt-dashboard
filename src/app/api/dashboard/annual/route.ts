@@ -1,3 +1,5 @@
+import { filterPlanSummaries, PLAN_FILTER_NOTE } from "@/lib/plan-contracts";
+import { canViewAllStores } from "@/lib/permissions";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -50,6 +52,8 @@ interface MonthlyEntry {
   parttime_count: number;
   ma_total_members: number;
   ma_plan_subscribers: number;
+  ma_active_plan_subscribers: number;
+  plan_filter_complete: boolean;
   ma_new_signups: number;
   ma_cancellations: number;
   ma_suspensions: number;
@@ -227,10 +231,11 @@ export async function GET(request: NextRequest) {
       prisma.revenueData.findMany({ where: { year: { in: years }, ...storeWhere } }),
       prisma.squareSales.findMany({ where: { year: { in: years }, ...storeWhere } }),
     ]);
+
     // バッチ2: 補助・予算・手動入力系
     const [
       allManualExpense,
-      allMonthlySummary,
+      rawMonthlySummary,
       allProductSales,
       allManual,
       allMember,
@@ -256,6 +261,8 @@ export async function GET(request: NextRequest) {
           year: true,
           month: true,
           joinDate: true,
+          planName: true,
+          isActive: true,
           storeName: true,
         },
       }),
@@ -309,6 +316,7 @@ export async function GET(request: NextRequest) {
       "7月", "8月", "9月", "10月", "11月", "12月",
     ];
 
+    const allMonthlySummary = filterPlanSummaries(rawMonthlySummary, allMember);
     const monthlyData: MonthlyEntry[] = periods.map(({ year: y, month: m }) => {
       // Payroll
       const payroll = allPayroll.filter((r) => r.year === y && r.month === m);
@@ -687,6 +695,8 @@ export async function GET(request: NextRequest) {
         fulltime_count: ftCount,
         parttime_count: ptCount,
         ma_total_members: ms.reduce((s, r) => s + r.totalMembers, 0),
+        ma_active_plan_subscribers: ms.reduce((s,r) => s + r.activePlanSubscribers, 0),
+        plan_filter_complete: ms.length > 0 && ms.every(r => r.planFilterApplied),
         ma_plan_subscribers: ms.reduce((s, r) => s + r.planSubscribers, 0),
         // 新規入会数: ML001がある月は入会日時ベース、無い月はMA002（松尾さん②）
         ma_new_signups: signupsForMonth(
@@ -951,6 +961,7 @@ export async function GET(request: NextRequest) {
       effective_periods: cappedPeriods.map(
         (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
       ),
+      plan_filter_note: PLAN_FILTER_NOTE,
       monthly_data: monthlyData,
       previous_period_totals: previousPeriodTotals,
     };
@@ -960,7 +971,7 @@ export async function GET(request: NextRequest) {
     // 各月の fulltime_gross（正社員給与）のみ 0 に伏せ、payroll_masked を立てる。
     // gross_total（人件費・課税支給合計）・契約社員給与（アルバイト）・法定福利費・人件費合計・人数は従来どおり表示。
     // ※ responseData はキャッシュ共有オブジェクトのため破壊的に変更せず、コピーを返す。
-    if (auth.session.role !== "admin") {
+    if (!canViewAllStores(auth.session.role)) {
       const masked = {
         ...responseData,
         monthly_data: responseData.monthly_data.map((m) => ({

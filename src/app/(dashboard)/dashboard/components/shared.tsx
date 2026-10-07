@@ -169,6 +169,8 @@ export interface DashboardData {
   };
   member: {
     plan_subscribers: number;
+    plan_filter_note?: string;
+    active_plan_subscribers?: number;
     new_plan_signups: number;
     cancellations: number;
     suspensions: number;
@@ -220,6 +222,7 @@ export interface MonthlyEntry {
   employee_count: number;
   ma_total_members: number;
   ma_plan_subscribers: number;
+  ma_active_plan_subscribers?: number;
   ma_new_signups: number;
   ma_cancellations: number;
   ma_suspensions: number;

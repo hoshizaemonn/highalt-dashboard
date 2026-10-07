@@ -1,3 +1,5 @@
+import { canViewAllStores } from "@/lib/permissions";
+import { getSessionAllowedStores } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STORES, HQ_STORE } from "@/lib/constants";
@@ -67,6 +69,13 @@ export async function GET() {
   newOnes.sort();
   for (const s of newOnes) result.push(s);
 
+  if (!canViewAllStores(auth.session.role)) {
+    const allowed = getSessionAllowedStores(auth.session);
+    return NextResponse.json({ stores: result.filter(s => allowed.includes(s)), hq_store: null,
+      auto_detected: newOnes.filter(s => allowed.includes(s)),
+      display_names: Object.fromEntries(Object.entries(displayMap).filter(([s]) => allowed.includes(s))),
+      hidden_stores: [...hiddenSet].filter(s => allowed.includes(s)) });
+  }
   return NextResponse.json({
     stores: result,
     hq_store: HQ_STORE,
