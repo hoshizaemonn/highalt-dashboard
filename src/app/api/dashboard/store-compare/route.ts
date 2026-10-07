@@ -1,3 +1,5 @@
+import { filterPlanSummaries, PLAN_FILTER_NOTE } from "@/lib/plan-contracts";
+import { canViewAllStores } from "@/lib/permissions";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -17,7 +19,7 @@ export async function GET(request: NextRequest) {
     if (auth.error) return auth.error;
 
     // 店舗比較は admin と複数店舗マネージャーのみ閲覧可（単店マネージャーは自店舗のみで意味なし）
-    if (auth.session.role !== "admin") {
+    if (!canViewAllStores(auth.session.role)) {
       const allowed = getSessionAllowedStores(auth.session);
       if (allowed.length < 2) {
         return NextResponse.json(
@@ -83,7 +85,7 @@ export async function GET(request: NextRequest) {
       prisma.revenueData.findMany({ where: { year: { in: years } } }),
       prisma.squareSales.findMany({ where: { year: { in: years } } }),
     ]);
-    const allMonthlySummary = await prisma.monthlySummary.findMany({
+    const rawMonthlySummary = await prisma.monthlySummary.findMany({
       where: { year: { in: years } },
       orderBy: [{ year: "desc" }, { month: "desc" }],
     });
@@ -116,9 +118,12 @@ export async function GET(request: NextRequest) {
           year: true,
           month: true,
           joinDate: true,
+          planName: true,
+          isActive: true,
         },
       }),
     ]);
+    const allMonthlySummary = filterPlanSummaries(rawMonthlySummary, allMember);
 
     // 「実績データが入っている最終月」までに periods を自動キャップする（坪井さん要望）。
     // 例: 通期12ヶ月のうち1〜4月までしか売上/人件費が入っていない場合、
@@ -325,6 +330,7 @@ export async function GET(request: NextRequest) {
         expense: Math.round(totalExpense),
         profit: Math.round(totalRevenue - totalLabor - totalExpense),
         plan_subscribers: ms?.planSubscribers ?? 0,
+        plan_filter_complete: ms?.planFilterApplied ?? false,
         cancellation_rate: `${periodCancelRate.toFixed(1)}%`,
         trial_count: trialCount,
         new_signups: newSignups,
@@ -346,10 +352,15 @@ export async function GET(request: NextRequest) {
       effective_periods: cappedPeriods.map(
         (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
       ),
+      plan_filter_note: PLAN_FILTER_NOTE,
       stores: storeData,
     };
     });
 
+    if (!canViewAllStores(auth.session.role)) {
+      const allowed = getSessionAllowedStores(auth.session);
+      return NextResponse.json({ ...responseData, stores: responseData.stores.filter(s => allowed.includes(s.store)) });
+    }
     return NextResponse.json(responseData);
   } catch (error) {
     logError("Store compare API error:", error);

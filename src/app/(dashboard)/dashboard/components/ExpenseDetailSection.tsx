@@ -43,12 +43,14 @@ export interface ExpenseDetailSectionProps {
   year: number;
   month: number;
   store: string;
+  canEdit?: boolean;
 }
 
 export default function ExpenseDetailSection({
   year,
   month,
   store,
+  canEdit = false,
 }: ExpenseDetailSectionProps) {
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [edits, setEdits] = useState<Record<number, EditedFields>>({});
@@ -198,13 +200,13 @@ export default function ExpenseDetailSection({
       <SectionTitle>経費明細</SectionTitle>
 
       <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <button
+        <button disabled={!canEdit}
           onClick={handleDownload}
           className="text-sm bg-white border rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-700 shadow-sm"
         >
           📥 経費明細をダウンロード（CSV）
         </button>
-        {hasChanges && (
+        {canEdit && hasChanges && (
           <button
             onClick={handleSave}
             disabled={saving}
@@ -279,7 +281,7 @@ export default function ExpenseDetailSection({
                   <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{e.month}/{e.day}</td>
                   <td className="px-3 py-1.5 text-gray-700">{e.description ?? ""}</td>
                   <td className="px-3 py-1.5 text-right">
-                    <input
+                    <input disabled={!canEdit}
                       type="number"
                       value={edited.amount ?? e.amount}
                       onChange={(ev) =>
@@ -289,7 +291,7 @@ export default function ExpenseDetailSection({
                     />
                   </td>
                   <td className="px-3 py-1.5 text-right">
-                    <input
+                    <input disabled={!canEdit}
                       type="number"
                       value={edited.deposit ?? e.deposit}
                       onChange={(ev) =>
@@ -299,7 +301,7 @@ export default function ExpenseDetailSection({
                     />
                   </td>
                   <td className="px-3 py-1.5">
-                    <select
+                    <select disabled={!canEdit}
                       value={currentCategory}
                       onChange={(ev) =>
                         handleEdit(e.id, "category", ev.target.value)
@@ -332,7 +334,7 @@ export default function ExpenseDetailSection({
                     </select>
                   </td>
                   <td className="px-3 py-1.5">
-                    <input
+                    <input disabled={!canEdit}
                       type="text"
                       value={currentBreakdown}
                       onChange={(ev) =>
@@ -358,7 +360,7 @@ export default function ExpenseDetailSection({
                       const hasAny = !!currentSplit || (currentCs && currentCs.length > 0);
                       const isExpanded = splitEditorRowId === e.id;
                       return (
-                        <button
+                        <button disabled={!canEdit}
                           onClick={() =>
                             setSplitEditorRowId(isExpanded ? null : e.id)
                           }

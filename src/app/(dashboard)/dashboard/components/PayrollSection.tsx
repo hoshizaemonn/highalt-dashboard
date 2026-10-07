@@ -90,6 +90,7 @@ export interface PayrollDetailSectionProps {
   month: number;
   store: string;
   isAdmin: boolean;
+  canViewAll?: boolean;
   sessionStoreName: string | null;
   /** 按分編集の保存後に親側のデータ再取得をトリガーするコールバック */
   onRefresh?: () => void;
@@ -100,6 +101,7 @@ export function PayrollDetailSection({
   month,
   store,
   isAdmin,
+  canViewAll = false,
   sessionStoreName,
   onRefresh,
 }: PayrollDetailSectionProps) {
@@ -111,7 +113,7 @@ export function PayrollDetailSection({
 
   // 従業員別明細は admin のみ閲覧可
   // （安蒜さんの依頼により、自店店長にも非表示にする変更）
-  const canView = isAdmin;
+  const canView = canViewAll || isAdmin;
 
   useEffect(() => {
     if (!canView) {
@@ -186,7 +188,7 @@ export function PayrollDetailSection({
     <>
       <SectionTitle>従業員別明細</SectionTitle>
       {/* 月単位の按分調整セクション（admin のみ） */}
-      <RatioAdjustList
+      {isAdmin && <RatioAdjustList
         year={year}
         month={month}
         employeeRatios={employeeRatios}
@@ -196,7 +198,7 @@ export function PayrollDetailSection({
           // 親（MonthlyView/page.tsx）にも通知してKPIや明細を再描画
           onRefresh?.();
         }}
-      />
+      />}
       <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

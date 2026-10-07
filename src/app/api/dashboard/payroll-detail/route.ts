@@ -1,3 +1,4 @@
+import { canViewAllStores } from "@/lib/permissions";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     // 従業員別明細は admin のみ閲覧可
     // （安蒜さんの依頼により、自店店長にも非表示にする変更）
-    if (session.role !== "admin") {
+    if (!canViewAllStores(session.role)) {
       return NextResponse.json({ employees: [] });
     }
 

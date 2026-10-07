@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireStoreUploadAccess } from "@/lib/auth";
+import { requireStoreUploadAccess, requireSession, effectiveStoreScope } from "@/lib/auth";
 import { BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
 
 // Fiscal year months: Oct(fy-1), Nov(fy-1), Dec(fy-1), Jan(fy), ..., Sep(fy)
@@ -13,7 +13,10 @@ function fiscalYearMonths(fiscalYear: number): { year: number; month: number }[]
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const store = searchParams.get("store") || "";
+  const requestedStore = searchParams.get("store") || "";
+  const auth = await requireSession();
+  if (auth.error) return auth.error;
+  const store = effectiveStoreScope(auth.session, requestedStore);
   const fiscalYear = parseInt(searchParams.get("fiscalYear") || "", 10);
 
   if (!store || isNaN(fiscalYear)) {
@@ -23,9 +26,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 非adminは自店舗以外の客単価予算を閲覧不可
-  const auth = await requireStoreUploadAccess(store);
-  if (auth.error) return auth.error;
+  // 読取は担当店舗に制限。書込はPOSTで管理者のみ。
 
   const months = fiscalYearMonths(fiscalYear);
   const rows = await prisma.budgetData.findMany({

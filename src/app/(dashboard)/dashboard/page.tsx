@@ -50,6 +50,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [canViewAll, setCanViewAll] = useState(false);
   const [sessionStoreName, setSessionStoreName] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
   // session取得済みフラグ。session 未取得で fetch を走らせると、店長なのに
@@ -61,8 +62,9 @@ export default function DashboardPage() {
     fetch("/api/auth/session")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
-        if (data?.role === "admin") {
-          setIsAdmin(true);
+        if (data?.role === "admin" || data?.role === "manager") {
+          setIsAdmin(data.role === "admin");
+          setCanViewAll(true);
         } else if (data?.storeName) {
           // 担当店舗はカンマ区切りで複数の場合あり（複数店舗マネージャー）
           // 表示は最初の店舗をデフォルトに、セレクタには全担当店舗を出す
@@ -319,8 +321,8 @@ export default function DashboardPage() {
         onStoreChange={setStore}
         allowedStores={
           // 店長: 担当店舗（カンマ区切り対応）のみ表示。admin は全店舗。
-          !isAdmin && sessionStoreName
-            ? sessionStoreName
+          !canViewAll
+            ? (sessionStoreName ?? "")
                 .split(",")
                 .map((s) => s.trim())
                 .filter(Boolean)
@@ -340,6 +342,7 @@ export default function DashboardPage() {
           month={calendarYM.calMonth}
           store={store}
           isAdmin={isAdmin}
+          canViewAll={canViewAll}
           sessionStoreName={sessionStoreName}
           onRefresh={() => setRefreshCount((c) => c + 1)}
         />
@@ -347,6 +350,7 @@ export default function DashboardPage() {
 
       {!loading && !error && !isMonthly && annualData && (
         <PeriodView
+          canDownload={isAdmin}
           annualData={annualData}
           storeCompareData={storeCompareData}
           isAllStores={isAllStores}

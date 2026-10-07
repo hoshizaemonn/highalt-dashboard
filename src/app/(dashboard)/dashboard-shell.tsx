@@ -5,7 +5,6 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Upload,
-  ClipboardList,
   Settings,
   LogOut,
   Menu,
@@ -30,8 +29,10 @@ function getRoleLabel(role: string): string {
   switch (role) {
     case "admin":
       return "管理者";
+    case "manager":
+      return "マネージャー";
     case "store_manager":
-      return "店舗マネージャー";
+      return "店長";
     case "viewer":
       return "閲覧者";
     default:
@@ -110,7 +111,7 @@ export function DashboardShell({
 
           {/* Navigation */}
           <nav className="flex-1 px-3 py-4 space-y-1">
-            {NAV_ITEMS.map((item) => {
+            {NAV_ITEMS.filter(item => role === "admin" || item.href === "/dashboard").map((item) => {
               const isActive = pathname === item.href;
               const Icon = item.icon;
               return (

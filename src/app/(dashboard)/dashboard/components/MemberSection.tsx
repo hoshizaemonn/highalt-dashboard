@@ -140,6 +140,7 @@ export interface EditableMemberSectionProps {
   month: number;
   store: string;
   onSaved: () => void;
+  canEdit?: boolean;
 }
 
 export function EditableMemberSection({
@@ -150,6 +151,7 @@ export function EditableMemberSection({
   month,
   store,
   onSaved,
+  canEdit = false,
 }: EditableMemberSectionProps) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -276,6 +278,7 @@ export function EditableMemberSection({
     return (
       <>
         <SectionTitle>会員情報 (MA002)</SectionTitle>
+        <p className="text-xs text-gray-500 mb-3">{data?.plan_filter_note}</p>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard
             title="在籍会員数"
@@ -312,7 +315,7 @@ export function EditableMemberSection({
     <>
       <div className="flex items-center gap-3 mt-8 mb-3">
         <h2 className="text-lg font-bold text-gray-700">会員情報 (MA002)</h2>
-        {!editing ? (
+        {canEdit && (!editing ? (
           <button
             onClick={() => setEditing(true)}
             className="text-xs bg-white border rounded px-3 py-1 hover:bg-gray-50 text-gray-600"
@@ -348,9 +351,10 @@ export function EditableMemberSection({
               キャンセル
             </button>
           </div>
-        )}
+        ))}
       </div>
 
+      <p className="text-xs text-gray-500 mb-3">{data?.plan_filter_note}</p>
       {/* Summary metrics row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <EditableKPI title="プラン契約者数" fieldKey="plan_subscribers" color={COLORS.blue} />

@@ -1,4 +1,5 @@
 "use client";
+import { PLAN_FILTER_NOTE } from "@/lib/plan-contracts";
 
 import { useMemo, useState, useEffect } from "react";
 
@@ -68,6 +69,7 @@ export interface PeriodViewProps {
   fiscalYear: number;
   /** 表示中の期間: "通期" / "上期" / "下期" */
   period: string;
+  canDownload?: boolean;
 }
 
 export default function PeriodView({
@@ -79,6 +81,7 @@ export default function PeriodView({
   planBreakdown,
   fiscalYear,
   period,
+  canDownload = false,
 }: PeriodViewProps) {
   const monthly = annualData.monthly_data;
   const { display: displayStore } = useStoreDisplayName();
@@ -186,12 +189,12 @@ export default function PeriodView({
           // 有効在籍数 ＝ プラン契約者数 − 休会数（松尾さん確定 2026-08）。
           // 「在籍会員数推移(全体)」「プラン契約者数推移(店舗毎)」とも有効在籍数を表示する
           // （予算線の「有効在籍数(予算)」= budget_active_members と定義を揃える）。
-          プラン契約者数: Math.max(0, m.ma_plan_subscribers - m.ma_suspensions),
+          プラン契約者数: m.ma_active_plan_subscribers ?? Math.max(0, m.ma_plan_subscribers - m.ma_suspensions),
           // 在籍会員数はプラン契約者数の合計を使う。
           // hacomono の「店舗全体会員数」(ma_total_members) は全店合計の総会員数が
           // 各店舗行に同じ値で入っており、店舗横断で合算すると店舗数倍に膨らむため使わない
           // （2026/5: 39,816人と表示される不具合。実数はプラン契約者数 1,657人・松尾さん指摘）
-          在籍会員数: Math.max(0, m.ma_plan_subscribers - m.ma_suspensions),
+          在籍会員数: m.ma_active_plan_subscribers ?? Math.max(0, m.ma_plan_subscribers - m.ma_suspensions),
           新規入会数: m.ma_new_signups,
           退会数: m.ma_cancellations,
           休会数: m.ma_suspensions,
@@ -258,8 +261,9 @@ export default function PeriodView({
 
   return (
     <>
+      <p className="text-xs text-gray-500 mb-3">{PLAN_FILTER_NOTE}</p>
       {/* ダウンロードボタン: 表示中の期間（通期/上期/下期）でCSV出力 */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+      {canDownload && <div className="flex items-center gap-3 mb-4 flex-wrap">
         <button
           onClick={handleDownloadExpense}
           className="text-sm bg-white border rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-700 shadow-sm"
@@ -274,7 +278,7 @@ export default function PeriodView({
         >
           📊 損益計算書（PL書式・CSV・{period}）
         </button>
-      </div>
+      </div>}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/auth";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -139,7 +140,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const auth = await requireSession();
+    const auth = await requireAdmin();
     if (auth.error) return auth.error;
 
     const body = await request.json();
