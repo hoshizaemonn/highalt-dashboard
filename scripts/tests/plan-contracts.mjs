@@ -17,3 +17,11 @@ assert.equal(result[2].planFilterApplied,false);
 assert.equal(filterPlanSummaries([row],[{...row,planName:'対象外',isActive:1}])[0].planSubscribers,0);
 assert.equal(row.planSubscribers,20);
 console.log('PASS: 35 plans, variants, exclusions, inactive members, zero matches, historical/store isolation, no double suspension subtraction');
+
+// Production-shaped master: September only retains departed members after October import.
+const leftover = [{...row, planName:'デイ会員', isActive:0}, {...row, month:10, planName:'デイ会員', isActive:1}];
+assert.equal(filterPlanSummaries([row],leftover)[0].planSubscribers,20);
+assert.equal(filterPlanSummaries([row],leftover)[0].planFilterApplied,false);
+assert.equal(filterPlanSummaries([{...row,month:10}],leftover)[0].planSubscribers,1);
+assert.equal(module.exports.planMembersForMonth(leftover,2026,9).length,0);
+console.log('PASS: later imports cannot turn historical subscriber counts into departed-only zero');
