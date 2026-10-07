@@ -1,4 +1,4 @@
-import { summarizePlans } from "@/lib/plan-contracts";
+import { summarizePlans, planMembersForMonth } from "@/lib/plan-contracts";
 import { HQ_STORE } from "@/lib/constants";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { logError } from "@/lib/log";
@@ -25,18 +25,15 @@ export async function GET(request: NextRequest) {
     }
 
     const where = {
-      year,
-      month,
-      isActive: 1,
       storeName: store,
     };
 
     const members = await prisma.memberData.findMany({
       where,
-      select: { planName: true, isActive: true },
+      select: { year: true, month: true, storeName: true, planName: true, isActive: true },
     });
 
-    const plans = summarizePlans(members);
+    const plans = summarizePlans(planMembersForMonth(members, year, month));
 
     return NextResponse.json({
       year,

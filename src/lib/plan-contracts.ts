@@ -57,22 +57,27 @@ export function summarizePlans(rows: Pick<PlanMember, "planName" | "isActive">[]
   }
   return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
 }
-// MemberData is replaced on import. Only its recorded month can support this filter;
-// never apply today's plans retroactively to historical MA002 totals.
+// ML001 is an upserted current-member master, not monthly snapshots. Older rows
+// can be only departed members left behind by later imports. Never use them to
+// reconstruct historical subscriber counts.
+export function planMembersForMonth(members: PlanMember[], year: number, month: number) {
+  const latest = new Map<string, number>();
+  for (const r of members) latest.set(r.storeName, Math.max(latest.get(r.storeName) ?? 0, r.year * 12 + r.month));
+  return members.filter(r => latest.get(r.storeName) === year * 12 + month);
+}
 export function filterPlanSummaries<T extends PlanSummary>(summaries: T[], members: PlanMember[]) {
-  const snapshots = new Map<string, PlanMember[]>();
-  const key = (r: { year: number; month: number; storeName: string }) => JSON.stringify([r.year, r.month, r.storeName]);
+  const byStore = new Map<string, PlanMember[]>();
   for (const member of members) {
-    const k = key(member); const rows = snapshots.get(k) ?? [];
-    rows.push(member); snapshots.set(k, rows);
+    const rows = byStore.get(member.storeName) ?? [];
+    rows.push(member); byStore.set(member.storeName, rows);
   }
   return summaries.map(row => {
-    const rows = snapshots.get(key(row));
-    const filtered = rows !== undefined;
+    const rows = planMembersForMonth(byStore.get(row.storeName) ?? [], row.year, row.month);
+    const filtered = rows.length > 0;
     const count = filtered ? summarizePlans(rows).reduce((n, p) => n + p.count, 0) : row.planSubscribers;
     return { ...row, planSubscribers: count, planFilterApplied: filtered,
       // Active allowed plans already exclude suspension plans; do not subtract MA002 again.
       activePlanSubscribers: filtered ? count : Math.max(0, count - row.suspensions) };
   });
 }
-export const PLAN_FILTER_NOTE = "プラン契約者数は指定プランのみ集計。同月の会員データがない店舗・月は従来値（対象プラン未確認）です。休会数・退会数などは従来の集計です。";
+export const PLAN_FILTER_NOTE = "プラン契約者数は指定プランのみ集計。最新の会員マスタで確認できない店舗・過去月は従来値（対象プラン未確認）です。休会数・退会数などは従来の集計です。";
