@@ -590,7 +590,7 @@ export default function MonthlyView({
 
       {/* Expense Detail (per-store only) */}
       {!isAllStores && (
-        <ExpenseDetailSection year={year} month={month} store={store} canEdit={isAdmin} />
+        <ExpenseDetailSection year={year} month={month} store={store} canEdit={isAdmin || canViewAll || !!sessionStoreName} />
       )}
     </>
   );
