@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DASHBOARD_SELECTION_KEY } from "@/lib/dashboard-selection";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Mail } from "lucide-react";
 
@@ -58,6 +59,8 @@ export default function LoginPage() {
         return;
       }
 
+      // A new login starts at the current month; navigation within a login retains selections.
+      try { sessionStorage.removeItem(DASHBOARD_SELECTION_KEY); } catch { /* Storage disabled. */ }
       router.push("/dashboard");
     } catch {
       setError("サーバーに接続できません");
