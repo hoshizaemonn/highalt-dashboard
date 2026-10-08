@@ -620,6 +620,7 @@ export async function GET(request: NextRequest) {
       const KPI_BUDGET_CATEGORIES = [
         "新規入会数", "新規入会", "退会数", "退会",
         "休会数", "休会", "退会率", "体験者数", "新規体験者数", "有効在籍数",
+        "在籍会員数", "紹介経由体験数", "紹介以外体験数",
       ];
       // Non-monetary KPI budgets must not roll up into the expense bucket
       const budgetExpense = Object.entries(budgetMap)

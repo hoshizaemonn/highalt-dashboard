@@ -72,7 +72,7 @@ export function BudgetTab({
           );
         } else if (data.detected === "member_income") {
           msgs.push(
-            `${f.name}: ${dst}${dy}会員数・収入算出 ${data.records}件（休会数・退会率のみ。売上・経費の予算は別途『予算書』または『予算実績対比表』のCSVを取り込んでください）`,
+            `${f.name}: ${dst}${dy}会員数・収入算出 ${data.records}件（${(data.categories || []).join("・")}）。売上・経費の予算は別途『予算書』または『予算実績対比表』のCSVを取り込んでください`,
           );
         } else {
           msgs.push(
@@ -99,10 +99,10 @@ export function BudgetTab({
         予算CSVをアップロード（複数まとめて可）。
         <strong>予算実績対比表</strong>（売上・経費）、
         <strong>販促報告</strong>（体験者数・入会数・退会数のKPI）、
-        <strong>会員数・収入算出</strong>（休会数・退会率の予算のみ）を自動判別して取り込みます。
+        <strong>会員数・収入算出</strong>（在籍数・有効在籍数・体験数・入退会数・休会数・退会率・客単価の予算）を自動判別して取り込みます。
         <strong>店舗・年度・期はファイル名から自動判別</strong>するので、選択は不要です
         （例: <code>2026_9期…（東日本橋スタジオ）.csv</code> / <code>2026期予算 東日本橋スタジオ … 会員数・収入算出.csv</code>）。複数店舗をまとめてドロップでき、
-        同じ年度の予算は再アップロードで置き換わります（会員数・収入算出は休会数・退会率のみ更新し、売上・経費予算は保持します）。
+        同じ年度の予算は再アップロードで置き換わります（会員数・収入算出は読み取れた会員系項目を更新し、売上・経費予算は保持します）。
       </p>
 
       <FileDropzone
@@ -365,7 +365,7 @@ export function UploadHistory({ filterTab }: { filterTab?: string }) {
     amazon: "Amazon",
     budget: "予算",
     promotion_budget: "KPI予算(販促報告)",
-    member_kpi_budget: "休会数・退会率予算",
+    member_kpi_budget: "会員・体験・入退会予算",
     hacomono_ml001: "会員 (ML001)",
     hacomono_pl001: "売上明細 (PL001)",
     hacomono_ma002: "月次サマリ (MA002)",

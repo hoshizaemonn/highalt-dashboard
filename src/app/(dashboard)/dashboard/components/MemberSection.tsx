@@ -203,7 +203,7 @@ export function EditableMemberSection({
   };
 
   const budgetKeys: Partial<Record<keyof MemberFields, string[]>> = {
-    plan_subscribers: ["有効在籍数"],
+    plan_subscribers: ["在籍会員数", "有効在籍数"],
     new_plan_signups: ["新規入会数", "新規入会"],
     cancellations: ["退会数", "退会"],
     suspensions: ["休会数", "休会"],
@@ -282,6 +282,7 @@ export function EditableMemberSection({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard
             title="在籍会員数"
+            budget={budget ? { amount: budget["在籍会員数"] ?? null, actual: data?.total_members ?? null, unit: "人" } : undefined}
             value={data ? `${numFormat.format(data.total_members)}人` : "-"}
             color={COLORS.blue}
           />
