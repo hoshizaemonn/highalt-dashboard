@@ -1,20 +1,7 @@
-// 「会員数・収入算出」シート（予算スプレッドシート）から会員系KPI予算を抽出する。
-//
-// 松尾さん要望（2026-08）: 休会数予算・退会率予算を、予算「会員数・収入算出」シートの
-// 「休会（未払い）」行と「退会率」行から取り込む。
-//
-// このシートは予算実績対比表とはレイアウトが異なる:
-//   - 費目/指標ラベルが col[0] ではなく col[1] に入る（col[0] は空 or "FALSE"）
-//   - 会員数ブロックの月ヘッダーは先頭に前年9月が付く: [空][9月][10月]…[9月][合計]
-//     → FY(10月〜翌9月) の各月に「その月ラベルの列」を対応させれば先頭9月に釣られない
-//   - 休会（未払い）は人数、退会率は "4%" のような百分率
-//
-// 取り込むのは休会数・退会率のみ（売上/経費は予算実績対比表側が正）。
-// BudgetData.amount には千円換算せず生値（人数 / 百分率の整数）を入れる。
-// annual/route.ts が budget「休会数」→budget_suspensions、「退会率」→budget_cancellation_rate
-// (例: 8 = 8%) としてそのまま消費する。
+// 会員数・収入算出CSVから、会員・体験・入退会・客単価の月次予算を抽出する。
+// 売上・経費の予算は予算書から取り込み、このシートでは変更しない。
 
-export const MEMBER_KPI_BUDGET_CATEGORIES = ["休会数", "退会率"] as const;
+export const MEMBER_KPI_BUDGET_CATEGORIES = ["在籍会員数", "有効在籍数", "体験者数", "紹介経由体験数", "紹介以外体験数", "新規入会数", "退会数", "休会数", "退会率", "客単価"] as const;
 
 export interface MemberKpiBudgetRecord {
   storeName: string;
@@ -29,7 +16,7 @@ const MONTH_LABELS_IN_ORDER = [
   "4月", "5月", "6月", "7月", "8月", "9月",
 ];
 
-const norm = (s: unknown) => String(s ?? "").replace(/\s/g, "");
+const norm = (s: unknown) => String(s ?? "").normalize("NFKC").replace(/\s/g, "");
 
 /** このCSVが「会員数・収入算出」シートか判定（在籍数＋退会率＋「休会」かつ「未払」で識別）。
  *  カッコ種別（全角/半角）や「い」の有無・閉じカッコ欠けに左右されないよう部分一致で判定する。 */
@@ -79,26 +66,28 @@ function findMonthHeaderAbove(
 /** 行の指定列以外から見出しラベル（col[0]優先、無ければcol[1]）を取り出す */
 function rowLabel(row: string[]): string {
   const a = norm(row[0]);
-  if (a) return a;
+  if (a && !["FALSE", "TRUE"].includes(a)) return a;
   return norm(row[1]);
 }
 
 function parseCount(cell: unknown): number | null {
   const s = String(cell ?? "").replace(/[,"\s]/g, "");
   if (s === "" || s === "-") return null;
-  const n = parseInt(s, 10);
-  return isNaN(n) ? null : n;
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isSafeInteger(n) ? n : null;
 }
 
 function parseRate(cell: unknown): number | null {
   const s = String(cell ?? "").replace(/[,"\s%％]/g, "");
   if (s === "" || s === "-") return null;
-  const n = parseFloat(s);
-  return isNaN(n) ? null : Math.round(n);
+  if (!/^\d+(?:\.\d+)?$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n <= 100 ? Math.round(n) : null;
 }
 
 /**
- * 会員数・収入算出シートから 休会数(=休会（未払い）) と 退会率 の月次予算を抽出する。
+ * 会員数・収入算出シートから月次のKPI予算を抽出する（人数・率・円を千倍しない）。
  * fiscalYear=2026 のとき 10〜12月は2025年、1〜9月は2026年。
  */
 export function extractMemberKpiBudget(
@@ -114,6 +103,14 @@ export function extractMemberKpiBudget(
   for (let m = 1; m <= 9; m++) fyMonths.push({ year: fiscalYear, month: m });
 
   const targets: { category: string; match: (l: string) => boolean; kind: "count" | "rate" }[] = [
+    { category: "在籍会員数", match: (l) => l === "在籍数" || l === "在籍会員数", kind: "count" },
+    { category: "有効在籍数", match: (l) => l === "有効在籍数", kind: "count" },
+    { category: "体験者数", match: (l) => l === "体験数(合計)" || l === "体験者数", kind: "count" },
+    { category: "紹介経由体験数", match: (l) => l === "紹介経由の体験数", kind: "count" },
+    { category: "紹介以外体験数", match: (l) => l === "紹介以外の体験数", kind: "count" },
+    { category: "新規入会数", match: (l) => l === "入会数" || l.startsWith("入会数(") || l === "新規入会数", kind: "count" },
+    { category: "退会数", match: (l) => l === "退会数", kind: "count" },
+    { category: "客単価", match: (l) => l.startsWith("客単価(円"), kind: "count" },
     { category: "休会数", match: (l) => l.includes("休会") && l.includes("未払"), kind: "count" },
     { category: "退会率", match: (l) => l === "退会率", kind: "rate" },
   ];
@@ -130,7 +127,7 @@ export function extractMemberKpiBudget(
 
     const header = findMonthHeaderAbove(rows, ri);
     if (!header) continue;
-    seen.add(target.category);
+    const previousCount = records.length;
 
     for (let i = 0; i < 12; i++) {
       const col = header[i];
@@ -146,6 +143,7 @@ export function extractMemberKpiBudget(
         amount: val,
       });
     }
+    if (records.length > previousCount) seen.add(target.category);
   }
 
   return records;

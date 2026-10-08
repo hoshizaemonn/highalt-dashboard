@@ -12,7 +12,6 @@ import {
 import {
   isMemberIncomeSheet,
   extractMemberKpiBudget,
-  MEMBER_KPI_BUDGET_CATEGORIES,
 } from "@/lib/member-income-budget-parse";
 import { parseBudgetFilename } from "@/lib/budget-filename";
 
@@ -120,29 +119,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── 会員数・収入算出シート（休会数予算・退会率予算）の自動判別 ──────────
-    // 松尾さん要望: 休会数予算・退会率予算を「会員数・収入算出」シートの
-    // 「休会（未払い）」「退会率」行から取り込む。予算実績対比表とはレイアウトが
-    // 異なり（ラベルがcol[1]・先頭に前年9月列・人数/百分率）、BUDGET_ITEMSでは拾えない。
-    // 売上/経費予算（予算実績対比表由来）を消さないよう、対象カテゴリのみスコープ取込する。
+    // 会員・体験・入退会・客単価予算。売上/経費と未提供の月・項目は保持する。
     if (isMemberIncomeSheet(text)) {
       const kpiRecords = extractMemberKpiBudget(allRows, store, fiscalYear);
       if (kpiRecords.length === 0) {
         return NextResponse.json(
           {
             error:
-              "会員数・収入算出シートと判定しましたが、休会（未払い）/退会率の行を検出できませんでした。シートの体裁をご確認ください。",
+              "会員数・収入算出シートと判定しましたが、会員・体験・入退会の予算行を検出できませんでした。シートの体裁をご確認ください。",
           },
           { status: 400 },
         );
       }
       await prisma.$transaction(async (tx) => {
-        // 対象カテゴリ（休会数・退会率）だけをスコープ削除→挿入（売上/経費予算は温存）
+        // 読み取れた店舗・年月・項目だけ更新し、欠けた行/月の既存予算は保持する。
         await tx.budgetData.deleteMany({
           where: {
             storeName: store,
-            OR: fiscalBudgetScope(fiscalYear),
-            category: { in: [...MEMBER_KPI_BUDGET_CATEGORIES] },
+            OR: kpiRecords.map(({ year, month, category }) => ({ year, month, category })),
           },
         });
         await tx.budgetData.createMany({ data: kpiRecords, skipDuplicates: true });
@@ -155,7 +149,7 @@ export async function POST(request: NextRequest) {
             year: fiscalYear,
             fileName: file.name,
             recordCount: kpiRecords.length,
-            note: `${fiscalYear}年度 休会数・退会率予算（会員数・収入算出・自動判別）`,
+            note: `${fiscalYear}年度 会員・体験・入退会・客単価予算（会員数・収入算出・自動判別）`,
           },
         });
       }, { timeout: 30000 });
@@ -335,12 +329,12 @@ export async function POST(request: NextRequest) {
     // 接続プール枯渇を避けるため、upsertループ → createMany バッチに変更。
     // 削除→一括insert で 1 + 1 + 1 = 3クエリ（旧: 1 + N + 1 = 191クエリ）。
     await prisma.$transaction(async (tx) => {
-      // Preserve manually-entered unit price budget across CSV re-uploads
+      // 会員系・客単価など別途登録した予算を保持し、このCSVの費目のみ更新する。
       await tx.budgetData.deleteMany({
         where: {
           storeName: store,
           OR: fiscalBudgetScope(fiscalYear),
-          category: { not: BUDGET_CATEGORY_UNIT_PRICE },
+          category: { in: [...new Set(records.map((r) => r.category))].filter((c) => c !== BUDGET_CATEGORY_UNIT_PRICE) },
         },
       });
 
