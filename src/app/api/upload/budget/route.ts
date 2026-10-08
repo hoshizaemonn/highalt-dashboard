@@ -241,7 +241,8 @@ export async function POST(request: NextRequest) {
     // 「合計」列を January 等と誤認しないよう、各月ラベルの実位置を使う。
     let monthColIdx: (number | undefined)[] = [];
     let bestHits = 0;
-    for (const row of allRows.slice(0, 8)) {
+    let monthHeaderIndex = -1;
+    for (const [ri, row] of allRows.slice(0, 8).entries()) {
       const cols: (number | undefined)[] = new Array(12).fill(undefined);
       let hits = 0;
       for (let ci = 0; ci < row.length; ci++) {
@@ -255,11 +256,29 @@ export async function POST(request: NextRequest) {
       if (hits > bestHits) {
         bestHits = hits;
         monthColIdx = cols;
+        monthHeaderIndex = ri;
       }
     }
     // ヘッダ検出に失敗した場合は従来の4列/月レイアウトにフォールバック
     if (bestHits < 10) {
       monthColIdx = fyMonths.map((_, i) => 1 + i * 4);
+    }
+
+    // 月見出しの直上に年がある場合、ファイル名の年度と照合する。
+    // テンプレートの前年見出しが残ったCSVを黙って別年度へ保存しない。
+    if (bestHits >= 10 && monthHeaderIndex > 0) {
+      const yearRow = allRows[monthHeaderIndex - 1];
+      let headerYear: number | undefined;
+      for (let ci = 0; ci < yearRow.length; ci++) {
+        const match = yearRow[ci].normalize("NFKC").trim().match(/^(20\d{2})年$/);
+        if (match) headerYear = Number(match[1]);
+        const mi = monthColIdx.indexOf(ci);
+        if (mi >= 0 && headerYear !== undefined && headerYear !== fyMonths[mi].year) {
+          return NextResponse.json({
+            error: `CSVの月見出しは${headerYear}年${fyMonths[mi].month}月ですが、ファイル名から判定した対象は${fiscalYear - 1}年10月〜${fiscalYear}年9月です。対象期間を確認し、ファイル名の年度とCSV内の年見出しを合わせてから再アップロードしてください。既存の予算は変更していません。`,
+          }, { status: 400 });
+        }
+      }
     }
 
     interface BudgetRecord {
@@ -271,13 +290,17 @@ export async function POST(request: NextRequest) {
     }
 
     const records: BudgetRecord[] = [];
-    const budgetItemSet = new Set(BUDGET_ITEMS as readonly string[]);
+    const normalizeCategory = (value: string) => value.normalize("NFKC").replace(/\s/g, "");
+    const budgetItemNames = new Map(BUDGET_ITEMS.map((name) => [normalizeCategory(name), name]));
+    const firstMonthCol = Math.min(...monthColIdx.filter((col): col is number => col !== undefined));
 
     for (const row of allRows) {
-      if (!row || !row[0]?.trim()) continue;
-
-      const categoryName = row[0].trim();
-      if (!budgetItemSet.has(categoryName)) continue;
+      // 先頭に空列・区分列がある予算書も、月データより左の科目欄から読む。
+      // 注記・合計行を科目として拾わないよう、既知の科目名だけに限定する。
+      const categoryName = row.slice(0, firstMonthCol)
+        .map((cell) => budgetItemNames.get(normalizeCategory(cell)))
+        .find((name) => name !== undefined);
+      if (!categoryName) continue;
 
       for (let i = 0; i < fyMonths.length; i++) {
         const colIdx = monthColIdx[i];
@@ -286,8 +309,9 @@ export async function POST(request: NextRequest) {
         const valStr = row[colIdx].trim().replace(/,/g, "").replace(/"/g, "").replace(/ /g, "");
         if (!valStr || valStr === "-") continue;
 
-        const amount = parseInt(valStr, 10) * 1000; // 千円単位 → 円
-        if (isNaN(amount)) continue;
+        if (!/^[+-]?\d+(?:\.\d+)?$/.test(valStr)) continue;
+        const amount = Math.round(Number(valStr) * 1000); // 千円単位 → 円（小数も保持）
+        if (!Number.isSafeInteger(amount)) continue;
 
         records.push({
           storeName: store,
