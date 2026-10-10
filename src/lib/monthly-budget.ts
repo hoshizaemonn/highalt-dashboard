@@ -30,3 +30,14 @@ export function budgetComparison(budget: number | null, actual: number | null) {
     ratio: budget !== null && budget > 0 && actual !== null ? actual / budget * 100 : null,
   };
 }
+
+/** 合算予算を個別カテゴリへ推測配賦しない。未設定と明示的な0円を区別する。 */
+export function monthlyRevenueBudgets(budget: Record<string, number>) {
+  return {
+    membership: budget["会費売上"] ?? budget["月会費収入"] ?? null,
+    personal: budget["パーソナル売上"] ?? null,
+    product: budget["物販売上"] ?? null,
+    other: budget["その他売上"] ?? null,
+    combined: budget["パーソナル・物販・その他収入"] ?? null,
+  };
+}

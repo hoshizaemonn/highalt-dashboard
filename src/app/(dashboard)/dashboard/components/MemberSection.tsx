@@ -203,7 +203,7 @@ export function EditableMemberSection({
   };
 
   const budgetKeys: Partial<Record<keyof MemberFields, string[]>> = {
-    plan_subscribers: ["在籍会員数", "有効在籍数"],
+    plan_subscribers: ["有効在籍数"],
     new_plan_signups: ["新規入会数", "新規入会"],
     cancellations: ["退会数", "退会"],
     suspensions: ["休会数", "休会"],

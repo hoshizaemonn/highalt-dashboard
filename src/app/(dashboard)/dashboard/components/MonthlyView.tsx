@@ -15,7 +15,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  Cell,
+  Legend,
   XAxis,
   YAxis,
   Tooltip,
@@ -29,7 +29,7 @@ import { ManualEntrySection } from "./ManualEntrySection";
 import { PlComparisonSection } from "./PlComparisonSection";
 import { AttributesSection } from "./AttributesSection";
 import { EnqueteSection } from "./EnqueteSection";
-import { monthlyBudgetTotals } from "@/lib/monthly-budget";
+import { monthlyBudgetTotals, monthlyRevenueBudgets } from "@/lib/monthly-budget";
 
 export interface MonthlyViewProps {
   data: DashboardData;
@@ -95,6 +95,24 @@ export default function MonthlyView({
   const cardBudget = (amount: number | null, actual: number, lowerIsBetter = false) =>
     isAllStores ? undefined : { amount, actual, lowerIsBetter };
   const profitValue = usePl ? data.total_revenue - laborValue - data.total_expense : data.operating_profit;
+
+  const revenueBudgets = monthlyRevenueBudgets(data.budget);
+  const summaryChart = [
+    { name: "売上", actual: data.total_revenue, budget: budgetTotals.revenue },
+    { name: "人件費", actual: laborValue, budget: budgetTotals.labor },
+    { name: "経費", actual: data.total_expense, budget: budgetTotals.expense },
+    { name: "営業利益", actual: profitValue, budget: budgetTotals.profit },
+  ];
+  const revenueChart = [
+    { name: "会費", actual: data.revenue.membership, budget: revenueBudgets.membership },
+    { name: "パーソナル", actual: data.revenue.personal, budget: revenueBudgets.personal },
+    { name: "物販", actual: data.revenue.product, budget: revenueBudgets.product },
+    { name: "その他", actual: data.revenue.other, budget: revenueBudgets.other },
+  ];
+  const missingBudgetNote = (rows: typeof summaryChart) => {
+    const missing = rows.filter(row => row.budget === null).map(row => row.name);
+    return missing.length ? `予算未設定：${missing.join("・")}（0円とは区別しています）` : null;
+  };
 
   return (
     <>
@@ -365,57 +383,53 @@ export default function MonthlyView({
       </div>
 
       {/* PL Charts */}
-      {(data.total_revenue > 0 || data.total_labor > 0 || data.total_expense > 0) && (
+      {(summaryChart.some(row => row.actual !== 0 || row.budget !== null)) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
           {/* Revenue / Labor / Expense / Profit bar chart */}
           <div className="bg-white rounded-lg border shadow-sm p-4">
             <p className="text-sm font-medium text-gray-600 mb-3">損益サマリ</p>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart
-                data={[
-                  { name: "売上", value: data.total_revenue, fill: COLORS.blue },
-                  { name: "人件費", value: data.total_labor, fill: COLORS.red },
-                  { name: "経費", value: data.total_expense, fill: COLORS.orange },
-                  { name: "営業利益", value: data.operating_profit, fill: data.operating_profit >= 0 ? COLORS.green : COLORS.red },
-                ]}
+                data={summaryChart}
               >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" fontSize={11} />
                 <YAxis tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                 <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="value" name="金額" radius={[4, 4, 0, 0]}>
-                  {[COLORS.blue, COLORS.red, COLORS.orange, data.operating_profit >= 0 ? COLORS.green : COLORS.red].map(
-                    (color, i) => (
-                      <Cell key={i} fill={color} />
-                    ),
-                  )}
-                </Bar>
+                <Legend />
+                <Bar dataKey="budget" name="予算" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="actual" name="実績" fill={COLORS.blue} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            <p className="text-xs text-gray-500 mt-2">{missingBudgetNote(summaryChart)}</p>
           </div>
 
           {/* 売上カテゴリ内訳: 坪井さん要望#6 で4分類に統合
               （会費=月会費+入会金 / パーソナル / 物販=Square / その他=スポット+体験+ロッカー他） */}
-          {(data.revenue.membership + data.revenue.personal + data.revenue.product + data.revenue.other) > 0 && (
+          {(revenueBudgets.combined !== null || revenueChart.some(row => row.actual !== 0 || row.budget !== null)) && (
             <div className="bg-white rounded-lg border shadow-sm p-4">
               <p className="text-sm font-medium text-gray-600 mb-3">売上カテゴリ内訳</p>
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart
-                  data={[
-                    { name: "会費", 金額: data.revenue.membership },
-                    { name: "パーソナル", 金額: data.revenue.personal },
-                    { name: "物販", 金額: data.revenue.product },
-                    { name: "その他", 金額: data.revenue.other },
-                  ]}
+                  data={revenueChart}
                   layout="vertical"
                 >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" tickFormatter={(v: number) => formatCompact(v)} fontSize={11} />
                   <YAxis type="category" dataKey="name" width={80} fontSize={11} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="金額" fill={COLORS.blue} radius={[0, 4, 4, 0]} />
+                  <Legend />
+                  <Bar dataKey="budget" name="予算" fill="#94a3b8" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="actual" name="実績" fill={COLORS.blue} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+              <p className="text-xs text-gray-500 mt-2">{missingBudgetNote(revenueChart)}</p>
+              {revenueBudgets.combined !== null && revenueChart.slice(1).some(row => row.budget === null) && (
+                <p className="text-xs text-gray-500 mt-1">
+                  パーソナル・物販・その他の合算予算：{formatYen(revenueBudgets.combined)}。
+                  個別の比較には「パーソナル売上」「物販売上」「その他売上」の予算が必要です。
+                </p>
+              )}
             </div>
           )}
 
