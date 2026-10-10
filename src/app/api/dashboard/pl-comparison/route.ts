@@ -7,7 +7,7 @@ import { PL_CATEGORIES } from "@/lib/pl-csv";
 import { loadComparisonSource } from "@/lib/pl-comparison-source";
 
 // 前年比比較（人件費・消耗品費・広告宣伝費）— クライアント公式PL（pl_actuals）由来。
-// 当年 vs 前年を同一ソースで比較するため、ダッシュボードの granular（PayPay）とは別系統。
+// 各年度の運用に合わせて、9期までは公式PL、10期以降は給与・経費データを参照。
 //
 // fiscalYear: 会計年度の「年度末年」（例 2026 = 9期 2025/10〜2026/9）。
 //
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     }
 
     // データソースは会計年度で切り替える（9期までは予算実績対比表、10期からはダッシュボード）。
-    // 当年・前年を混ぜないよう、切り替えは年度まるごとで行う。
+    // 10期対9期では、前年は9期の確定PLを参照する。
     const source = await loadComparisonSource(fiscalYear, months, storeNameFilter);
     const get = (cat: string, y: number, m: number) => source.amount(cat, y, m);
     const catCoverage = (cat: string, y: number, m: number) =>
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
         const current = get(cat, mm.y, mm.m);
         const prev = get(cat, mm.y - 1, mm.m);
 
-        // 判定は「当年側」だけで行う（前年は確定済みのため）。
+        // 当年側の取込状況。前年側も別途カバレッジを確認する。
         //   ① その月にPLを出している店舗が揃っていない → partial / none
         //   ② 月は揃っていても、その費目だけ欠けている店舗がある → partial
         // ②が無いと、例えば7月のPLは全店提出済みでも人件費だけ5店舗、という
@@ -109,8 +109,11 @@ export async function GET(request: NextRequest) {
 
         // 揃っている月だけ前年比を出す。揃っていない月の 0円 は
         // 「使わなかった」ではなく「まだ入っていない」なので比率にしない。
-        const yoy =
-          status === "complete" && prev !== 0 ? current / prev : null;
+        const prevCoverage = catCoverage(cat, mm.y - 1, mm.m);
+        const prevStatus: Status = prevCoverage === 0 ? "none"
+          : expectedStores > 0 && prevCoverage < expectedStores ? "partial" : "complete";
+        const yoy = status === "complete" && prevStatus === "complete" && prev !== 0
+          ? current / prev : null;
         return {
           month: mm.m,
           label: mm.label,
@@ -119,22 +122,23 @@ export async function GET(request: NextRequest) {
           yoy,
           status,
           stores: cCov,
+          prevStatus,
         };
       });
 
       // 合計も「揃っている月」だけで当年・前年をそろえて出す（期間ミスマッチ防止）。
       // 揃っている月は費目ごとに違いうるので、対象期間ラベルも費目ごとに持つ。
-      const completeMonths = monthly.filter((x) => x.status === "complete");
+      const completeMonths = monthly.filter((x) => x.status === "complete" && x.prevStatus === "complete");
       const currentTotal = completeMonths.reduce((s, x) => s + x.current, 0);
       const prevTotal = completeMonths.reduce((s, x) => s + x.prev, 0);
       // 対象期間ラベル。途中に欠けた月がある場合は「10月〜7月（3月除く）」のように
       // 除外月を明示する（「10月〜7月」とだけ書くと合計に含まれていない月が隠れるため）。
       const completeSet = new Set(completeMonths.map((x) => x.label));
-      const firstIdx = monthly.findIndex((x) => x.status === "complete");
+      const firstIdx = monthly.findIndex((x) => completeSet.has(x.label));
       const lastIdx =
         monthly.length -
         1 -
-        [...monthly].reverse().findIndex((x) => x.status === "complete");
+        [...monthly].reverse().findIndex((x) => completeSet.has(x.label));
       const gaps =
         firstIdx < 0
           ? []
@@ -170,13 +174,14 @@ export async function GET(request: NextRequest) {
           ? completeLabels[0]
           : `${completeLabels[0]}〜${completeLabels[completeLabels.length - 1]}`;
 
-    // データ有無（全費目・全月で当年も前年も0なら未取込）
+    // 金額ではなく取込有無で判定。前年だけ取込済み・明示的な0円も表示する。
     const hasData = categories.some(
-      (c) => c.currentTotal !== 0 || c.prevTotal !== 0,
+      (c) => c.monthly.some(m => m.status !== "none" || m.prevStatus !== "none"),
     );
 
     return NextResponse.json({
       fiscalYear,
+      sourceLabel: source.sourceLabel,
       store,
       hasData,
       months: months.map((m) => m.label),

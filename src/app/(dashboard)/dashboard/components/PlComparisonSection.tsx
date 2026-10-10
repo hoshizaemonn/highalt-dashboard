@@ -12,6 +12,7 @@ interface MonthCell {
   prev: number;
   yoy: number | null;
   status: MonthStatus;
+  prevStatus?: MonthStatus;
   stores: number;
 }
 interface CategoryComp {
@@ -24,6 +25,7 @@ interface CategoryComp {
   totalPeriodLabel?: string | null;
 }
 interface CompResponse {
+  sourceLabel?: string;
   fiscalYear: number;
   store: string | null;
   needsStore?: boolean;
@@ -44,7 +46,7 @@ function currentCell(c: MonthCell) {
   if (c.status === "none") return <span className="text-gray-400">-</span>;
   if (c.status === "partial") {
     // 一部店舗のみ取込済みの速報値。金額は出すが全店実績ではないので色で区別する。
-    return <span className="text-amber-700">{formatYen(c.current)}</span>;
+    return <span className="text-amber-700">{formatYen(c.current)}（速報）</span>;
   }
   return formatYen(c.current);
 }
@@ -55,8 +57,7 @@ function yoyClass(yoy: number | null): string {
 }
 
 /**
- * 前年比比較（人件費・消耗品費・広告宣伝費）— クライアント公式PL（pl_actuals）由来。
- * 当年 vs 前年を同一ソースで比較する独立ブロック。
+ * 前年比比較。9期までは確定PL、10期以降はダッシュボード取込実績を使用。
  */
 export function PlComparisonSection({
   store,
@@ -121,8 +122,10 @@ export function PlComparisonSection({
       <>
         <SectionTitle>前年比比較（人件費・消耗品費・広告宣伝費）</SectionTitle>
         <p className="text-sm text-gray-500 bg-white rounded-lg border shadow-sm p-4">
-          {data.store} のPLデータが未取込です。「アップロード →
-          前年比PL」から開業PLのCSVを取り込むと表示されます。
+          {data.store} の対象年度・前年度の比較データがまだありません。
+          {fiscalYear >= 2027
+            ? "当年は給与・経費の取込状況、前年は該当年度の実績データをご確認ください。9期までは前年比PL、10期以降は給与・経費データを参照します。"
+            : "「アップロード → 前年比PL」から対象年度のPL実績を取り込むと表示されます。"}
         </p>
       </>
     );
@@ -132,7 +135,8 @@ export function PlComparisonSection({
     <>
       <SectionTitle>前年比比較（人件費・消耗品費・広告宣伝費）</SectionTitle>
       <p className="text-xs text-gray-500 mb-2">
-        クライアント様の「開業からのPL」由来。当年・前年とも同一ソースで比較しています（単位：円）。
+        {data.sourceLabel}（単位：円）。当年・前年の同じ月で比較します。
+        未取込は「—」、一部店舗のみの月は速報値とし、両年のデータが揃った月だけ前年比・合計を表示します。
       </p>
       <div className="space-y-6">
         {data.categories.map((cat) => (
@@ -170,7 +174,7 @@ export function PlComparisonSection({
               <tbody>
                 <tr className="border-b">
                   <td className="px-3 py-1.5 sticky left-0 bg-white text-gray-700">
-                    当年
+                    当年（{fiscalYear - 2017}期）
                   </td>
                   {cat.monthly.map((c) => (
                     <td key={c.month} className="px-3 py-1.5 text-right whitespace-nowrap">
@@ -178,23 +182,23 @@ export function PlComparisonSection({
                     </td>
                   ))}
                   <td className="px-3 py-1.5 text-right bg-gray-50 font-medium whitespace-nowrap">
-                    {formatYen(cat.currentTotal)}
+                    {cat.totalPeriodLabel ? formatYen(cat.currentTotal) : "—"}
                   </td>
                 </tr>
                 <tr className="border-b">
                   <td className="px-3 py-1.5 sticky left-0 bg-white text-gray-500">
-                    前年
+                    前年（{fiscalYear - 2018}期）
                   </td>
                   {cat.monthly.map((c) => (
                     <td
                       key={c.month}
                       className="px-3 py-1.5 text-right text-gray-500 whitespace-nowrap"
                     >
-                      {c.prev ? formatYen(c.prev) : "-"}
+                      {c.prevStatus === "none" ? "—" : <>{formatYen(c.prev)}{c.prevStatus === "partial" && "（速報）"}</>}
                     </td>
                   ))}
                   <td className="px-3 py-1.5 text-right bg-gray-50 text-gray-500 whitespace-nowrap">
-                    {formatYen(cat.prevTotal)}
+                    {cat.totalPeriodLabel ? formatYen(cat.prevTotal) : "—"}
                   </td>
                 </tr>
                 <tr className="border-b font-medium">
