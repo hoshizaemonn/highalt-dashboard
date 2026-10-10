@@ -4,10 +4,7 @@
 // 10期（2026/10〜2027/9）からは スプレッドシート運用が廃止されるため（松尾さん依頼 2026-09）、
 // ダッシュボードが毎月取り込んでいる給与CSV（payroll_data）・経費CSV（expense_data）を参照する。
 //
-// ★当年と前年で参照先を混ぜてはいけない。
-//   同じ費目でも集計基準が違うため、混ぜると前年比が実態から大きくずれる
-//   （人件費は予算実績対比表比で 94〜98%、賞与の扱い等で差が出る）。
-//   そのため切り替えは「会計年度まるごと」で行い、当年・前年とも同じソースから読む。
+// 各年度の運用に合わせて参照先を選ぶ。10期対9期は当年がダッシュボード、前年が確定PL。
 
 import { prisma } from "@/lib/prisma";
 import { expenseRowSharesByCategory } from "@/lib/manual-expense-split";
@@ -195,7 +192,23 @@ export async function loadComparisonSource(
   months: Ym[],
   storeFilter: StoreFilter,
 ): Promise<ComparisonSource> {
-  return usesDashboardSource(fiscalYear)
-    ? loadFromDashboard(months, storeFilter)
-    : loadFromPlActuals(months, storeFilter);
+  const currentIsDashboard = usesDashboardSource(fiscalYear);
+  const previousIsDashboard = usesDashboardSource(fiscalYear - 1);
+  if (currentIsDashboard === previousIsDashboard) {
+    return currentIsDashboard
+      ? loadFromDashboard(months, storeFilter)
+      : loadFromPlActuals(months, storeFilter);
+  }
+  const [current, previous] = await Promise.all([
+    loadFromDashboard(months, storeFilter),
+    loadFromPlActuals(months.map(mm => ({ ...mm, y: mm.y - 1 })), storeFilter),
+  ]);
+  const currentMonths = new Set(months.map(mm => `${mm.y}:${mm.m}`));
+  const sourceFor = (y: number, m: number) => currentMonths.has(`${y}:${m}`) ? current : previous;
+  return {
+    amount: (cat, y, m) => sourceFor(y, m).amount(cat, y, m),
+    coverage: (cat, y, m) => sourceFor(y, m).coverage(cat, y, m),
+    expectedStores: Math.max(current.expectedStores, previous.expectedStores),
+    sourceLabel: `当年：${current.sourceLabel} ／ 前年：${previous.sourceLabel}`,
+  };
 }
