@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const {load,React,renderToStaticMarkup}=require('./test-monthly-budget.cjs');
+const {monthlyRevenueBudgets}=load(path.resolve('src/lib/monthly-budget.ts'));
+const {EditableMemberSection}=load(path.resolve('src/app/(dashboard)/dashboard/components/MemberSection.tsx'));
+const props={isAllStores:false,year:2026,month:10,store:'テスト店舗',onSaved:()=>{},data:{total_members:300,plan_subscribers:200,new_plan_signups:0,cancellations:0,suspensions:0,cancellation_rate:'0',plan_changes:0}};
+const render=budget=>renderToStaticMarkup(React.createElement(EditableMemberSection,{...props,budget}));
+const h=render({'在籍会員数':333,'有効在籍数':222});
+assert(h.includes('222人')); assert(!h.includes('333人'));
+assert(render({'在籍会員数':333}).includes('未設定'));
+assert(render({'在籍会員数':333,'有効在籍数':0}).includes('0人'));
+const grouped=monthlyRevenueBudgets({'月会費収入':1000,'パーソナル・物販・その他収入':500});
+assert.equal(grouped.membership,1000);assert.equal(grouped.personal,null);assert.equal(grouped.product,null);assert.equal(grouped.other,null);assert.equal(grouped.combined,500);
+const detailed=monthlyRevenueBudgets({'月会費収入':1000,'会費売上':900,'パーソナル売上':0,'物販売上':50,'その他売上':100});
+assert.equal(detailed.membership,900);assert.equal(detailed.personal,0);assert.equal(detailed.product,50);assert.equal(detailed.other,100);
+console.log('PASS: effective member budget, no enrollment fallback, zero/missing, revenue categories and unallocated combined budget.');
