@@ -1,6 +1,6 @@
 import { logError } from "@/lib/log";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdminOrIngest } from "@/lib/auth";
 import { loadDataFreshness } from "@/lib/data-freshness-loader";
 import { summarize } from "@/lib/data-freshness";
 
@@ -9,7 +9,7 @@ import { summarize } from "@/lib/data-freshness";
 
 export async function GET() {
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAdminOrIngest();
     if (auth.error) return auth.error;
     const { generatedAt, items } = await loadDataFreshness();
     const s = summarize(items);

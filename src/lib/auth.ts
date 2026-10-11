@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual, randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { prisma } from "./prisma";
-import { canViewAllStores } from "./permissions";
+import { canViewAllStores, canIngest } from "./permissions";
 
 const SESSION_COOKIE = "highalt_session";
 const SESSION_MAX_AGE = 60 * 60 * 24; // 24 hours in seconds
@@ -146,7 +146,7 @@ export const getSession = cache(async function getSession(): Promise<SessionUser
       where: { id: session.userId },
       select: { role: true, storeName: true, displayName: true },
     });
-    if (!user || !["admin", "manager", "store_manager"].includes(user.role)) return null;
+    if (!user || !["admin", "manager", "store_manager", "ingest"].includes(user.role)) return null;
     return { ...session, ...user, rawRole: user.role };
 
   } catch {
@@ -203,6 +203,26 @@ export async function requireAdmin(): Promise<
 }
 
 /**
+ * 日次の自動取込が呼ぶAPI用: admin または取込専用ロール（ingest）を許可する。
+ * ingest が呼べるのは proxy.ts の許可リスト（完全一致のパス＋メソッド）だけ。
+ * 他の管理系API（ユーザー管理・設定・画面）は requireAdmin のままで、ingest は入れない。
+ */
+export async function requireAdminOrIngest(): Promise<
+  | { session: SessionUser; error?: never }
+  | { session?: never; error: Response }
+> {
+  const result = await requireSession();
+  if (result.error) return result;
+  if (!canIngest(result.session.role)) {
+    const { NextResponse } = await import("next/server");
+    return {
+      error: NextResponse.json({ error: "管理者権限が必要です" }, { status: 403 }),
+    };
+  }
+  return result;
+}
+
+/**
  * 書き込み系 API 用：要求された店舗が許可されているか厳密に検証する。
  *
  * - admin: 任意の店舗（または店舗指定なし）を許可
@@ -217,8 +237,8 @@ export async function requireStoreUploadAccess(
   | { session: SessionUser; error?: never }
   | { session?: never; error: Response }
 > {
-  void requestedStore; // All writes now require admin, regardless of store.
-  return requireAdmin();
+  void requestedStore; // All writes now require admin (or the ingest role), regardless of store.
+  return requireAdminOrIngest();
 }
 
 /**
