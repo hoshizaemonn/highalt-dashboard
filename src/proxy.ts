@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
-import { canManage, isAdminPage, isRestrictedApi } from "@/lib/permissions";
+import { canManage, isAdminPage, isRestrictedApi, isIngestAllowedApi, INGEST_ROLE } from "@/lib/permissions";
 
 const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout", "/api/keepalive"];
 export async function proxy(request: NextRequest) {
@@ -21,6 +21,12 @@ export async function proxy(request: NextRequest) {
     return pathname.startsWith("/api/")
       ? NextResponse.json({ error: "認証が必要です" }, { status: 401 })
       : NextResponse.redirect(new URL("/login", request.url));
+  }
+  // 取込専用ロール: 許可リストのAPI以外（画面・閲覧・設定・ユーザー管理など）はすべて拒否
+  if (session.role === INGEST_ROLE) {
+    return isIngestAllowedApi(pathname, request.method)
+      ? NextResponse.next()
+      : NextResponse.json({ error: "この操作は許可されていません" }, { status: 403 });
   }
   if (!canManage(session.role)) {
     if (isRestrictedApi(pathname, request.method)) {

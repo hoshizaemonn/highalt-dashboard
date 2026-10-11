@@ -1,7 +1,7 @@
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdminOrIngest } from "@/lib/auth";
 import { decodeFileBuffer, parseCSV } from "@/lib/csv-utils";
 import {
   parsePayjpFee,
@@ -67,7 +67,7 @@ function mapPlus(a: Map<string, number>, list: StoreAmount[]) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAdminOrIngest();
     if (auth.error) return auth.error;
     const session = auth.session;
 

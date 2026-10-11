@@ -1,8 +1,9 @@
-import { requireAdmin } from "@/lib/auth";
+import { requireAdminOrIngest } from "@/lib/auth";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
+import { canIngest } from "@/lib/permissions";
 import {
   decodeFileBuffer,
   parseCSV,
@@ -179,7 +180,7 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireSession();
     if (auth.error) return auth.error;
-    if (auth.session.role !== "admin") {
+    if (!canIngest(auth.session.role)) {
       return NextResponse.json({ error: "admin only" }, { status: 403 });
     }
     const { searchParams } = new URL(request.url);
@@ -195,9 +196,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAdminOrIngest();
     if (auth.error) return auth.error;
-    if (auth.session.role !== "admin") {
+    if (!canIngest(auth.session.role)) {
       return NextResponse.json({ error: "admin only" }, { status: 403 });
     }
 
