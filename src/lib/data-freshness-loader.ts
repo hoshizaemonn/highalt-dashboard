@@ -12,6 +12,9 @@ import {
 // ジョブが緑でも、売上や取込記録が古ければ stale になる。
 
 const DAILY_DAYS = 2; // 2日以上更新が無ければ警告（定時実行が1回抜けた時点で赤）
+// 売上明細の「最新の売上日」は、店舗によって売上の行が3〜7日空くのが普通（過去2か月の実測で最大7日）。
+// 2日で警告すると誤報になるため、売上日の警告は8日にする。取込が止まったことは、下の取込記録（PL001/PS001・2日）が拾う。
+const SALES_DATE_DAYS = 8;
 const TRIAL_SHEET_STORES = ["巣鴨", "中目黒", "祖師ヶ谷大蔵", "下北沢"]; // 体験シートの自動取込が稼働中の4店舗
 // 2026-10-04 に自動取込の対象へ追加した店舗。記入がまだ無い間は取込が発生しないため、
 // 「自動取込で1回でも成功した」店舗だけを判定対象にする（それまでは「更新なし」で赤にしない）。
@@ -43,7 +46,7 @@ export async function loadDataFreshness(now: Date = new Date()): Promise<{ gener
     );
     items.push(
       judgeByDate(
-        { key: "sales_detail", label: "売上明細（最新の売上日）", store, thresholdDays: DAILY_DAYS, basis: "売上明細の最新の売上日" },
+        { key: "sales_detail", label: "売上明細（最新の売上日）", store, thresholdDays: SALES_DATE_DAYS, basis: "売上明細の最新の売上日" },
         parseSaleDate(latestMonth?._max.saleDate),
         today,
       ),
