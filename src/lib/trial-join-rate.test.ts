@@ -1,6 +1,6 @@
 // 実行: node --experimental-strip-types src/lib/trial-join-rate.test.ts
 // @ts-expect-error node --experimental-strip-types で直接実行するため .ts 拡張子が必要
-import { summarizeTrialJoin, trialJoinRatePercent, formatTrialJoinRate, trialWarnings } from "./trial-join-rate.ts";
+import { summarizeTrialJoin, trialJoinRatePercent, formatTrialJoinRate, trialWarnings, pickEffectiveTrial } from "./trial-join-rate.ts";
 import assert from "node:assert/strict";
 
 const row = (storeName: string, resultType: string) => ({ storeName, resultType });
@@ -44,4 +44,10 @@ assert.equal(trialWarnings({ sheetCount: 2, manualRaw: 0, autoCount: 4 }).missin
 assert.equal(trialWarnings({ sheetCount: 4, manualRaw: 0, autoCount: 4 }).missing, null);    // 同数 → 出さない
 assert.equal(trialWarnings({ sheetCount: 5, manualRaw: 0, autoCount: 4 }).missing, null);    // 体験シートの方が多い → 出さない
 assert.equal(trialWarnings({ sheetCount: 0, manualRaw: 0, autoCount: 4 }).missing, null);    // 体験シートなし → 出さない
+// 体験者数の実効値: 体験シート ＞ 手入力 ＞ hacomono自動算出（0は未入力扱い）
+assert.equal(pickEffectiveTrial({ sheet: 2, manual: 10, auto: 7 }), 2);
+assert.equal(pickEffectiveTrial({ sheet: 0, manual: 10, auto: 7 }), 10);
+assert.equal(pickEffectiveTrial({ sheet: 0, manual: 0, auto: 7 }), 7);
+assert.equal(pickEffectiveTrial({ sheet: 0, manual: 0, auto: 0 }), 0);
+
 console.log("TRIAL-JOIN TESTS PASSED");

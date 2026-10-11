@@ -83,3 +83,12 @@ export function trialWarnings(args: {
         : null,
   };
 }
+
+/**
+ * 体験者数（実効値）の優先順位: 体験シート実データ ＞ 店長の手入力 ＞ hacomono自動算出（入会者のみ）。
+ * 月次・全体・期間・年間・店舗比較のすべてで同じ規則を使う（店舗×月ごとに判定してから合算する）。
+ */
+export function pickEffectiveTrial(args: { sheet: number; manual: number; auto: number }): number {
+  const { sheet, manual, auto } = args;
+  return sheet > 0 ? sheet : manual > 0 ? manual : auto;
+}

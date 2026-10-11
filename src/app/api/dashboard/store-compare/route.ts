@@ -9,6 +9,7 @@ import { expenseRowShareWithCategorySplit } from "@/lib/manual-expense-split";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
 import { signupsForMonth } from "@/lib/signup-count";
+import { pickEffectiveTrial } from "@/lib/trial-join-rate";
 import { loadSalesDetailWithSplit } from "@/lib/option-sales-split-loader";
 
 const CACHE_TTL_MS = 30_000;
@@ -106,7 +107,7 @@ export async function GET(request: NextRequest) {
       "法定福利費",
       "福利厚生費",
     ]);
-    const [allBudget, allManual, allMember] = await Promise.all([
+    const [allBudget, allManual, allMember, allTrialSheet] = await Promise.all([
       prisma.budgetData.findMany({ where: { year: { in: years } } }),
       // 体験者数: ManualEntry の trial_count（店長手動入力）or MemberData trialDate
       prisma.manualEntry.findMany({ where: { year: { in: years } } }),
@@ -121,6 +122,11 @@ export async function GET(request: NextRequest) {
           planName: true,
           isActive: true,
         },
+      }),
+      // 体験シート取込データ（月次・全体・期間・年間ビューと同じ優先順位に揃える）
+      prisma.trialSheetEntry.findMany({
+        where: { year: { in: years } },
+        select: { year: true, month: true, storeName: true },
       }),
     ]);
     const allMonthlySummary = filterPlanSummaries(rawMonthlySummary, allMember);
@@ -288,17 +294,20 @@ export async function GET(request: NextRequest) {
       const periodCancelRate =
         subscribersSum > 0 ? (cancellations / subscribersSum) * 100 : 0;
 
-      // 体験者数: 期間内の各月で manualEntry.trialCount > 0 なら採用、
-      // 無ければ MemberData の trialDate/firstTrialDate を月マッチで自動カウント
+      // 体験者数: 期間内の各月で「体験シート ＞ 店長の手入力 ＞ hacomono自動算出」の順に採用する
+      // （月次・全体・期間・年間ビューと同じ優先順位。pickEffectiveTrial）
       let trialCount = 0;
       for (const p of periods) {
+        const sheet = allTrialSheet.filter(
+          (r) => r.storeName === storeName && r.year === p.year && r.month === p.month,
+        ).length;
         const me = allManual.find(
           (m) =>
             m.storeName === storeName && m.year === p.year && m.month === p.month,
         );
-        if (me && me.trialCount > 0) {
-          trialCount += me.trialCount;
-        } else {
+        const manual = me?.trialCount ?? 0;
+        let auto = 0;
+        if (sheet === 0 && manual === 0) {
           const mm = String(p.month).padStart(2, "0");
           const prefixes = [`${p.year}/${mm}/`, `${p.year}-${mm}-`];
           for (const r of allMember) {
@@ -309,10 +318,11 @@ export async function GET(request: NextRequest) {
               (r.firstTrialDate &&
                 prefixes.some((pref) => r.firstTrialDate!.startsWith(pref)))
             ) {
-              trialCount++;
+              auto++;
             }
           }
         }
+        trialCount += pickEffectiveTrial({ sheet, manual, auto });
       }
 
       // 入会率 = 新規入会数 / 体験者数（パーセント）
