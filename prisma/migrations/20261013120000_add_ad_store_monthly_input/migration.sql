@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS "ad_store_monthly_input" (
     CONSTRAINT "ad_store_monthly_input_month_check" CHECK ("month" BETWEEN 1 AND 12),
     CONSTRAINT "ad_store_monthly_input_amount_check" CHECK (
         ("other_ad_cost" IS NULL OR "other_ad_cost" BETWEEN 0 AND 100000000) AND
-        ("target_trial_cpa" IS NULL OR "target_trial_cpa" BETWEEN 0 AND 10000000))
+        ("target_trial_cpa" IS NULL OR "target_trial_cpa" BETWEEN 1 AND 10000000))
 );
 
 -- CreateIndex
