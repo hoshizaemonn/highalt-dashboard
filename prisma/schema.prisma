@@ -703,3 +703,24 @@ model LoginAttempt {
 
   @@map("login_attempts")
 }
+
+// ─── 広告ダッシュボードの店舗×月 入力（2026-10 山本様依頼）────────────
+// 広告ダッシュボード（highalt-ads）の店舗別CPAマトリクスで、ログインした人が入力する。
+//   other_ad_cost    … その他広告費（ポスティング等・円）。体験CPA＝（広告費＋その他広告費）÷体験数
+//   target_trial_cpa … 目標の体験CPA（円）。入力の無い月は画面側で前月の値を引き継ぐ
+// 業績ダッシュボードはこのテーブルを使わない（広告アプリが専用ロールで読み書き）。
+// schema に載せておくのは、将来の prisma 操作でこのテーブルを消さないため。
+model AdStoreMonthlyInput {
+  id             Int      @id @default(autoincrement())
+  storeName      String   @map("store_name")
+  year           Int
+  month          Int
+  otherAdCost    Int?     @map("other_ad_cost")
+  targetTrialCpa Int?     @map("target_trial_cpa")
+  updatedBy      String   @map("updated_by")
+  updatedAt      DateTime @default(now()) @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([storeName, year, month])
+  @@map("ad_store_monthly_input")
+}
