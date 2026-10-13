@@ -15,7 +15,7 @@ import {
   getEffectiveStoreFilter,
 } from "@/lib/auth";
 import { trialDateMonthWhere } from "@/lib/csv-utils";
-import { summarizeTrialJoin } from "@/lib/trial-join-rate";
+import { summarizeTrialJoin, pickEffectiveTrial, sumEffectiveTrialByStore } from "@/lib/trial-join-rate";
 import { loadSalesDetailWithSplit, storeFilterPredicate } from "@/lib/option-sales-split-loader";
 import {
   parseSplitRatios,
@@ -507,25 +507,14 @@ export async function GET(request: NextRequest) {
           for (const r of autoTrialRows) {
             autoByStore.set(r.storeName, (autoByStore.get(r.storeName) ?? 0) + 1);
           }
-          const allStoreNames = new Set([
-            ...trialSheetByStore.keys(),
-            ...manualByStore.keys(),
-            ...autoByStore.keys(),
-          ]);
-          let total = 0;
-          for (const sn of allStoreNames) {
-            const sheet = trialSheetByStore.get(sn) ?? 0;
-            const manual = manualByStore.get(sn) ?? 0;
-            const auto = autoByStore.get(sn) ?? 0;
-            total += sheet > 0 ? sheet : manual > 0 ? manual : auto;
-          }
-          return total;
+          // 鮮度チェックの「体験者数の一致」確認も同じ関数を使う
+          return sumEffectiveTrialByStore(trialSheetByStore, manualByStore, autoByStore);
         })()
-      : (trialSheetByStore.get(store) ?? 0) > 0
-        ? trialSheetByStore.get(store)!
-        : manualTrial > 0
-          ? manualTrial
-          : autoTrialCount;
+      : pickEffectiveTrial({
+          sheet: trialSheetByStore.get(store) ?? 0,
+          manual: manualTrial,
+          auto: autoTrialCount,
+        });
 
     let salesTotal = 0;
     const salesByCategory: Record<string, number> = {};
