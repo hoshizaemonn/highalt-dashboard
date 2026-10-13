@@ -143,9 +143,14 @@ export async function POST(request: NextRequest) {
     }, { timeout: 30000 });
 
     const summary = summarizeTrialSheet(records);
+    // 取込後のDB件数（自動取込がシートの記入行数と突き合わせる。件数のみ）
+    const savedCount = await prisma.trialSheetEntry.count({
+      where: { year, month, storeName: store },
+    });
 
     return NextResponse.json({
       records: records.length,
+      savedCount,
       summary,
       warnings,
       store,

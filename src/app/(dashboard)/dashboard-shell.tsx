@@ -9,13 +9,16 @@ import {
   LogOut,
   Menu,
   X,
+  AlertTriangle,
 } from "lucide-react";
+import type { FreshnessAlert } from "@/lib/freshness-alert";
 
 interface DashboardShellProps {
   userId: number;
   role: string;
   storeName: string | null;
   displayName: string | null;
+  freshnessAlert?: FreshnessAlert | null;
   children: React.ReactNode;
 }
 
@@ -44,6 +47,7 @@ export function DashboardShell({
   role,
   storeName,
   displayName,
+  freshnessAlert,
   children,
 }: DashboardShellProps) {
   const router = useRouter();
@@ -171,6 +175,31 @@ export function DashboardShell({
           </button>
           <h1 className="font-bold text-[#567FC0]">ハイアルチ</h1>
         </header>
+
+        {/* データ鮮度の警告（管理者・マネージャーのみ。鮮度チェックが赤のとき） */}
+        {freshnessAlert && (
+          <div
+            role="alert"
+            className="bg-red-50 border-b border-red-200 px-6 py-3 text-sm text-red-800 flex gap-3"
+          >
+            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-bold">
+                データの自動取込に問題があります（{freshnessAlert.problemCount}件）。表示中の数字が古い・不足している可能性があります。
+              </p>
+              <ul className="mt-1 list-disc pl-5 space-y-0.5">
+                {freshnessAlert.lines.map((l) => (
+                  <li key={l} className="break-words">{l}</li>
+                ))}
+              </ul>
+              {role === "admin" && (
+                <a href="/settings" className="underline mt-1 inline-block">
+                  詳細は 設定 →「データ更新状況」タブ
+                </a>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-6">{children}</main>

@@ -9,7 +9,7 @@ import { expenseRowShareWithCategorySplit } from "@/lib/manual-expense-split";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
 import { signupsForMonth } from "@/lib/signup-count";
-import { pickEffectiveTrial } from "@/lib/trial-join-rate";
+import { storeCompareTrialForMonth } from "@/lib/trial-join-rate";
 import { loadSalesDetailWithSplit } from "@/lib/option-sales-split-loader";
 
 const CACHE_TTL_MS = 30_000;
@@ -296,33 +296,17 @@ export async function GET(request: NextRequest) {
 
       // 体験者数: 期間内の各月で「体験シート ＞ 店長の手入力 ＞ hacomono自動算出」の順に採用する
       // （月次・全体・期間・年間ビューと同じ優先順位。pickEffectiveTrial）
+      // 鮮度チェックの「体験者数の一致」確認も同じ関数を使う（storeCompareTrialForMonth）
       let trialCount = 0;
       for (const p of periods) {
-        const sheet = allTrialSheet.filter(
-          (r) => r.storeName === storeName && r.year === p.year && r.month === p.month,
-        ).length;
-        const me = allManual.find(
-          (m) =>
-            m.storeName === storeName && m.year === p.year && m.month === p.month,
-        );
-        const manual = me?.trialCount ?? 0;
-        let auto = 0;
-        if (sheet === 0 && manual === 0) {
-          const mm = String(p.month).padStart(2, "0");
-          const prefixes = [`${p.year}/${mm}/`, `${p.year}-${mm}-`];
-          for (const r of allMember) {
-            if (r.storeName !== storeName) continue;
-            if (
-              (r.trialDate &&
-                prefixes.some((pref) => r.trialDate!.startsWith(pref))) ||
-              (r.firstTrialDate &&
-                prefixes.some((pref) => r.firstTrialDate!.startsWith(pref)))
-            ) {
-              auto++;
-            }
-          }
-        }
-        trialCount += pickEffectiveTrial({ sheet, manual, auto });
+        trialCount += storeCompareTrialForMonth({
+          storeName,
+          year: p.year,
+          month: p.month,
+          sheetRows: allTrialSheet,
+          manualRows: allManual,
+          memberRows: allMember,
+        });
       }
 
       // 入会率 = 新規入会数 / 体験者数（パーセント）
