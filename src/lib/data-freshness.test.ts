@@ -1,6 +1,6 @@
 // node --experimental-strip-types src/lib/data-freshness.test.ts
 // @ts-expect-error .ts 拡張子 import は strip-types 実行用
-import { parseSaleDate, toJstDate, dayDiff, judgeByDate, judgeByMonth, summarize } from "./data-freshness.ts";
+import { parseSaleDate, toJstDate, dayDiff, judgeByDate, judgeByMonth, judgeAccrualGap, summarize } from "./data-freshness.ts";
 import assert from "node:assert/strict";
 
 const base = { key: "sales", label: "売上明細", store: "春日", thresholdDays: 2, basis: "t" };
@@ -29,3 +29,10 @@ assert.equal(judgeByMonth(mb, "2026-10", "2027-01-10").status, "stale");
 const s = summarize([judgeByDate(base, "2026-10-03", "2026-10-04"), judgeByDate(base, "2026-09-28", "2026-10-04"), judgeByDate(base, null, "2026-10-04")]);
 assert.deepEqual([s.ok, s.stale, s.missing, s.problems.length], [1, 1, 1, 2]);
 console.log("DATA-FRESHNESS TESTS PASSED");
+
+// 経費明細の「画面に出ない行」: 2026/6 決済「7月チラシ分」が 2025/7 に振り分けられた事故（11か月ずれ）を検知する
+assert.equal(judgeAccrualGap([{ year: 2026, month: 6, accrualYear: 2026, accrualMonth: 7 }]).status, "ok");
+assert.equal(judgeAccrualGap([{ year: 2026, month: 1, accrualYear: 2025, accrualMonth: 12 }]).status, "ok");
+assert.equal(judgeAccrualGap([{ year: 2026, month: 6, accrualYear: 2025, accrualMonth: 7 }]).status, "stale");
+assert.equal(judgeAccrualGap([{ year: 2026, month: 6, accrualYear: 2025, accrualMonth: 7 }]).latest, "1件");
+assert.equal(judgeAccrualGap([]).status, "ok");

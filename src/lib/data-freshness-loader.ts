@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { STORES } from "@/lib/constants";
 import {
   judgeByDate,
+  judgeAccrualGap,
   judgeByMonth,
   parseSaleDate,
   toJstDate,
@@ -123,6 +124,13 @@ export async function loadDataFreshness(now: Date = new Date()): Promise<{ gener
       today,
     ),
   );
+
+  // 経費明細: 計上月の振り分けミスで、どの画面にも出なくなった行が無いか
+  const accrualRows = await prisma.expenseData.findMany({
+    where: { accrualYear: { not: null } },
+    select: { year: true, month: true, accrualYear: true, accrualMonth: true },
+  });
+  items.push(judgeAccrualGap(accrualRows));
 
   return { generatedAt: now.toISOString(), items };
 }
