@@ -10,6 +10,14 @@ export const STORES = [
 
 export const HQ_STORE = "本部（除外）";
 
+/**
+ * 本部共通費（松尾さん依頼 2026-10）。
+ * 店舗運営に直接関わる本部機能の費用を、設定→本部一括経費に月次で手入力し、
+ * 本部一括経費と同じ仕組みで各店に按分する。
+ * 経費（販管費）や営業利益には含めず、PL の「営業利益」の下に別の行として表示する。
+ */
+export const HQ_COMMON_COST_CATEGORY = "本部共通費";
+
 export const EXPENSE_CATEGORIES = [
   "消耗品費",
   "備品費",

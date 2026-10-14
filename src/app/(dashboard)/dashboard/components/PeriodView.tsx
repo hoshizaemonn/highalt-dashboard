@@ -1152,6 +1152,15 @@ export default function PeriodView({
           color: "text-green-700",
         });
 
+        // 本部共通費（松尾さん依頼 2026-10）: 営業利益には含めない別行
+        const hqCommonSum = monthly.reduce((s, m) => s + (m.hq_common_cost || 0), 0);
+        rows.push({
+          label: "本部共通費",
+          values: monthly.map((m) => m.hq_common_cost || 0),
+          total: hqCommonSum,
+          avg: Math.round(hqCommonSum / nMonths),
+        });
+
         // 新規入会数（山本様依頼: 月ごとの入会数を、この表でも合計付きで確認したい）
         const newSignupsSum = monthly.reduce((s, m) => s + (m.ma_new_signups || 0), 0);
         rows.push({

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { STORES, BUDGET_ITEMS } from "@/lib/constants";
+import { STORES, BUDGET_ITEMS, HQ_COMMON_COST_CATEGORY } from "@/lib/constants";
 
 interface Row {
   id?: number;
@@ -53,6 +53,7 @@ export default function ManualExpenseTab() {
     "支払手数料",
     "減価償却費",
     "開発費償却",
+    HQ_COMMON_COST_CATEGORY,
   ];
   const ALL_CATEGORIES = Array.from(
     new Set([...SUGGESTED_CATEGORIES, ...BUDGET_ITEMS]),
@@ -166,6 +167,9 @@ export default function ManualExpenseTab() {
           <br />
           ⚠️ PayPay 銀行 CSV にも該当カテゴリの支払いがある場合は二重計上になるため、
           CSVに無い分のみを入力してください。
+          <br />
+          カテゴリ<strong>「{HQ_COMMON_COST_CATEGORY}」</strong>は経費（販管費）・営業利益には含めず、
+          損益計算書の<strong>「営業利益」の下に別の行</strong>で表示します（本部一括（均等按分）で各店に配分）。
         </p>
       </div>
 

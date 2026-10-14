@@ -109,6 +109,7 @@ export async function GET(request: NextRequest) {
       payrollCommute: 0,
       payrollLegalWelfare: 0,
       payrollWelfare: 0,
+      hqCommonCost: 0,
     };
 
     // fiscalIdx 0-11 の各月データ。期間外は空スロットに置換（合計の計算からも除外）。
@@ -207,6 +208,10 @@ export async function GET(request: NextRequest) {
       const i = months.indexOf(m);
       return opProfit[i];
     });
+
+    // 本部共通費（松尾さん依頼 2026-10）: 営業利益には含めず、営業利益の下に別行で出す。
+    // （営業利益率の計算にも影響させない）
+    addRow("本部共通費", (m) => m.hqCommonCost ?? 0);
 
     // 営業利益率
     const opRate = opProfit.map((p, i) => {

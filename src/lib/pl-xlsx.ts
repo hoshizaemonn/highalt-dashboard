@@ -36,6 +36,8 @@ export interface PlMonthlyData {
   payrollCommute: number; // 通勤手当
   payrollLegalWelfare: number; // 法定福利費
   payrollWelfare: number; // 福利厚生費
+  // 本部共通費（円）。販管費・営業利益には含めず、営業利益の下に別行で出す（松尾さん依頼 2026-10）
+  hqCommonCost: number;
 }
 
 // 損益計算書シートの行マッピング（勘定科目 → 行番号）
@@ -68,6 +70,9 @@ const PL_ROW_MAP = {
   expenseEntertainment: 32, // 接待交際費
   expenseDevAmortization: 33, // 開発費償却
   expenseTax: 34, // 租税公課
+  // 本部共通費: テンプレの空き行（営業利益37・営業利益率38の直下）。
+  // 行を挿入するとテンプレ内の数式・他シート参照がずれるため、空き行に書く。
+  hqCommonCost: 39,
 } as const;
 
 // 経費勘定科目名 → 行番号
@@ -146,6 +151,13 @@ export async function generatePlXlsx(
   sheet.getCell("A1").value = `${fiscalYear}/9期　　損益計算書`;
   sheet.getCell("B1").value = storeDisplayName;
 
+  // 本部共通費の行見出しと通期合計（テンプレの空き行に追加）
+  {
+    const r = PL_ROW_MAP.hqCommonCost;
+    sheet.getCell(`A${r}`).value = "本部共通費";
+    sheet.getCell(`N${r}`).value = { formula: `SUM(B${r}:M${r})` };
+  }
+
   for (let fiscalIdx = 0; fiscalIdx < 12; fiscalIdx++) {
     const col = COL_LETTERS[fiscalIdx];
     const data = monthlyData.get(fiscalIdx);
@@ -188,6 +200,11 @@ export async function generatePlXlsx(
       const yen = data.expenses[cat] ?? 0;
       sheet.getCell(`${col}${row}`).value = yenToThousand(yen);
     }
+
+    // 本部共通費（販管費・営業利益には含めない）
+    sheet.getCell(`${col}${PL_ROW_MAP.hqCommonCost}`).value = yenToThousand(
+      data.hqCommonCost ?? 0,
+    );
   }
 
   const out = await wb.xlsx.writeBuffer();

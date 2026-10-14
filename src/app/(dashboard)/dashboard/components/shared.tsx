@@ -203,6 +203,8 @@ export interface DashboardData {
   total_labor: number;
   total_expense: number;
   operating_profit: number;
+  /** 本部共通費（営業利益には含めない・営業利益の下の別行） */
+  hq_common_cost?: number;
 }
 
 export interface MonthlyEntry {
@@ -212,6 +214,8 @@ export interface MonthlyEntry {
   labor_cost: number;
   expense: number;
   operating_profit: number;
+  /** 本部共通費（営業利益には含めない・営業利益の下の別行） */
+  hq_common_cost?: number;
   fulltime_gross: number;
   parttime_gross: number;
   gross_total: number;

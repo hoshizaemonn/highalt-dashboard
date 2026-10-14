@@ -3,7 +3,7 @@ import { canViewAllStores } from "@/lib/permissions";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { HQ_STORE, STORES } from "@/lib/constants";
+import { HQ_STORE, STORES, HQ_COMMON_COST_CATEGORY } from "@/lib/constants";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
 import { signupsForMonth } from "@/lib/signup-count";
@@ -309,6 +309,8 @@ export async function GET(request: NextRequest) {
     const storeCount = STORES.length;
     const isSingleStore = !!(store && store !== "全体");
     const manualExpenseByCategory: Record<string, number> = {};
+    // 本部共通費は経費・営業利益に含めず、営業利益の下に別行で出す
+    let hqCommonCost = 0;
     for (const row of manualExpenseRows) {
       // storeName 空 = 本部一括（均等按分 or splitRatios按分）、店舗名指定 = その店のみ計上
       let share = 0;
@@ -339,6 +341,10 @@ export async function GET(request: NextRequest) {
         } else {
           share = row.totalAmount;
         }
+      }
+      if (row.category === HQ_COMMON_COST_CATEGORY) {
+        hqCommonCost += share;
+        continue;
       }
       expenseByCategory[row.category] =
         (expenseByCategory[row.category] || 0) + share;
@@ -897,6 +903,7 @@ export async function GET(request: NextRequest) {
       total_labor: Math.round(totalLaborCost),
       total_expense: Math.round(totalExpense),
       operating_profit: Math.round(operatingProfit),
+      hq_common_cost: Math.round(hqCommonCost),
       prev_month_totals: prevMonthTotals,
       prev_year_totals: prevYearTotals,
     };
