@@ -7,7 +7,7 @@ import {
   effectiveStoreScope,
   getSessionAllowedStores,
 } from "@/lib/auth";
-import { parseAccrualMonth } from "@/lib/accrual";
+import { parseAccrualMonth, accrualFetchYears } from "@/lib/accrual";
 import { fillAmazonBreakdown } from "@/lib/amazon-breakdown";
 import { REVENUE_CATEGORIES } from "@/lib/constants";
 
@@ -32,12 +32,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 発生月対応（依頼⑥）: 当年＋前年から取得し、accrual優先で当該月の行に絞る
+    // 発生月対応（依頼⑥）: 前年〜翌年から取得し、accrual優先で当該月の行に絞る
     // 入金行（isRevenue=1）も含めて取得する（依頼: 入金部分も内訳・分類可能に）
     // 依頼A: splitRatios あり行は store フィルタを跨ぐため OR で展開
     const allRows = await prisma.expenseData.findMany({
       where: {
-        year: { in: [year - 1, year] },
+        year: { in: accrualFetchYears([year]) },
         OR: [
           { storeName: store },
           { splitRatios: { not: null } },

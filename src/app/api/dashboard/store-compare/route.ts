@@ -1,4 +1,5 @@
 import { filterPlanSummaries, PLAN_FILTER_NOTE } from "@/lib/plan-contracts";
+import { accrualFetchYears } from "@/lib/accrual";
 import { canViewAllStores } from "@/lib/permissions";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
       prisma.payrollData.findMany({ where: { year: { in: years } } }),
       prisma.expenseData.findMany({
         where: {
-          year: { in: [...years, ...years.map((y) => y - 1)] },
+          year: { in: accrualFetchYears(years) },
           isRevenue: 0,
         },
       }),

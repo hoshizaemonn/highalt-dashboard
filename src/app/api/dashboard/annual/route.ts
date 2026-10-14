@@ -1,4 +1,5 @@
 import { filterPlanSummaries, PLAN_FILTER_NOTE } from "@/lib/plan-contracts";
+import { accrualFetchYears } from "@/lib/accrual";
 import { canViewAllStores } from "@/lib/permissions";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
@@ -190,11 +191,11 @@ export async function GET(request: NextRequest) {
     // バッチ1: 集計の主軸となる重めのデータ
     const [allPayroll, allExpenses, allVendingRevenue, allDirectSalesRevenue, allSalesDetail, allRevenue, allSquare] = await Promise.all([
       prisma.payrollData.findMany({ where: { year: { in: years }, ...storeWhere } }),
-      // 発生月対応（依頼⑥）: 当年の前年も取得して跨年シフト分も拾う
+      // 発生月対応（依頼⑥）: 前年〜翌年の決済分を取得して跨年シフト分も拾う
       // splitRatios / categorySplits あり行は店舗フィルタを跨ぐため OR で展開
       prisma.expenseData.findMany({
         where: {
-          year: { in: [...years, ...years.map((y) => y - 1)] },
+          year: { in: accrualFetchYears(years) },
           isRevenue: 0,
           OR: [
             { storeName: storeNameFilter },
@@ -206,7 +207,7 @@ export async function GET(request: NextRequest) {
       // 自販機手数料収入（is_revenue=1側）。上と同じ跨年フィルタで拾う。
       prisma.expenseData.findMany({
         where: {
-          year: { in: [...years, ...years.map((y) => y - 1)] },
+          year: { in: accrualFetchYears(years) },
           isRevenue: 1,
           category: VENDING_REVENUE_CATEGORY,
           OR: [
@@ -218,7 +219,7 @@ export async function GET(request: NextRequest) {
       // PayPay直接振込（会費等・category="売上", is_revenue=1）。松尾さん指摘 2026-09-24。
       prisma.expenseData.findMany({
         where: {
-          year: { in: [...years, ...years.map((y) => y - 1)] },
+          year: { in: accrualFetchYears(years) },
           isRevenue: 1,
           category: DIRECT_SALES_REVENUE_CATEGORY,
           OR: [
@@ -791,7 +792,7 @@ export async function GET(request: NextRequest) {
       prisma.payrollData.findMany({ where: { year: { in: prevYears }, ...storeWhere } }),
       prisma.expenseData.findMany({
         where: {
-          year: { in: [...prevYears, ...prevYears.map((y) => y - 1)] },
+          year: { in: accrualFetchYears(prevYears) },
           isRevenue: 0,
           OR: [
             { storeName: storeNameFilter },
@@ -802,7 +803,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.expenseData.findMany({
         where: {
-          year: { in: [...prevYears, ...prevYears.map((y) => y - 1)] },
+          year: { in: accrualFetchYears(prevYears) },
           isRevenue: 1,
           category: VENDING_REVENUE_CATEGORY,
           OR: [
@@ -814,7 +815,7 @@ export async function GET(request: NextRequest) {
       // PayPay直接振込（会費等・category="売上"）。松尾さん指摘 2026-09-24。
       prisma.expenseData.findMany({
         where: {
-          year: { in: [...prevYears, ...prevYears.map((y) => y - 1)] },
+          year: { in: accrualFetchYears(prevYears) },
           isRevenue: 1,
           category: DIRECT_SALES_REVENUE_CATEGORY,
           OR: [
