@@ -2,7 +2,7 @@
 // pl-xlsx / pl-csv 両エクスポートから利用する。
 
 import { prisma } from "@/lib/prisma";
-import { HQ_STORE } from "@/lib/constants";
+import { HQ_STORE, HQ_COMMON_COST_CATEGORY } from "@/lib/constants";
 import { loadSalesDetailWithSplit, storeFilterPredicate } from "@/lib/option-sales-split-loader";
 import { toFiscalIndex, type PlMonthlyData } from "@/lib/pl-xlsx";
 import {
@@ -140,6 +140,7 @@ export async function aggregatePlForFiscalYear(
         payrollCommute: 0,
         payrollLegalWelfare: 0,
         payrollWelfare: 0,
+        hqCommonCost: 0,
       };
       monthly.set(idx, slot);
     }
@@ -210,7 +211,10 @@ export async function aggregatePlForFiscalYear(
       : allStoresShare(r);
     if (amount === 0) continue;
     const slot = ensureSlot(idx);
-    if (r.category === "仕入高") {
+    if (r.category === HQ_COMMON_COST_CATEGORY) {
+      // 本部共通費は販管費に含めない（営業利益の下の別行）
+      slot.hqCommonCost += amount;
+    } else if (r.category === "仕入高") {
       slot.cogs += amount;
     } else if (r.category === WELFARE_CATEGORY) {
       slot.payrollWelfare += amount;

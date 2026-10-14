@@ -4,7 +4,7 @@ import { canViewAllStores } from "@/lib/permissions";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { HQ_STORE, STORES, BUDGET_CATEGORY_UNIT_PRICE } from "@/lib/constants";
+import { HQ_STORE, STORES, BUDGET_CATEGORY_UNIT_PRICE, HQ_COMMON_COST_CATEGORY } from "@/lib/constants";
 import {
   requireSession,
   effectiveStoreScope,
@@ -43,6 +43,8 @@ interface MonthlyEntry {
   labor_cost: number;
   expense: number;
   operating_profit: number;
+  /** 本部共通費（営業利益には含めない・営業利益の下の別行） */
+  hq_common_cost: number;
   fulltime_gross: number;
   parttime_gross: number;
   gross_total: number;
@@ -390,11 +392,17 @@ export async function GET(request: NextRequest) {
       //   - storeName=店舗名: 単店ビュー=当該店のみ、全体=全額合算
       const storeCount = STORES.length;
       const manualExp = allManualExpense.filter((r) => r.year === y && r.month === m);
+      // 本部共通費は経費・営業利益に含めず、営業利益の下に別行で出す
+      let hqCommonCost = 0;
       for (const row of manualExp) {
         const share = store
           ? singleStoreShare(row, store, storeCount)
           : allStoresShare(row);
         if (share === 0) continue;
+        if (row.category === HQ_COMMON_COST_CATEGORY) {
+          hqCommonCost += share;
+          continue;
+        }
         expenseByCat[row.category] = (expenseByCat[row.category] || 0) + share;
         totalExpense += share;
       }
@@ -688,6 +696,7 @@ export async function GET(request: NextRequest) {
         labor_cost: Math.round(totalLabor),
         expense: Math.round(totalExpense),
         operating_profit: Math.round(totalRevenue - totalLabor - totalExpense),
+        hq_common_cost: Math.round(hqCommonCost),
         fulltime_gross: Math.round(fulltimeGross),
         parttime_gross: Math.round(parttimeGross),
         gross_total: Math.round(fulltimeGross + parttimeGross),

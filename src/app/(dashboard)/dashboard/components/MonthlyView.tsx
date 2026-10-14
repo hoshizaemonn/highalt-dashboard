@@ -364,6 +364,17 @@ export default function MonthlyView({
               </td>
             </tr>
 
+            {/* 本部共通費（松尾さん依頼 2026-10）: 営業利益には含めない別行。設定→本部一括経費で入力 */}
+            <tr className="border-b">
+              <td className="px-4 py-1.5 text-gray-600">
+                <span className="inline-flex items-center gap-1">
+                  本部共通費
+                  <HelpHint text="店舗運営に直接関わる本部機能の費用を各店に均等按分した額。設定→本部一括経費で入力します。営業利益には含めていません。" />
+                </span>
+              </td>
+              <td className="px-4 py-1.5 text-right">{formatYen(data.hq_common_cost ?? 0)}</td>
+            </tr>
+
             {/* タイムバリュー（営業利益 ÷ 総勤務時間 = 1時間あたりの稼ぎ） */}
             {data.payroll.total_hours > 0 && (
               <tr className="border-b">
