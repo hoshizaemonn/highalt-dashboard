@@ -7,11 +7,14 @@ import assert from "node:assert/strict";
 const ok: [string, string][] = [
   ["POST", "/api/upload/hacomono"], ["POST", "/api/upload/enquete"], ["GET", "/api/upload/enquete"],
   ["POST", "/api/upload/trial-sheet"], ["POST", "/api/upload/fee-electricity"], ["GET", "/api/data-freshness"],
+  ["POST", "/api/upload/payroll"], ["GET", "/api/upload/payroll"],
 ];
 for (const [m, p] of ok) assert.equal(isIngestAllowedApi(p, m), true, `${m} ${p}`);
 const ng: [string, string][] = [
   ["GET", "/api/dashboard"], ["GET", "/api/users"], ["POST", "/api/users"], ["PUT", "/api/users"], ["DELETE", "/api/users"],
-  ["POST", "/api/settings/option-sales-split"], ["GET", "/api/settings/option-sales-split"], ["POST", "/api/upload/payroll"],
+  ["POST", "/api/settings/option-sales-split"], ["GET", "/api/settings/option-sales-split"],
+  ["DELETE", "/api/upload/payroll"], ["PUT", "/api/upload/payroll"], ["POST", "/api/upload/payroll/x"], ["GET", "/api/download/payroll-excel"],
+  ["GET", "/api/dashboard/payroll-detail"], ["POST", "/api/settings/manual-payroll"],
   ["POST", "/api/upload/amazon"], ["POST", "/api/upload/budget"], ["GET", "/api/upload-logs"], ["GET", "/settings"], ["GET", "/dashboard"],
   ["DELETE", "/api/upload/hacomono"], ["GET", "/api/upload/hacomono"], ["POST", "/api/data-freshness"],
   ["POST", "/api/upload/hacomono/../users"], ["POST", "/api/upload/hacomono/x"],
