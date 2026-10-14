@@ -16,6 +16,8 @@ const INGEST_ALLOWED: ReadonlyArray<{ method: string; path: string }> = [
   { method: "GET", path: "/api/upload/enquete" },         // 同・取込前の件数確認
   { method: "POST", path: "/api/upload/trial-sheet" },    // 体験シート
   { method: "POST", path: "/api/upload/fee-electricity" },// 決済手数料・電気料
+  { method: "POST", path: "/api/upload/payroll" },        // 人件費（クラウド給与 支給控除一覧表・月1回）。ingest は上書き・氏名の強制変更不可（route 側で制御）
+  { method: "GET", path: "/api/upload/payroll" },         // 同・対象年月が取込済みかの件数確認（読み取りのみ）
   { method: "GET", path: "/api/data-freshness" },         // 鮮度チェック（読み取りのみ）
 ];
 export function isIngestAllowedApi(path: string, method: string): boolean {

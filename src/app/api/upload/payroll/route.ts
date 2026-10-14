@@ -1,7 +1,9 @@
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession, requireAdmin } from "@/lib/auth";
+import { getSession, requireAdminOrIngest } from "@/lib/auth";
+import { INGEST_ROLE } from "@/lib/permissions";
+import { checkPayrollHeader, payrollIngestBlockReasons, previousMonth } from "@/lib/payroll-ingest";
 import { THOUSAND_DIGIT_MAP } from "@/lib/constants";
 import {
   decodeFileBuffer,
@@ -93,10 +95,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
+    // admin（画面からの手動取込）または取込専用ロール ingest（GitHub Actions の月1自動取込）。
+    // ingest は proxy.ts の許可リスト（POST/GET /api/upload/payroll）経由でのみ到達する。
+    const auth = await requireAdminOrIngest();
     if (auth.error) return auth.error;
+    const isIngest = auth.session.role === INGEST_ROLE;
 
     const formData = await request.formData();
+    // dryRun=true: 解析と件数確認だけ行い、DB には一切書き込まない（応答は件数のみ・氏名を含めない）
+    const dryRun = formData.get("dryRun") === "true";
     const file = formData.get("file") as File | null;
     const year = parseInt(formData.get("year") as string, 10);
     const month = parseInt(formData.get("month") as string, 10);
@@ -126,6 +133,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Skip header row
+    const headerCheck = checkPayrollHeader(allRows[0]);
     const dataRows = allRows.slice(1);
 
     interface PayrollRecord {
@@ -342,8 +350,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 自動取込（ingest）と dryRun は、氏名を返さず件数だけで判定する。
+    // ingest は「止める条件」に1つでも当たれば書き込まない（上書き・氏名の強制変更・取りこぼしをしない）。
+    if (dryRun || isIngest) {
+      const prev = previousMonth(year, month);
+      const [existingCount, previousCount] = await Promise.all([
+        prisma.payrollData.count({ where: { year, month } }),
+        prisma.payrollData.count({ where: { year: prev.year, month: prev.month } }),
+      ]);
+      const facts = {
+        records: records.length,
+        headerOk: headerCheck.ok,
+        nameConflictCount: nameConflicts.length,
+        unresolvedCount: unresolved.length,
+        existingCount,
+        previousCount,
+      };
+      const blockReasons = isIngest ? payrollIngestBlockReasons(facts) : [];
+      const summary = {
+        dryRun,
+        year,
+        month,
+        ...facts,
+        employees: csvEmployees.size,
+        headerMismatches: headerCheck.mismatches,
+        blocked: blockReasons.length > 0,
+        blockReasons,
+      };
+      if (dryRun) return NextResponse.json(summary);
+      if (blockReasons.length > 0) return NextResponse.json(summary, { status: 409 });
+    }
+
     // If there are name conflicts and no override flag, return conflicts for user to resolve
-    const forceNames = formData.get("forceNames") === "true";
+    // （ingest はここに来る時点で氏名不一致0件。forceNames / nameResolutions は ingest では使わない）
+    const forceNames = !isIngest && formData.get("forceNames") === "true";
     if (nameConflicts.length > 0 && !forceNames) {
       return NextResponse.json({
         records: 0,
@@ -354,7 +394,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Apply name resolutions if provided
-    const nameResolutionsRaw = formData.get("nameResolutions") as string | null;
+    const nameResolutionsRaw = isIngest ? null : (formData.get("nameResolutions") as string | null);
     if (nameResolutionsRaw) {
       try {
         const resolutions = JSON.parse(nameResolutionsRaw) as Record<string, string>;
@@ -384,9 +424,11 @@ export async function POST(request: NextRequest) {
           month,
           fileName: file.name,
           recordCount: records.length,
-          note: unresolved.length > 0
-            ? `未登録従業員 ${unresolved.length}名`
-            : null,
+          note: isIngest
+            ? "自動取込（クラウド給与）"
+            : unresolved.length > 0
+              ? `未登録従業員 ${unresolved.length}名`
+              : null,
         },
       });
     });
@@ -401,6 +443,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (isIngest) {
+      // 自動取込の応答は件数だけ（Actions のログに氏名を残さない）
+      return NextResponse.json({ records: records.length, employees: csvEmployees.size, year, month });
+    }
     return NextResponse.json({
       records: records.length,
       unresolved,
