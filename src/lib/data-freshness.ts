@@ -73,6 +73,31 @@ export function judgeByMonth(
   };
 }
 
+/**
+ * 経費明細の「どの画面にも出ない行」を検知する（2026-10 東日本橋「7月チラシ分」が消えて見えた事故の再発防止）。
+ * 画面は表示年の前年〜翌年の決済分しか読まない（accrualFetchYears）ため、計上月が決済月から7か月以上離れた行は
+ * どの月の画面にも出ない。そうした行が1件でもあれば stale にする。
+ */
+export function judgeAccrualGap(
+  rows: { year: number; month: number; accrualYear: number | null; accrualMonth: number | null }[],
+): FreshnessItem {
+  const gap = rows.filter((r) => {
+    if (r.accrualYear == null || r.accrualMonth == null) return false;
+    const d = r.accrualYear * 12 + r.accrualMonth - (r.year * 12 + r.month);
+    return Math.abs(d) > 6;
+  }).length;
+  return {
+    key: "expense_accrual_gap",
+    label: "経費明細（画面に出ない行）",
+    store: null,
+    latest: `${gap}件`,
+    ageDays: gap,
+    thresholdDays: 1,
+    status: gap > 0 ? "stale" : "ok",
+    basis: "計上月が支払月から7か月以上離れた行の数（0件が正常）",
+  };
+}
+
 export function summarize(items: FreshnessItem[]): { stale: number; missing: number; ok: number; problems: FreshnessItem[] } {
   const problems = items.filter((i) => i.status !== "ok");
   return {
