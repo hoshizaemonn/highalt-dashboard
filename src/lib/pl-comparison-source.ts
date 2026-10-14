@@ -91,6 +91,7 @@ async function loadFromDashboard(
     years.add(mm.y);
     years.add(mm.y - 1);
     years.add(mm.y - 2);
+    years.add(mm.y + 1); // 翌年決済の後払い（例 2027/1決済の「12月分」）
   }
   const yearList = Array.from(years);
   const targetStore = typeof storeFilter === "string" ? storeFilter : null;

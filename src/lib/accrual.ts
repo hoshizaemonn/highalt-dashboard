@@ -1,10 +1,15 @@
 // 発生主義の帰属月パース（アンビルさん依頼⑥・A案）
 //
 // 内訳テキストに含まれる「N月」「N月分」「N月◯◯費」の月表記から
-// 発生月を判定する。決済月との関係から年も自動推定する：
-//   - N <= 決済月: 同年（例：5月決済の「4月分」→ 同年4月）
-//   - N >  決済月: 前年（例：1月決済の「12月分」→ 前年12月）
+// 発生月を判定する。年は「決済月から一番近いN月」で推定する（前後6ヶ月以内）：
+//   - 例：5月決済の「4月分」→ 同年4月（1ヶ月前）
+//   - 例：1月決済の「12月分」→ 前年12月（1ヶ月前）
+//   - 例：6月決済の「7月チラシ分」→ 同年7月（1ヶ月先の前払い）
+//   - 例：12月決済の「1月分」→ 翌年1月（1ヶ月先の前払い）
+//   - ちょうど6ヶ月離れる場合は過去側（後払いの方が多いため）
 //   - N == 決済月: シフトなし（=null返却）
+// 旧ロジックは「N > 決済月なら前年」としていたため、前払い（6月決済の「7月分」）が
+// 11ヶ月前の前年7月に飛び、どの画面にも出なくなっていた（松尾さん指摘 2026-10）。
 //
 // 対象パターン（誤検知抑制しつつ、実際の記入表現を広く拾う）:
 //   1) 計上意図キーワード付き「N月分 / N月度 / N月計上 / N月経費 / N月に計上」
@@ -53,10 +58,29 @@ export function parseAccrualMonth(
     return null;
   }
 
-  const accrualYear =
-    parsedMonth > paymentMonth ? paymentYear - 1 : paymentYear;
+  // 決済月からの差（-11〜+11）を -6〜+5 に寄せて、一番近いN月を選ぶ
+  let diff = parsedMonth - paymentMonth;
+  if (diff > 5) diff -= 12;
+  if (diff < -6) diff += 12;
+  const target = paymentYear * 12 + (paymentMonth - 1) + diff;
+  const accrualYear = Math.floor(target / 12);
 
   return { accrualYear, accrualMonth: parsedMonth };
+}
+
+/**
+ * 経費行を DB から取るときの year 範囲。
+ * 帰属年月（accrual）は決済年月から前後6ヶ月以内なので、表示したい年の前年〜翌年の決済分を拾えば漏れない。
+ * （前年分: 前払い。例 2025/12決済の「1月分」→2026/1。翌年分: 後払い。例 2027/1決済の「12月分」→2026/12）
+ */
+export function accrualFetchYears(years: number[]): number[] {
+  const set = new Set<number>();
+  for (const y of years) {
+    set.add(y - 1);
+    set.add(y);
+    set.add(y + 1);
+  }
+  return Array.from(set);
 }
 
 /**

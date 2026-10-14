@@ -32,7 +32,7 @@ export async function aggregatePlForFiscalYear(
 ): Promise<PlAggregateResult> {
   const years = [fiscalYear - 1, fiscalYear];
   // 経費は accrual 対応のため前々年も含めて拾う
-  const expenseYears = [fiscalYear - 2, fiscalYear - 1, fiscalYear];
+  const expenseYears = [fiscalYear - 2, fiscalYear - 1, fiscalYear, fiscalYear + 1];
 
   const hiddenStores = (
     await prisma.storeDisplayName.findMany({

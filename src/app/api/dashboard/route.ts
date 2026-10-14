@@ -1,4 +1,5 @@
 import { filterPlanSummaries, PLAN_FILTER_NOTE } from "@/lib/plan-contracts";
+import { accrualFetchYears } from "@/lib/accrual";
 import { canViewAllStores } from "@/lib/permissions";
 import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
@@ -193,8 +194,8 @@ export async function GET(request: NextRequest) {
     // 単店ビュー: target = 要求店舗、全体ビュー: target = null（全店合算）
     const expenseTarget: string | null = store && store !== "全体" ? store : null;
     const expenseFetchWhere = {
-      // 当年＋前年（12月決済の前年帰属など跨年シフトに備える）
-      year: { in: [year - 1, year] },
+      // 前年〜翌年の決済分（前払い・後払いの跨年シフトに備える）
+      year: { in: accrualFetchYears([year]) },
       // splitRatios / categorySplits あり行は店舗フィルタを跨ぐため OR で展開
       OR: [
         { storeName: storeNameFilter },
@@ -219,7 +220,7 @@ export async function GET(request: NextRequest) {
     // 自販機手数料収入（is_revenue=1側）。上と同じ accrual フィルタで拾う。
     const vendingRevenueRowsAll = await prisma.expenseData.findMany({
       where: {
-        year: { in: [year - 1, year] },
+        year: { in: accrualFetchYears([year]) },
         isRevenue: 1,
         category: VENDING_REVENUE_CATEGORY,
         OR: [
@@ -249,7 +250,7 @@ export async function GET(request: NextRequest) {
     // 同じ仕組みで売上に加算する。
     const directSalesRevenueRowsAll = await prisma.expenseData.findMany({
       where: {
-        year: { in: [year - 1, year] },
+        year: { in: accrualFetchYears([year]) },
         isRevenue: 1,
         category: DIRECT_SALES_REVENUE_CATEGORY,
         OR: [
@@ -765,11 +766,11 @@ export async function GET(request: NextRequest) {
           0,
         );
 
-        // 発生月対応（依頼⑥）: 当年＋前年から取得し、accrual優先で当該月の合計を算出
+        // 発生月対応（依頼⑥）: 前年〜翌年から取得し、accrual優先で当該月の合計を算出
         // splitRatios / categorySplits あり行も拾うため OR で展開
         const expRowsForMonth = await prisma.expenseData.findMany({
           where: {
-            year: { in: [y - 1, y] },
+            year: { in: accrualFetchYears([y]) },
             isRevenue: 0,
             ...(store
               ? {
@@ -803,7 +804,7 @@ export async function GET(request: NextRequest) {
         // 自販機手数料収入（is_revenue=1側）。当月の売上合計に含める。
         const vendingRowsForMonth = await prisma.expenseData.findMany({
           where: {
-            year: { in: [y - 1, y] },
+            year: { in: accrualFetchYears([y]) },
             isRevenue: 1,
             category: VENDING_REVENUE_CATEGORY,
             ...(store
