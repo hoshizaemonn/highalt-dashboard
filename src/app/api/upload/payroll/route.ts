@@ -25,7 +25,7 @@ interface UnresolvedEmployee {
 
 /**
  * Resolve an employee ID to store assignments for a specific month.
- * 優先順位: その月の月別調整 ＞ store_overrides（適用開始月・移転前店舗を考慮）＞ 社員番号ルール
+ * 優先順位: その月の月別調整 ＞ マッピング（期間ごとの按分・期間外の店舗を考慮）＞ 社員番号ルール
  * 月別調整は CSV を再取込しても消えない（ここで毎回優先して適用する）。
  */
 async function resolveStore(
@@ -330,10 +330,17 @@ export async function POST(request: NextRequest) {
       select: { employeeId: true, employeeName: true },
       distinct: ["employeeId"],
     });
-    const existingOverrides = await prisma.storeOverride.findMany({
-      where: { employeeId: { in: [...csvEmployees.keys()].map((id) => parseInt(id, 10)).filter((n) => !isNaN(n)) } },
-      select: { employeeId: true, employeeName: true },
-    });
+    const csvEmpIdNums = [...csvEmployees.keys()].map((id) => parseInt(id, 10)).filter((n) => !isNaN(n));
+    const existingOverrides = [
+      ...(await prisma.storeOverride.findMany({
+        where: { employeeId: { in: csvEmpIdNums } },
+        select: { employeeId: true, employeeName: true },
+      })),
+      ...(await prisma.storeOverridePeriod.findMany({
+        where: { employeeId: { in: csvEmpIdNums } },
+        select: { employeeId: true, employeeName: true },
+      })),
+    ];
 
     // Build existing name map (prefer override name, fallback to payroll)
     const existingNameMap = new Map<string, string>();
@@ -439,6 +446,10 @@ export async function POST(request: NextRequest) {
       const empIdNum = parseInt(empId, 10);
       if (isNaN(empIdNum)) continue;
       await prisma.storeOverride.updateMany({
+        where: { employeeId: empIdNum, employeeName: "" },
+        data: { employeeName: csvName },
+      });
+      await prisma.storeOverridePeriod.updateMany({
         where: { employeeId: empIdNum, employeeName: "" },
         data: { employeeName: csvName },
       });

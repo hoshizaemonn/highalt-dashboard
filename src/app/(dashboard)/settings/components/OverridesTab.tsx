@@ -1,6 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import {
+  assignmentsForMonth,
+  periodLabel,
+  validatePeriods,
+  type EmployeeMapping,
+  type MappingPeriod,
+  type StoreAssignment,
+} from "@/lib/payroll-allocation";
 
 // ─── Constants (duplicated client-side to avoid server import) ──────
 const STORES = [
@@ -14,49 +22,69 @@ const STORES = [
 ];
 const HQ_STORE = "本部（除外）";
 const ALL_STORES = [...STORES, HQ_STORE];
+const YEARS = [2024, 2025, 2026, 2027, 2028];
+const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-interface Override {
-  id: number;
+interface EmployeeSummary {
   employeeId: number;
-  storeName: string;
-  ratio: number;
   employeeName: string;
-  effectiveYear?: number | null;
-  effectiveMonth?: number | null;
-  baseStore?: string | null;
+  source: "periods" | "legacy";
+  baseStore: string | null;
+  periods: MappingPeriod[];
 }
+
+/** 画面で編集中の期間（年月は select の値をそのまま文字列で持つ。空＝最初から／継続中） */
+interface DraftPeriod {
+  startYear: string;
+  startMonth: string;
+  endYear: string;
+  endMonth: string;
+  stores: StoreAssignment[];
+}
+
+const toDraft = (p: MappingPeriod): DraftPeriod => ({
+  startYear: p.startYear != null ? String(p.startYear) : "",
+  startMonth: p.startMonth != null ? String(p.startMonth) : "",
+  endYear: p.endYear != null ? String(p.endYear) : "",
+  endMonth: p.endMonth != null ? String(p.endMonth) : "",
+  stores: p.stores.map((s) => ({ ...s })),
+});
+
+const fromDraft = (d: DraftPeriod) => ({
+  startYear: d.startYear ? parseInt(d.startYear, 10) : null,
+  startMonth: d.startMonth ? parseInt(d.startMonth, 10) : null,
+  endYear: d.endYear ? parseInt(d.endYear, 10) : null,
+  endMonth: d.endMonth ? parseInt(d.endMonth, 10) : null,
+  stores: d.stores,
+});
+
+const storesText = (stores: StoreAssignment[]) =>
+  stores.map((s) => `${s.storeName} ${s.ratio}%`).join("・");
 
 // ─── Component ──────────────────────────────────────────────────────
 
 export default function OverridesTab() {
-  const [overrides, setOverrides] = useState<Override[]>([]);
+  const [employees, setEmployees] = useState<EmployeeSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [deleteIds, setDeleteIds] = useState<Set<number>>(new Set());
-  const [edits, setEdits] = useState<
-    Record<number, { storeName?: string; ratio?: number }>
-  >({});
   const [message, setMessage] = useState("");
   const [addOpen, setAddOpen] = useState(false);
-  const [addMode, setAddMode] = useState<"existing" | "new">("existing");
 
   // Sorting
-  type SortKey = "employeeId" | "employeeName" | "storeName";
+  type SortKey = "employeeId" | "employeeName";
   const [sortKey, setSortKey] = useState<SortKey>("employeeId");
   const [sortAsc, setSortAsc] = useState(true);
 
-  // Dual/Multi assignment (兼務) dialog — 3店舗以上に対応（可変の割当リスト）
-  const [dualTarget, setDualTarget] = useState<Override | null>(null);
-  const [dualSplits, setDualSplits] = useState<
-    { storeName: string; ratio: number }[]
-  >([]);
-  // 適用開始月（この月から按分/移転を適用）。空＝全期間。移転前の店舗も設定可。
-  const [dualEffYear, setDualEffYear] = useState<string>("");
-  const [dualEffMonth, setDualEffMonth] = useState<string>("");
-  const [dualBaseStore, setDualBaseStore] = useState<string>("");
+  // 期間の編集ダイアログ
+  const [target, setTarget] = useState<EmployeeSummary | null>(null);
+  const [drafts, setDrafts] = useState<DraftPeriod[]>([]);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [baseStore, setBaseStore] = useState<string>("");
+  const [dialogError, setDialogError] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   // New employee form
   const [newEmpId, setNewEmpId] = useState("");
@@ -65,26 +93,18 @@ export default function OverridesTab() {
   const [newRatio, setNewRatio] = useState("100");
   const [newDual, setNewDual] = useState(false);
   const [newStore2, setNewStore2] = useState(STORES[1]);
-
-  // Existing employee search
-  const [existSearch, setExistSearch] = useState("");
-  const [selectedExisting, setSelectedExisting] = useState<Override | null>(
-    null,
-  );
-  const [existStore, setExistStore] = useState(STORES[0]);
-  const [existRatio, setExistRatio] = useState("100");
-  const [existDual, setExistDual] = useState(false);
-  const [existStore2, setExistStore2] = useState(STORES[1]);
-
-  // Inline error for add form
   const [addError, setAddError] = useState("");
+
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  const thisMonth = now.getMonth() + 1;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/settings/overrides");
       const data = await res.json();
-      setOverrides(data.overrides || []);
+      setEmployees(data.employees || []);
     } catch {
       setMessage("データの取得に失敗しました");
     }
@@ -95,21 +115,21 @@ export default function OverridesTab() {
     fetchData();
   }, [fetchData]);
 
-  const filtered = overrides
-    .filter((o) => {
+  const filtered = employees
+    .filter((e) => {
       if (!search) return true;
       const s = search.toLowerCase();
       return (
-        String(o.employeeId).includes(s) ||
-        o.employeeName.toLowerCase().includes(s) ||
-        o.storeName.toLowerCase().includes(s)
+        String(e.employeeId).includes(s) ||
+        e.employeeName.toLowerCase().includes(s) ||
+        e.periods.some((p) => p.stores.some((x) => x.storeName.includes(search)))
       );
     })
     .sort((a, b) => {
-      let cmp = 0;
-      if (sortKey === "employeeId") cmp = a.employeeId - b.employeeId;
-      else if (sortKey === "employeeName") cmp = a.employeeName.localeCompare(b.employeeName, "ja");
-      else if (sortKey === "storeName") cmp = a.storeName.localeCompare(b.storeName, "ja");
+      const cmp =
+        sortKey === "employeeId"
+          ? a.employeeId - b.employeeId
+          : a.employeeName.localeCompare(b.employeeName, "ja");
       return sortAsc ? cmp : -cmp;
     });
 
@@ -125,109 +145,11 @@ export default function OverridesTab() {
   const sortIndicator = (key: SortKey) =>
     sortKey === key ? (sortAsc ? " ▲" : " ▼") : "";
 
-  function handleEdit(
-    id: number,
-    field: "storeName" | "ratio",
-    value: string,
-  ) {
-    if (field === "ratio") {
-      let num = parseInt(value, 10);
-      if (isNaN(num)) num = 0;
-      if (num < 0) num = 0;
-      if (num > 100) num = 100;
-      setEdits((prev) => ({
-        ...prev,
-        [id]: { ...prev[id], ratio: num },
-      }));
-    } else {
-      setEdits((prev) => ({
-        ...prev,
-        [id]: { ...prev[id], [field]: value },
-      }));
-    }
-  }
-
-  function toggleDelete(id: number) {
-    setDeleteIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  async function handleSave() {
-    // Validate: check total ratios per employee don't exceed 100
-    const ratioByEmp: Record<number, number> = {};
-    for (const o of overrides) {
-      if (deleteIds.has(o.id)) continue;
-      const r = edits[o.id]?.ratio ?? o.ratio;
-      ratioByEmp[o.employeeId] = (ratioByEmp[o.employeeId] || 0) + r;
-    }
-    const over100 = Object.entries(ratioByEmp).find(([, total]) => total > 100);
-    if (over100) {
-      const empName = overrides.find((o) => o.employeeId === Number(over100[0]))?.employeeName || over100[0];
-      setMessage(`${empName}（${over100[0]}）の比率合計が${over100[1]}%で100%を超えています。修正してください。`);
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
-    try {
-      // Delete checked items
-      for (const id of deleteIds) {
-        await fetch(`/api/settings/overrides?id=${id}`, { method: "DELETE" });
-      }
-
-      // Save edits + auto-delete 0% records
-      for (const [idStr, edit] of Object.entries(edits)) {
-        const id = parseInt(idStr, 10);
-        if (deleteIds.has(id)) continue;
-        const orig = overrides.find((o) => o.id === id);
-        if (!orig) continue;
-
-        const newRatioVal = edit.ratio ?? orig.ratio;
-
-        // If ratio is 0, delete this record
-        if (newRatioVal <= 0) {
-          await fetch(`/api/settings/overrides?id=${id}`, { method: "DELETE" });
-          // If there's a sibling, set it to 100%
-          const siblings = overrides.filter(
-            (o) => o.employeeId === orig.employeeId && o.id !== orig.id,
-          );
-          if (siblings.length === 1) {
-            await fetch("/api/settings/overrides", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                employeeId: siblings[0].employeeId,
-                storeName: siblings[0].storeName,
-                ratio: 100,
-              }),
-            });
-          }
-          continue;
-        }
-
-        await fetch("/api/settings/overrides", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            employeeId: orig.employeeId,
-            storeName: edit.storeName ?? orig.storeName,
-            ratio: newRatioVal,
-          }),
-        });
-      }
-
-      setDeleteIds(new Set());
-      setEdits({});
-      await fetchData();
-      setMessage("保存しました");
-    } catch {
-      setMessage("保存に失敗しました");
-    }
-    setSaving(false);
+  /** 今月の割当（一覧表示用） */
+  function currentAssignment(e: EmployeeSummary): string {
+    const mapping: EmployeeMapping = { periods: e.periods, baseStore: e.baseStore };
+    const a = assignmentsForMonth(mapping, null, thisYear, thisMonth);
+    return a.length > 0 ? storesText(a) : "—";
   }
 
   async function handleBulkRegister() {
@@ -248,177 +170,297 @@ export default function OverridesTab() {
     setSaving(false);
   }
 
-  // Handle multi-store assignment (兼務・N店舗) registration
-  async function handleDualRegister() {
-    if (!dualTarget) return;
+  // ─── 期間の編集ダイアログ ──────────────────────────────────────
+
+  function openDialog(e: EmployeeSummary) {
+    setTarget(e);
+    setDrafts(e.periods.map(toDraft));
+    setEditingIdx(null);
+    // 空＝社員番号のルールで決める（従来どおり）
+    setBaseStore(e.baseStore || "");
+    setDialogError("");
+    setConfirmRemove(false);
+  }
+
+  function closeDialog() {
+    setTarget(null);
+    setDrafts([]);
+    setEditingIdx(null);
+    setConfirmRemove(false);
+  }
+
+  function updateDraft(idx: number, patch: Partial<DraftPeriod>) {
+    setDrafts((prev) => prev.map((d, i) => (i === idx ? { ...d, ...patch } : d)));
+  }
+
+  function addPeriod() {
+    // 直前の期間の終了月の翌月から始める（無ければ今月から）
+    const last = drafts[drafts.length - 1];
+    let y = thisYear;
+    let m = thisMonth;
+    if (last?.endYear && last?.endMonth) {
+      y = parseInt(last.endYear, 10);
+      m = parseInt(last.endMonth, 10) + 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+    }
+    const next: DraftPeriod = {
+      startYear: String(y),
+      startMonth: String(m),
+      endYear: "",
+      endMonth: "",
+      stores: [{ storeName: baseStore || drafts[0]?.stores[0]?.storeName || STORES[0], ratio: 100 }],
+    };
+    setDrafts((prev) => [...prev, next]);
+    setEditingIdx(drafts.length);
+  }
+
+  function removePeriod(idx: number) {
+    setDrafts((prev) => prev.filter((_, i) => i !== idx));
+    setEditingIdx(null);
+  }
+
+  const draftCheck = validatePeriods(drafts.map(fromDraft));
+
+  async function handleSavePeriods() {
+    if (!target) return;
+    if (!draftCheck.ok) {
+      setDialogError(draftCheck.error);
+      return;
+    }
     setSaving(true);
-    setMessage("");
+    setDialogError("");
     try {
-      // multi action で全 override を N 店舗分に原子的に置き換える
-      await fetch("/api/settings/overrides", {
+      const res = await fetch("/api/settings/overrides", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "multi",
-          employeeId: dualTarget.employeeId,
-          employeeName: dualTarget.employeeName,
-          stores: dualSplits.filter((s) => s.ratio > 0),
-          effectiveYear: dualEffYear ? parseInt(dualEffYear, 10) : null,
-          effectiveMonth: dualEffMonth ? parseInt(dualEffMonth, 10) : null,
-          baseStore: dualBaseStore || null,
+          action: "periods",
+          employeeId: target.employeeId,
+          employeeName: target.employeeName,
+          baseStore: baseStore || null,
+          periods: draftCheck.periods,
         }),
       });
-      setDualTarget(null);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setDialogError(data.error || "保存に失敗しました");
+        setSaving(false);
+        return;
+      }
+      closeDialog();
       await fetchData();
-      setMessage("兼務登録しました");
+      setMessage("期間を保存しました（取り込み済みの人件費も組み直しました）");
     } catch {
-      setMessage("兼務登録に失敗しました");
+      setDialogError("保存に失敗しました");
     }
     setSaving(false);
   }
 
-  // 兼務モーダルの割当合計（100%チェック用）
-  const dualTotal = dualSplits.reduce((s, x) => s + (x.ratio || 0), 0);
-  const dualValid = Math.abs(dualTotal - 100) <= 1 && dualSplits.every((s) => s.ratio > 0);
-  // 追加候補（未使用の店舗）
-  const dualAvailable = ALL_STORES.filter(
-    (s) => !dualSplits.some((d) => d.storeName === s),
-  );
+  async function handleRemoveEmployee() {
+    if (!target) return;
+    setSaving(true);
+    setDialogError("");
+    try {
+      const res = await fetch("/api/settings/overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remove-employee", employeeId: target.employeeId }),
+      });
+      if (!res.ok) throw new Error();
+      closeDialog();
+      await fetchData();
+      setMessage("割当を解除しました（社員番号のルールで店舗を判定します）");
+    } catch {
+      setDialogError("解除に失敗しました");
+    }
+    setSaving(false);
+  }
+
+  // ─── 新規従業員の追加 ──────────────────────────────────────────
 
   async function handleAddEmployee() {
     setSaving(true);
     setMessage("");
     setAddError("");
     try {
-      if (addMode === "new") {
-        const empId = parseInt(newEmpId, 10);
-        // Check duplicate against current data
-        const isDuplicate = overrides.some((o) => o.employeeId === empId);
-        if (isDuplicate) {
-          const dupName = overrides.find((o) => o.employeeId === empId)?.employeeName || "";
-          setAddError(`従業員番号 ${empId}${dupName ? `（${dupName}）` : ""} は既に登録されています。「既存の従業員（兼務・変更）」から操作してください。`);
-          setSaving(false);
-          return;
-        }
-
-        const r1 = newDual ? parseInt(newRatio, 10) || 50 : parseInt(newRatio, 10) || 100;
-        if (r1 > 100 || r1 < 0) {
-          setAddError("比率は0〜100%の範囲で入力してください。");
-          setSaving(false);
-          return;
-        }
-        if (newDual && r1 >= 100) {
-          setAddError("兼務の場合、比率は99%以下にしてください（2店舗目に割り当てる分が必要です）。");
-          setSaving(false);
-          return;
-        }
-        if (newDual) {
-          await fetch("/api/settings/overrides", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "dual",
-              employeeId: empId,
-              employeeName: newEmpName,
-              store1: newStore,
-              ratio1: r1,
-              store2: newStore2,
-              ratio2: 100 - r1,
-            }),
-          });
-        } else {
-          await fetch("/api/settings/overrides", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              employeeId: empId,
-              storeName: newStore,
-              ratio: r1,
-              employeeName: newEmpName,
-            }),
-          });
-        }
-      } else if (selectedExisting) {
-        const r1 = existDual ? parseInt(existRatio, 10) || 50 : parseInt(existRatio, 10) || 100;
-        if (r1 > 100 || r1 < 0) {
-          setAddError("比率は0〜100%の範囲で入力してください。");
-          setSaving(false);
-          return;
-        }
-        if (existDual && r1 >= 100) {
-          setAddError("兼務の場合、比率は99%以下にしてください。");
-          setSaving(false);
-          return;
-        }
-        if (existDual) {
-          await fetch("/api/settings/overrides", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "dual",
-              employeeId: selectedExisting.employeeId,
-              employeeName: selectedExisting.employeeName,
-              store1: existStore,
-              ratio1: r1,
-              store2: existStore2,
-              ratio2: 100 - r1,
-            }),
-          });
-        } else {
-          // Single store change — delete old, create new
-          await fetch("/api/settings/overrides", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              employeeId: selectedExisting.employeeId,
-              storeName: existStore,
-              ratio: r1,
-              employeeName: selectedExisting.employeeName,
-            }),
-          });
-        }
+      const empId = parseInt(newEmpId, 10);
+      if (isNaN(empId)) {
+        setAddError("従業員番号を数字で入力してください。");
+        setSaving(false);
+        return;
       }
+      const dup = employees.find((e) => e.employeeId === empId);
+      if (dup) {
+        setAddError(`従業員番号 ${empId}${dup.employeeName ? `（${dup.employeeName}）` : ""} は既に登録されています。一覧の「期間を編集」から変更してください。`);
+        setSaving(false);
+        return;
+      }
+      const r1 = newDual ? parseInt(newRatio, 10) || 50 : parseInt(newRatio, 10) || 100;
+      if (r1 > 100 || r1 < 0) {
+        setAddError("比率は0〜100%の範囲で入力してください。");
+        setSaving(false);
+        return;
+      }
+      if (newDual && r1 >= 100) {
+        setAddError("兼務の場合、比率は99%以下にしてください（2店舗目に割り当てる分が必要です）。");
+        setSaving(false);
+        return;
+      }
+      await fetch("/api/settings/overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          newDual
+            ? {
+                action: "dual",
+                employeeId: empId,
+                employeeName: newEmpName,
+                store1: newStore,
+                ratio1: r1,
+                store2: newStore2,
+                ratio2: 100 - r1,
+              }
+            : { employeeId: empId, storeName: newStore, ratio: r1, employeeName: newEmpName },
+        ),
+      });
       await fetchData();
       setMessage("従業員を追加しました");
       setNewEmpId("");
       setNewEmpName("");
       setNewRatio("100");
       setNewDual(false);
-      setSelectedExisting(null);
-      setExistRatio("100");
-      setExistDual(false);
     } catch {
       setMessage("追加に失敗しました");
     }
     setSaving(false);
   }
 
-  const existingFiltered = existSearch
-    ? overrides.filter(
-        (o) =>
-          String(o.employeeId).includes(existSearch) ||
-          o.employeeName.toLowerCase().includes(existSearch.toLowerCase()),
-      )
-    : [];
+  // ─── 期間の編集フォーム（1期間分） ──────────────────────────────
 
-  // Group to show current stores for selected existing employee
-  const selectedCurrentStores = selectedExisting
-    ? overrides.filter(
-        (o) => o.employeeId === selectedExisting.employeeId,
-      )
-    : [];
-
-  // Check if employee already has dual assignment
-  const hasDual = (empId: number) =>
-    overrides.filter((o) => o.employeeId === empId).length > 1;
+  function renderPeriodEditor(d: DraftPeriod, idx: number) {
+    const total = d.stores.reduce((s, x) => s + (x.ratio || 0), 0);
+    const available = ALL_STORES.filter((s) => !d.stores.some((x) => x.storeName === s));
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-xs font-medium text-gray-600 w-8">開始</span>
+          <select
+            value={d.startYear}
+            onChange={(e) => updateDraft(idx, { startYear: e.target.value, startMonth: e.target.value ? d.startMonth || "1" : "" })}
+            className="border border-gray-300 rounded px-2 py-1 text-sm"
+          >
+            <option value="">最初から</option>
+            {YEARS.map((y) => (
+              <option key={y} value={y}>{y}年</option>
+            ))}
+          </select>
+          {d.startYear && (
+            <select
+              value={d.startMonth}
+              onChange={(e) => updateDraft(idx, { startMonth: e.target.value })}
+              className="border border-gray-300 rounded px-2 py-1 text-sm"
+            >
+              {MONTHS.map((m) => (
+                <option key={m} value={m}>{m}月</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-xs font-medium text-gray-600 w-8">終了</span>
+          <select
+            value={d.endYear}
+            onChange={(e) => updateDraft(idx, { endYear: e.target.value, endMonth: e.target.value ? d.endMonth || "12" : "" })}
+            className="border border-gray-300 rounded px-2 py-1 text-sm"
+          >
+            <option value="">継続中（終了なし）</option>
+            {YEARS.map((y) => (
+              <option key={y} value={y}>{y}年</option>
+            ))}
+          </select>
+          {d.endYear && (
+            <select
+              value={d.endMonth}
+              onChange={(e) => updateDraft(idx, { endMonth: e.target.value })}
+              className="border border-gray-300 rounded px-2 py-1 text-sm"
+            >
+              {MONTHS.map((m) => (
+                <option key={m} value={m}>{m}月</option>
+              ))}
+            </select>
+          )}
+        </div>
+        {d.stores.map((sp, sIdx) => (
+          <div key={sIdx} className="flex items-center gap-2">
+            <select
+              value={sp.storeName}
+              onChange={(e) =>
+                updateDraft(idx, {
+                  stores: d.stores.map((x, i) => (i === sIdx ? { ...x, storeName: e.target.value } : x)),
+                })
+              }
+              className="border border-gray-300 rounded px-2 py-1 text-sm flex-1"
+            >
+              <option value={sp.storeName}>{sp.storeName}</option>
+              {available.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={sp.ratio}
+              onChange={(e) =>
+                updateDraft(idx, {
+                  stores: d.stores.map((x, i) =>
+                    i === sIdx ? { ...x, ratio: Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)) } : x,
+                  ),
+                })
+              }
+              className="border border-gray-300 rounded px-2 py-1 text-sm w-16 text-right"
+            />
+            <span className="text-sm">%</span>
+            {d.stores.length > 1 && (
+              <button
+                onClick={() => updateDraft(idx, { stores: d.stores.filter((_, i) => i !== sIdx) })}
+                className="text-gray-400 hover:text-red-500 text-sm px-1"
+                aria-label="この店舗を外す"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+        <div className="flex items-center justify-between">
+          {available.length > 0 ? (
+            <button
+              onClick={() => updateDraft(idx, { stores: [...d.stores, { storeName: available[0], ratio: 0 }] })}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              ＋ 店舗を追加
+            </button>
+          ) : (
+            <span />
+          )}
+          <span className={`text-xs ${Math.abs(total - 100) <= 1 ? "text-green-600" : "text-amber-600"}`}>
+            合計: {total}%{Math.abs(total - 100) <= 1 ? "" : "（100%にしてください）"}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
       {/* Search & actions */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-3">
         <input
           type="text"
-          placeholder="従業員番号・氏名で検索..."
+          placeholder="従業員番号・氏名・店舗で検索..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="border border-gray-300 rounded px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
@@ -432,9 +474,14 @@ export default function OverridesTab() {
         </button>
       </div>
 
+      <div className="mb-4 px-4 py-3 rounded bg-gray-50 border border-gray-200 text-xs text-gray-600 leading-relaxed">
+        <p>・<span className="font-medium">2店舗を受け持つ・異動するなど、しばらく同じ割当が続くとき</span>は、ここで「期間」を登録します（例：2026年10月〜2027年2月は東日本橋50%・船橋50%）。</p>
+        <p>・<span className="font-medium">ヘルプでその月だけ別の店舗に行ったとき</span>は、ここではなく ダッシュボードの「従業員別明細」でその月だけ調整してください（そちらが優先されます）。</p>
+      </div>
+
       {message && (
         <div className={`mb-4 px-4 py-2 rounded text-sm ${
-          message.includes("超えています") || message.includes("既に登録") || message.includes("失敗")
+          message.includes("既に登録") || message.includes("失敗")
             ? "bg-red-50 text-red-700 border border-red-200"
             : "bg-blue-50 text-blue-700"
         }`}>
@@ -453,115 +500,56 @@ export default function OverridesTab() {
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th
                     onClick={() => handleSort("employeeId")}
-                    className="text-left px-3 py-2 font-medium text-gray-600 cursor-pointer hover:text-blue-600 select-none"
+                    className="text-left px-3 py-2 font-medium text-gray-600 cursor-pointer hover:text-blue-600 select-none whitespace-nowrap"
                   >
                     従業員番号{sortIndicator("employeeId")}
                   </th>
                   <th
                     onClick={() => handleSort("employeeName")}
-                    className="text-left px-3 py-2 font-medium text-gray-600 cursor-pointer hover:text-blue-600 select-none"
+                    className="text-left px-3 py-2 font-medium text-gray-600 cursor-pointer hover:text-blue-600 select-none whitespace-nowrap"
                   >
                     氏名{sortIndicator("employeeName")}
                   </th>
-                  <th
-                    onClick={() => handleSort("storeName")}
-                    className="text-left px-3 py-2 font-medium text-gray-600 cursor-pointer hover:text-blue-600 select-none"
-                  >
-                    店舗{sortIndicator("storeName")}
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 whitespace-nowrap">
+                    今月（{thisMonth}月）の店舗
                   </th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">
-                    比率(%)
+                    期間ごとの店舗と比率
                   </th>
-                  <th className="text-center px-3 py-2 font-medium text-gray-600">
-                    兼務
-                  </th>
-                  <th className="text-center px-3 py-2 font-medium text-gray-600">
-                    削除
+                  <th className="text-center px-3 py-2 font-medium text-gray-600 whitespace-nowrap">
+                    操作
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((o) => (
-                  <tr
-                    key={o.id}
-                    className={`border-b border-gray-100 ${deleteIds.has(o.id) ? "bg-red-50" : "hover:bg-gray-50"}`}
-                  >
-                    <td className="px-3 py-2">{o.employeeId}</td>
-                    <td className="px-3 py-2">{o.employeeName}</td>
-                    <td className="px-3 py-2">
-                      <select
-                        value={edits[o.id]?.storeName ?? o.storeName}
-                        onChange={(e) =>
-                          handleEdit(o.id, "storeName", e.target.value)
-                        }
-                        className="border border-gray-300 rounded px-2 py-1 text-sm"
-                      >
-                        {ALL_STORES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={edits[o.id]?.ratio ?? o.ratio}
-                        onChange={(e) =>
-                          handleEdit(o.id, "ratio", e.target.value)
-                        }
-                        className="border border-gray-300 rounded px-2 py-1 text-sm w-20"
-                      />
+                {filtered.map((e) => (
+                  <tr key={e.employeeId} className="border-b border-gray-100 hover:bg-gray-50 align-top">
+                    <td className="px-3 py-2">{e.employeeId}</td>
+                    <td className="px-3 py-2">{e.employeeName}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{currentAssignment(e)}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">
+                      {e.periods.map((p, i) => (
+                        <div key={i}>
+                          <span className="text-gray-500">{periodLabel(p)}</span>：{storesText(p.stores)}
+                        </div>
+                      ))}
+                      {e.periods.some((p) => p.startYear != null || p.endYear != null) && e.baseStore && (
+                        <div className="text-gray-400">上記以外の月：{e.baseStore} 100%</div>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-center">
                       <button
-                        onClick={() => {
-                          setDualTarget(o);
-                          // 適用開始月・移転前店舗を既存値で初期化（移転前店舗は未設定なら現店舗）
-                          setDualEffYear(o.effectiveYear ? String(o.effectiveYear) : "");
-                          setDualEffMonth(o.effectiveMonth ? String(o.effectiveMonth) : "");
-                          setDualBaseStore(o.baseStore || o.storeName);
-                          // 既に複数店舗なら現在の割当で初期化（3店舗目以降の追加が可能）。
-                          // 単一店舗なら 50/50 の2店舗で初期化。
-                          const current = overrides.filter(
-                            (x) => x.employeeId === o.employeeId,
-                          );
-                          if (current.length >= 2) {
-                            setDualSplits(
-                              current.map((c) => ({
-                                storeName: c.storeName,
-                                ratio: c.ratio,
-                              })),
-                            );
-                          } else {
-                            const other =
-                              STORES.find((s) => s !== o.storeName) || STORES[0];
-                            setDualSplits([
-                              { storeName: o.storeName, ratio: 50 },
-                              { storeName: other, ratio: 50 },
-                            ]);
-                          }
-                        }}
-                        className="text-xs text-blue-600 hover:text-blue-800 underline"
+                        onClick={() => openDialog(e)}
+                        className="text-xs text-blue-600 hover:text-blue-800 underline whitespace-nowrap"
                       >
-                        {hasDual(o.employeeId) ? "兼務編集" : "兼務"}
+                        期間を編集
                       </button>
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={deleteIds.has(o.id)}
-                        onChange={() => toggleDelete(o.id)}
-                        className="w-4 h-4"
-                      />
                     </td>
                   </tr>
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-4 text-center text-gray-400">
+                    <td colSpan={5} className="px-3 py-4 text-center text-gray-400">
                       データがありません
                     </td>
                   </tr>
@@ -570,366 +558,240 @@ export default function OverridesTab() {
             </table>
           </div>
 
-          <div className="mt-4 flex gap-3">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="bg-[#567FC0] hover:bg-[#4a6fa8] text-white px-6 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50"
-            >
-              {saving ? "保存中..." : "保存"}
-            </button>
-          </div>
-
-          {/* Dual assignment dialog */}
-          {dualTarget && (
+          {/* 期間の編集ダイアログ */}
+          {target && (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-                <h3 className="text-base font-bold text-gray-800 mb-3">
-                  兼務登録
+              <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <h3 className="text-base font-bold text-gray-800 mb-1">
+                  店舗の割当（期間）
                 </h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  {dualTarget.employeeName}（{dualTarget.employeeId}）を{dualSplits.length}店舗に割り当てます（合計100%）
+                <p className="text-sm text-gray-600 mb-3">
+                  {target.employeeName}（{target.employeeId}）
                 </p>
-                <div className="space-y-2">
-                  {dualSplits.map((sp, idx) => (
-                    <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                      <span className="text-xs font-medium text-gray-500 w-12">店舗{idx + 1}</span>
-                      <select
-                        value={sp.storeName}
-                        onChange={(e) => {
-                          const next = [...dualSplits];
-                          next[idx] = { ...next[idx], storeName: e.target.value };
-                          setDualSplits(next);
-                        }}
-                        className="border border-gray-300 rounded px-2 py-1 text-sm flex-1"
-                      >
-                        <option value={sp.storeName}>{sp.storeName}</option>
-                        {dualAvailable.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={sp.ratio}
-                        onChange={(e) => {
-                          const next = [...dualSplits];
-                          next[idx] = { ...next[idx], ratio: parseInt(e.target.value, 10) || 0 };
-                          setDualSplits(next);
-                        }}
-                        className="border border-gray-300 rounded px-2 py-1 text-sm w-16 text-right"
-                      />
-                      <span className="text-sm">%</span>
-                      {dualSplits.length > 2 && (
-                        <button
-                          onClick={() => setDualSplits(dualSplits.filter((_, i) => i !== idx))}
-                          className="text-gray-400 hover:text-red-500 text-sm px-1"
-                          aria-label="この店舗を削除"
-                        >
-                          ✕
-                        </button>
+                <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+                  期間ごとに、どの店舗に何%つけるかを登録します。終了を「継続中」にすると、その月以降ずっと同じ割当になります。
+                  その月だけのヘルプは、ダッシュボードの「従業員別明細」で調整してください。
+                </p>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50">
+                        <th className="text-left px-2 py-2 font-medium text-gray-600 whitespace-nowrap">開始</th>
+                        <th className="text-left px-2 py-2 font-medium text-gray-600 whitespace-nowrap">終了</th>
+                        <th className="text-left px-2 py-2 font-medium text-gray-600">店舗と比率</th>
+                        <th className="text-center px-2 py-2 font-medium text-gray-600 whitespace-nowrap">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drafts.map((d, idx) =>
+                        editingIdx === idx ? (
+                          <tr key={idx} className="border-b border-gray-100 bg-blue-50/40">
+                            <td colSpan={3} className="px-2 py-2">
+                              {renderPeriodEditor(d, idx)}
+                            </td>
+                            <td className="px-2 py-2 text-center align-top">
+                              <button
+                                onClick={() => setEditingIdx(null)}
+                                className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+                              >
+                                閉じる
+                              </button>
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr key={idx} className="border-b border-gray-100">
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              {d.startYear ? `${d.startYear}年${d.startMonth}月` : "最初から"}
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              {d.endYear ? `${d.endYear}年${d.endMonth}月` : "継続中"}
+                            </td>
+                            <td className="px-2 py-2">{storesText(d.stores)}</td>
+                            <td className="px-2 py-2 text-center whitespace-nowrap">
+                              <button
+                                onClick={() => setEditingIdx(idx)}
+                                className="text-xs text-blue-600 hover:underline mr-3"
+                              >
+                                編集
+                              </button>
+                              <button
+                                onClick={() => removePeriod(idx)}
+                                className="text-xs text-red-600 hover:underline"
+                              >
+                                削除
+                              </button>
+                            </td>
+                          </tr>
+                        ),
                       )}
-                    </div>
-                  ))}
-                  {dualAvailable.length > 0 && (
-                    <button
-                      onClick={() =>
-                        setDualSplits([...dualSplits, { storeName: dualAvailable[0], ratio: 0 }])
-                      }
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      ＋ 店舗を追加
-                    </button>
-                  )}
-                  <p className={`text-xs text-right ${dualValid ? "text-green-600" : "text-amber-600"}`}>
-                    合計: {dualTotal}%{dualValid ? "" : "（100%になるよう調整してください）"}
-                  </p>
+                      {drafts.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-2 py-3 text-center text-gray-400 text-xs">
+                            期間がありません。「＋ 期間を追加」から登録してください。
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  onClick={addPeriod}
+                  className="mt-2 text-sm text-blue-600 hover:underline"
+                >
+                  ＋ 期間を追加
+                </button>
+
+                <div className="mt-4 border-t border-gray-100 pt-3 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-gray-600">どの期間にも入らない月の店舗</span>
+                  <select
+                    value={baseStore}
+                    onChange={(e) => setBaseStore(e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm"
+                  >
+                    <option value="">社員番号のルールで決める</option>
+                    {ALL_STORES.map((s) => (
+                      <option key={s} value={s}>{s} 100%</option>
+                    ))}
+                  </select>
                 </div>
 
-                {/* 適用開始月 & 移転前の店舗 */}
-                <div className="mt-4 border-t border-gray-100 pt-3 space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-medium text-gray-600 w-full sm:w-auto">
-                      この月から適用
-                    </span>
-                    <select
-                      value={dualEffYear}
-                      onChange={(e) => setDualEffYear(e.target.value)}
-                      className="border border-gray-300 rounded px-2 py-1 text-sm"
-                    >
-                      <option value="">全期間</option>
-                      {[2024, 2025, 2026, 2027].map((y) => (
-                        <option key={y} value={y}>{y}年</option>
-                      ))}
-                    </select>
-                    <select
-                      value={dualEffMonth}
-                      onChange={(e) => setDualEffMonth(e.target.value)}
-                      disabled={!dualEffYear}
-                      className="border border-gray-300 rounded px-2 py-1 text-sm disabled:bg-gray-100"
-                    >
-                      <option value="">--</option>
-                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                        <option key={m} value={m}>{m}月</option>
-                      ))}
-                    </select>
+                {(dialogError || (!draftCheck.ok && drafts.length > 0)) && (
+                  <div className="mt-3 px-3 py-2 bg-red-50 text-red-700 border border-red-200 rounded text-sm">
+                    {dialogError || (!draftCheck.ok ? draftCheck.error : "")}
                   </div>
-                  {dualEffYear && dualEffMonth && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-medium text-gray-600">
-                        移転前の店舗
-                      </span>
-                      <select
-                        value={dualBaseStore}
-                        onChange={(e) => setDualBaseStore(e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1 text-sm"
-                      >
-                        {ALL_STORES.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-                      <span className="text-xs text-gray-400">
-                        （開始月より前はこの店舗100%）
-                      </span>
-                    </div>
-                  )}
-                  <p className="text-[11px] text-gray-400 leading-relaxed">
-                    {dualEffYear && dualEffMonth
-                      ? `${dualEffYear}年${dualEffMonth}月以降にこの按分を適用し、それより前は「移転前の店舗」100%になります。`
-                      : "「全期間」の場合、取り込み済みの全月にこの按分を適用します。開始月を指定すると移転（途中で所属変更）に対応できます。"}
-                  </p>
-                </div>
+                )}
 
-                <div className="flex gap-2 justify-end mt-4">
-                  <button
-                    onClick={() => setDualTarget(null)}
-                    className="text-sm bg-white border rounded px-4 py-2 hover:bg-gray-50 text-gray-600"
-                  >
-                    キャンセル
-                  </button>
-                  <button
-                    onClick={handleDualRegister}
-                    disabled={saving || !dualValid}
-                    className="text-sm bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {saving ? "登録中..." : "兼務登録する"}
-                  </button>
+                <div className="flex flex-wrap gap-2 justify-between items-center mt-4">
+                  <div>
+                    {confirmRemove ? (
+                      <span className="text-xs text-gray-700">
+                        この人の割当をすべて解除し、社員番号のルールに戻します。よろしいですか？
+                        <button
+                          onClick={handleRemoveEmployee}
+                          disabled={saving}
+                          className="ml-2 text-xs bg-red-600 text-white rounded px-2 py-1 hover:bg-red-700 disabled:opacity-50"
+                        >
+                          解除する
+                        </button>
+                        <button
+                          onClick={() => setConfirmRemove(false)}
+                          className="ml-1 text-xs border rounded px-2 py-1 hover:bg-gray-50"
+                        >
+                          やめる
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmRemove(true)}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        割当をすべて解除
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={closeDialog}
+                      className="text-sm bg-white border rounded px-4 py-2 hover:bg-gray-50 text-gray-600"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      onClick={handleSavePeriods}
+                      disabled={saving || !draftCheck.ok}
+                      className="text-sm bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {saving ? "保存中..." : "保存"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Expandable: Add/Dual employee */}
+          {/* 新規従業員の追加 */}
           <div className="mt-6 border-t border-gray-200 pt-4">
             <button
               onClick={() => setAddOpen(!addOpen)}
               className="text-sm font-medium text-[#567FC0] hover:underline"
             >
-              {addOpen ? "▼" : "▶"} 従業員の追加・兼務登録
+              {addOpen ? "▼" : "▶"} 新しい従業員を追加
             </button>
             {addOpen && (
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <div className="flex gap-4 mb-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="addMode"
-                      checked={addMode === "existing"}
-                      onChange={() => setAddMode("existing")}
-                    />
-                    既存の従業員（兼務・変更）
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="addMode"
-                      checked={addMode === "new"}
-                      onChange={() => setAddMode("new")}
-                    />
-                    新規従業員
-                  </label>
-                </div>
-
-                {addMode === "existing" ? (
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      placeholder="従業員番号・氏名で検索..."
-                      value={existSearch}
-                      onChange={(e) => {
-                        setExistSearch(e.target.value);
-                        setSelectedExisting(null);
-                      }}
-                      className="border border-gray-300 rounded px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
-                    />
-                    {existSearch && existingFiltered.length > 0 && !selectedExisting && (
-                      <div className="border border-gray-200 rounded bg-white max-h-40 overflow-y-auto">
-                        {[
-                          ...new Map(
-                            existingFiltered.map((o) => [o.employeeId, o]),
-                          ).values(),
-                        ].map((o) => (
-                          <button
-                            key={o.employeeId}
-                            onClick={() => setSelectedExisting(o)}
-                            className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                          >
-                            {o.employeeId} - {o.employeeName}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {selectedExisting && (
-                      <div className="space-y-3">
-                        <p className="text-sm font-medium">
-                          選択: {selectedExisting.employeeId} -{" "}
-                          {selectedExisting.employeeName}
-                        </p>
-                        <div className="text-sm text-gray-600">
-                          <p className="font-medium mb-1">現在の店舗割当:</p>
-                          {selectedCurrentStores.map((s) => (
-                            <span
-                              key={s.id}
-                              className="inline-block bg-gray-200 rounded px-2 py-0.5 mr-2 mb-1"
-                            >
-                              {s.storeName} ({s.ratio}%)
-                            </span>
-                          ))}
-                        </div>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={existDual}
-                            onChange={(e) => setExistDual(e.target.checked)}
-                          />
-                          兼務（2店舗に割り当て）
-                        </label>
-                        <div className="flex flex-wrap items-center gap-3">
-                          <select
-                            value={existStore}
-                            onChange={(e) => setExistStore(e.target.value)}
-                            className="border border-gray-300 rounded px-2 py-1 text-sm"
-                          >
-                            {ALL_STORES.map((s) => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            min={1}
-                            max={existDual ? 99 : 100}
-                            value={existRatio}
-                            onChange={(e) => setExistRatio(e.target.value)}
-                            placeholder="比率(%)"
-                            className="border border-gray-300 rounded px-2 py-1 text-sm w-24"
-                          />
-                          {existDual && (
-                            <>
-                              <span className="text-sm text-gray-500">+</span>
-                              <select
-                                value={existStore2}
-                                onChange={(e) => setExistStore2(e.target.value)}
-                                className="border border-gray-300 rounded px-2 py-1 text-sm"
-                              >
-                                {ALL_STORES.filter((s) => s !== existStore).map((s) => (
-                                  <option key={s} value={s}>{s}</option>
-                                ))}
-                              </select>
-                              <span className="text-sm font-medium text-blue-700">
-                                {100 - (parseInt(existRatio, 10) || 0)}%
-                              </span>
-                            </>
-                          )}
-                          <button
-                            onClick={handleAddEmployee}
-                            disabled={saving}
-                            className="bg-[#567FC0] hover:bg-[#4a6fa8] text-white px-4 py-1.5 rounded text-sm font-medium disabled:opacity-50"
-                          >
-                            追加
-                          </button>
-                        </div>
-                        {addError && (
-                          <div className="mt-2 px-3 py-2 bg-red-50 text-red-700 border border-red-200 rounded text-sm">
-                            {addError}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={newDual}
-                        onChange={(e) => setNewDual(e.target.checked)}
-                      />
-                      兼務（2店舗に割り当て）
-                    </label>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <input
-                        type="text"
-                        placeholder="従業員番号"
-                        value={newEmpId}
-                        onChange={(e) => setNewEmpId(e.target.value)}
-                        className="border border-gray-300 rounded px-3 py-2 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
-                      />
-                      <input
-                        type="text"
-                        placeholder="氏名"
-                        value={newEmpName}
-                        onChange={(e) => setNewEmpName(e.target.value)}
-                        className="border border-gray-300 rounded px-3 py-2 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
-                      />
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg space-y-3">
+                <p className="text-xs text-gray-500">
+                  登録済みの従業員の変更は、一覧の「期間を編集」から行ってください。
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={newDual}
+                    onChange={(e) => setNewDual(e.target.checked)}
+                  />
+                  兼務（2店舗に割り当て）
+                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="text"
+                    placeholder="従業員番号"
+                    value={newEmpId}
+                    onChange={(e) => setNewEmpId(e.target.value)}
+                    className="border border-gray-300 rounded px-3 py-2 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+                  />
+                  <input
+                    type="text"
+                    placeholder="氏名"
+                    value={newEmpName}
+                    onChange={(e) => setNewEmpName(e.target.value)}
+                    className="border border-gray-300 rounded px-3 py-2 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-[#567FC0]"
+                  />
+                  <select
+                    value={newStore}
+                    onChange={(e) => setNewStore(e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-2 text-sm"
+                  >
+                    {ALL_STORES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    max={newDual ? 99 : 100}
+                    value={newRatio}
+                    onChange={(e) => setNewRatio(e.target.value)}
+                    placeholder="比率(%)"
+                    className="border border-gray-300 rounded px-2 py-2 text-sm w-24"
+                  />
+                  {newDual && (
+                    <>
+                      <span className="text-sm text-gray-500">+</span>
                       <select
-                        value={newStore}
-                        onChange={(e) => setNewStore(e.target.value)}
+                        value={newStore2}
+                        onChange={(e) => setNewStore2(e.target.value)}
                         className="border border-gray-300 rounded px-2 py-2 text-sm"
                       >
-                        {ALL_STORES.map((s) => (
+                        {ALL_STORES.filter((s) => s !== newStore).map((s) => (
                           <option key={s} value={s}>{s}</option>
                         ))}
                       </select>
-                      <input
-                        type="number"
-                        min={1}
-                        max={newDual ? 99 : 100}
-                        value={newRatio}
-                        onChange={(e) => setNewRatio(e.target.value)}
-                        placeholder="比率(%)"
-                        className="border border-gray-300 rounded px-2 py-2 text-sm w-24"
-                      />
-                      {newDual && (
-                        <>
-                          <span className="text-sm text-gray-500">+</span>
-                          <select
-                            value={newStore2}
-                            onChange={(e) => setNewStore2(e.target.value)}
-                            className="border border-gray-300 rounded px-2 py-2 text-sm"
-                          >
-                            {ALL_STORES.filter((s) => s !== newStore).map((s) => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                          </select>
-                          <span className="text-sm font-medium text-blue-700">
-                            {100 - (parseInt(newRatio, 10) || 0)}%
-                          </span>
-                        </>
-                      )}
-                      <button
-                        onClick={handleAddEmployee}
-                        disabled={saving || !newEmpId}
-                        className="bg-[#567FC0] hover:bg-[#4a6fa8] text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
-                      >
-                        追加
-                      </button>
-                    </div>
-                    {addError && (
-                      <div className="mt-2 px-3 py-2 bg-red-50 text-red-700 border border-red-200 rounded text-sm">
-                        {addError}
-                      </div>
-                    )}
+                      <span className="text-sm font-medium text-blue-700">
+                        {100 - (parseInt(newRatio, 10) || 0)}%
+                      </span>
+                    </>
+                  )}
+                  <button
+                    onClick={handleAddEmployee}
+                    disabled={saving || !newEmpId}
+                    className="bg-[#567FC0] hover:bg-[#4a6fa8] text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
+                  >
+                    追加
+                  </button>
+                </div>
+                {addError && (
+                  <div className="mt-2 px-3 py-2 bg-red-50 text-red-700 border border-red-200 rounded text-sm">
+                    {addError}
                   </div>
                 )}
               </div>
