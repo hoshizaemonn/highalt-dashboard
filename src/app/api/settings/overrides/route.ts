@@ -5,9 +5,18 @@ import { getSession, requireAdmin } from "@/lib/auth";
 import { THOUSAND_DIGIT_MAP } from "@/lib/constants";
 import {
   captureBaseStore,
+  loadAllEmployeeMappings,
   loadEmployeeMapping,
   recomputeEmployeePayroll,
 } from "@/lib/payroll-reallocate";
+import { validatePeriods } from "@/lib/payroll-allocation";
+
+/** body の employeeId を数値に（不正は NaN） */
+function parseEmpId(v: unknown): number {
+  if (typeof v === "number") return Number.isInteger(v) ? v : NaN;
+  if (typeof v === "string" && /^\d+$/.test(v.trim())) return parseInt(v.trim(), 10);
+  return NaN;
+}
 
 /** body から適用開始年月を取り出す（未指定・不正は null＝全期間適用） */
 function parseEffective(body: {
@@ -29,32 +38,48 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const overrides = await prisma.storeOverride.findMany({
-      orderBy: { employeeId: "asc" },
-    });
+    const [overrides, periodRows, mappings] = await Promise.all([
+      prisma.storeOverride.findMany({ orderBy: { employeeId: "asc" } }),
+      prisma.storeOverridePeriod.findMany({
+        orderBy: [{ employeeId: "asc" }, { id: "asc" }],
+        select: { employeeId: true, employeeName: true },
+      }),
+      loadAllEmployeeMappings(prisma),
+    ]);
 
-    // Supplement names from payroll_data for records that don't have employee_name
-    const needNames = overrides.filter((o) => !o.employeeName);
-    if (needNames.length > 0) {
-      const ids = [...new Set(needNames.map((o) => String(o.employeeId)))];
+    // 氏名: 期間テーブル → store_overrides → 人件費データ の順で補完
+    const nameMap = new Map<number, string>();
+    for (const o of overrides) if (o.employeeName && !nameMap.has(o.employeeId)) nameMap.set(o.employeeId, o.employeeName);
+    for (const p of periodRows) if (p.employeeName) nameMap.set(p.employeeId, p.employeeName);
+    const missing = [...mappings.keys()].filter((id) => !nameMap.get(id));
+    if (missing.length > 0) {
       const payrollRecords = await prisma.payrollData.findMany({
-        where: { employeeId: { in: ids } },
+        where: { employeeId: { in: missing.map(String) } },
         select: { employeeId: true, employeeName: true },
         distinct: ["employeeId"],
       });
-      const nameMap: Record<string, string> = {};
       for (const p of payrollRecords) {
-        if (p.employeeName) nameMap[p.employeeId] = p.employeeName;
+        if (p.employeeName) nameMap.set(parseInt(p.employeeId, 10), p.employeeName);
       }
-
-      const result = overrides.map((o) => ({
-        ...o,
-        employeeName: o.employeeName || nameMap[String(o.employeeId)] || "",
-      }));
-      return NextResponse.json({ overrides: result });
     }
 
-    return NextResponse.json({ overrides });
+    const periodEmpIds = new Set(periodRows.map((p) => p.employeeId));
+    // 従業員ごとの期間一覧（期間テーブルが無い従業員は旧 store_overrides を1期間として表示）
+    const employees = [...mappings.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([employeeId, m]) => ({
+        employeeId,
+        employeeName: nameMap.get(employeeId) || "",
+        source: periodEmpIds.has(employeeId) ? "periods" : "legacy",
+        baseStore: m.baseStore,
+        periods: m.periods,
+      }));
+
+    const result = overrides.map((o) => ({
+      ...o,
+      employeeName: o.employeeName || nameMap.get(o.employeeId) || "",
+    }));
+    return NextResponse.json({ overrides: result, employees });
   } catch (error) {
     logError("Overrides GET error:", error);
     return NextResponse.json(
@@ -81,7 +106,14 @@ export async function POST(request: NextRequest) {
       const existingOverrides = await prisma.storeOverride.findMany({
         select: { employeeId: true },
       });
-      const existingIds = new Set(existingOverrides.map((o) => o.employeeId));
+      const existingPeriods = await prisma.storeOverridePeriod.findMany({
+        select: { employeeId: true },
+        distinct: ["employeeId"],
+      });
+      const existingIds = new Set([
+        ...existingOverrides.map((o) => o.employeeId),
+        ...existingPeriods.map((o) => o.employeeId),
+      ]);
 
       let created = 0;
       for (const emp of allEmployees) {
@@ -115,6 +147,8 @@ export async function POST(request: NextRequest) {
           const ratioVal = item.ratio ?? 100;
           const empName = item.employeeName || "";
           if (isNaN(empId) || !item.storeName) continue;
+          // この従業員のマッピングを丸ごと置き換える（期間も含む・削除は従業員単位）
+          await tx.storeOverridePeriod.deleteMany({ where: { employeeId: empId } });
           await tx.storeOverride.deleteMany({ where: { employeeId: empId } });
           await tx.storeOverride.create({
             data: { employeeId: empId, storeName: item.storeName, ratio: ratioVal, employeeName: empName },
@@ -149,6 +183,7 @@ export async function POST(request: NextRequest) {
       await prisma.$transaction(async (tx) => {
         // 削除前に移転前店舗を確定（既存baseStore→最初の所属→社員番号）
         const baseStore = providedBase ?? (await captureBaseStore(tx, empId, String(empId)));
+        await tx.storeOverridePeriod.deleteMany({ where: { employeeId: empId } });
         await tx.storeOverride.deleteMany({ where: { employeeId: empId } });
         for (const s of valid) {
           await tx.storeOverride.create({
@@ -181,6 +216,7 @@ export async function POST(request: NextRequest) {
       const providedBaseDual = typeof body.baseStore === "string" && body.baseStore ? body.baseStore : null;
       await prisma.$transaction(async (tx) => {
         const baseStore = providedBaseDual ?? (await captureBaseStore(tx, empId, String(empId)));
+        await tx.storeOverridePeriod.deleteMany({ where: { employeeId: empId } });
         await tx.storeOverride.deleteMany({ where: { employeeId: empId } });
         await tx.storeOverride.create({
           data: { employeeId: empId, storeName: body.store1, ratio: body.ratio1 ?? 50, employeeName: empName, effectiveYear: effDual.effectiveYear, effectiveMonth: effDual.effectiveMonth, baseStore },
@@ -197,8 +233,71 @@ export async function POST(request: NextRequest) {
     // Check duplicate (for new employee validation)
     if (body.action === "check-duplicate") {
       const empId = typeof body.employeeId === "string" ? parseInt(body.employeeId, 10) : body.employeeId;
-      const exists = await prisma.storeOverride.findFirst({ where: { employeeId: empId } });
+      const exists =
+        (await prisma.storeOverride.findFirst({ where: { employeeId: empId } })) ??
+        (await prisma.storeOverridePeriod.findFirst({ where: { employeeId: empId } }));
       return NextResponse.json({ exists: !!exists });
+    }
+
+    // 期間の保存（従業員1人分の期間をまとめて置き換える）
+    // body = { action: "periods", employeeId, employeeName, baseStore, periods: [{ startYear, startMonth, endYear, endMonth, stores: [{ storeName, ratio }] }] }
+    if (body.action === "periods") {
+      const empId = parseEmpId(body.employeeId);
+      if (isNaN(empId)) {
+        return NextResponse.json({ error: "従業員番号が正しくありません" }, { status: 400 });
+      }
+      const checked = validatePeriods(body.periods);
+      if (!checked.ok) {
+        return NextResponse.json({ error: checked.error }, { status: 400 });
+      }
+      // 期間外の店舗。空＝社員番号のルールで決める（null で保存）
+      const baseStore = typeof body.baseStore === "string" && body.baseStore ? body.baseStore : null;
+      const updatedBy = auth.session.displayName || auth.session.storeName || "admin";
+      await prisma.$transaction(async (tx) => {
+        const empName =
+          (typeof body.employeeName === "string" && body.employeeName) ||
+          (await tx.storeOverridePeriod.findFirst({ where: { employeeId: empId, NOT: { employeeName: "" } } }))?.employeeName ||
+          (await tx.storeOverride.findFirst({ where: { employeeId: empId, NOT: { employeeName: "" } } }))?.employeeName ||
+          "";
+        // この従業員のマッピングだけを置き換える（削除スコープは employeeId）
+        await tx.storeOverridePeriod.deleteMany({ where: { employeeId: empId } });
+        await tx.storeOverride.deleteMany({ where: { employeeId: empId } });
+        await tx.storeOverridePeriod.createMany({
+          data: checked.periods.flatMap((p) =>
+            p.stores.map((s) => ({
+              employeeId: empId,
+              employeeName: empName,
+              startYear: p.startYear,
+              startMonth: p.startMonth,
+              endYear: p.endYear,
+              endMonth: p.endMonth,
+              storeName: s.storeName,
+              ratio: Math.round(s.ratio),
+              baseStore,
+              updatedBy,
+              updatedAt: new Date(),
+            })),
+          ),
+        });
+        // 既存人件費データを全月組み直す（月別調整がある月はそのまま残す）
+        const mapping = await loadEmployeeMapping(tx, empId);
+        await recomputeEmployeePayroll(tx, empId, String(empId), mapping);
+      });
+      return NextResponse.json({ ok: true, periods: checked.periods.length }, { status: 201 });
+    }
+
+    // 従業員のマッピングをすべて解除（期間・旧マッピングとも。人件費データは消さず社員番号ルールで組み直す）
+    if (body.action === "remove-employee") {
+      const empId = parseEmpId(body.employeeId);
+      if (isNaN(empId)) {
+        return NextResponse.json({ error: "従業員番号が正しくありません" }, { status: 400 });
+      }
+      await prisma.$transaction(async (tx) => {
+        await tx.storeOverridePeriod.deleteMany({ where: { employeeId: empId } });
+        await tx.storeOverride.deleteMany({ where: { employeeId: empId } });
+        await recomputeEmployeePayroll(tx, empId, String(empId), null);
+      });
+      return NextResponse.json({ ok: true });
     }
 
     // Single upsert
@@ -218,6 +317,8 @@ export async function POST(request: NextRequest) {
 
     const override = await prisma.$transaction(async (tx) => {
       const baseStore = providedBaseSingle ?? (await captureBaseStore(tx, empId, String(empId)));
+      // 期間を登録済みの従業員は、この操作で旧形式のマッピングに置き換える（後勝ち）
+      await tx.storeOverridePeriod.deleteMany({ where: { employeeId: empId } });
       const existing = await tx.storeOverride.findFirst({
         where: { employeeId: empId, storeName },
       });

@@ -77,6 +77,14 @@ export async function POST(request: Request) {
             select: { employeeName: true },
           });
           if (ov?.employeeName) empName = ov.employeeName;
+          if (!empName) {
+            // 期間で登録した従業員（store_override_periods）からも引く
+            const pv = await prisma.storeOverridePeriod.findFirst({
+              where: { employeeId: empIdNum, NOT: { employeeName: "" } },
+              select: { employeeName: true },
+            });
+            if (pv?.employeeName) empName = pv.employeeName;
+          }
         }
       }
       if (empName) {

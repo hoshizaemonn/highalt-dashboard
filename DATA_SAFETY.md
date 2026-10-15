@@ -64,6 +64,7 @@ Vercel 本番の `DATABASE_URL` が設定された環境でこれらを実行す
 | `/api/dashboard/payroll-ratio-adjust`（POST/DELETE） | `year, month, employeeId`（payroll_data と payroll_monthly_split の両方） | 月別調整の保存・解除。月別調整はマッピング保存/削除・CSV再取込・全月再計算で上書きされない |
 | `/api/upload/expense` | `year, month, storeName` | 月・店舗単位 |
 | `/api/budget/unit-price` | `category="客単価", storeName, year` | 年度・店舗単位、全12ヶ月に一括適用 |
+| `/api/settings/overrides`（`action: "periods"` / `"remove-employee"`） | `employeeId`（store_override_periods・store_overrides） | 従業員1人分のマッピングを置き換え。人件費データはその従業員の (year, month) 単位で組み直すだけで消さない |
 
 PR #9 で ML001 / PL001 / MA002 / 客単価予算の上書き前に確認ダイアログが出るようになっています。
 

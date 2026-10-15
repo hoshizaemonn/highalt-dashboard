@@ -65,6 +65,30 @@ model StoreOverride {
   @@map("store_overrides")
 }
 
+// 従業員→店舗マッピングの「期間」（2026-10 松尾様要望）。
+// 1人に複数の期間を登録でき、各期間は 開始年月（null＝最初から）〜終了年月（null＝継続中）と
+// 店舗・比率（合計100）を持つ。同じ期間の行は (startYear, startMonth) で束ねる。
+// どの期間にも入らない月は baseStore（期間外の店舗）→ 社員番号ルール。
+// 期間を登録した従業員は store_overrides の行を使わない（保存時に従業員単位で置き換える）。
+// store_overrides は (employee_id, store_name) が一意で同じ店舗を複数期間に持てないため、別テーブルにしている。
+model StoreOverridePeriod {
+  id           Int      @id @default(autoincrement())
+  employeeId   Int      @map("employee_id")
+  employeeName String   @default("") @map("employee_name")
+  startYear    Int?     @map("start_year")
+  startMonth   Int?     @map("start_month")
+  endYear      Int?     @map("end_year")
+  endMonth     Int?     @map("end_month")
+  storeName    String   @map("store_name")
+  ratio        Int
+  baseStore    String?  @map("base_store")
+  updatedBy    String   @default("") @map("updated_by")
+  updatedAt    DateTime @default(now()) @map("updated_at")
+
+  @@index([employeeId])
+  @@map("store_override_periods")
+}
+
 // ─── Expense Categories (勘定科目マスタ) ────────────────────
 
 model ExpenseCategory {

@@ -2,18 +2,17 @@ import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { homeStoreFromId } from "@/lib/payroll-reallocate";
+import { homeStoreFromId, loadAllEmployeeMappings } from "@/lib/payroll-reallocate";
 import {
   groupMonthlySplits,
   periodKey,
   resolveAssignments,
-  type EmployeeMapping,
   type StoreAssignment,
 } from "@/lib/payroll-allocation";
 
 /**
  * Recalculate store assignments for existing payroll data.
- * 優先順位: その月の月別調整 ＞ store_overrides（適用開始月・移転前店舗を考慮）＞ 社員番号ルール
+ * 優先順位: その月の月別調整 ＞ マッピング（期間ごとの按分・期間外の店舗を考慮）＞ 社員番号ルール
  * （月別調整がある月は、この再計算でも上書きしない）
  */
 export async function POST(request: NextRequest) {
@@ -40,22 +39,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ updated: 0, message: "データがありません" });
     }
 
-    // Get all store overrides（従業員ごとのマッピング。適用開始月・移転前店舗も保持）
-    const overrides = await prisma.storeOverride.findMany();
-    const mappingByEmp = new Map<number, EmployeeMapping>();
-    for (const o of overrides) {
-      const m = mappingByEmp.get(o.employeeId);
-      if (m) {
-        m.stores.push({ storeName: o.storeName, ratio: o.ratio });
-      } else {
-        mappingByEmp.set(o.employeeId, {
-          stores: [{ storeName: o.storeName, ratio: o.ratio }],
-          effectiveYear: o.effectiveYear ?? null,
-          effectiveMonth: o.effectiveMonth ?? null,
-          baseStore: o.baseStore ?? null,
-        });
-      }
-    }
+    // 従業員ごとのマッピング（期間テーブル優先・無ければ旧 store_overrides を1期間として読む）
+    const mappingByEmp = await loadAllEmployeeMappings(prisma);
 
     // 月別調整（その月だけの按分）。再計算でも優先して残す。
     const splitRows = await prisma.payrollMonthlySplit.findMany({

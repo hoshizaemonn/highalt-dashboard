@@ -4,7 +4,8 @@
 //
 // 店舗割当の優先順位（松尾様要望・2026-10）:
 //   1) その月の「月別調整」（payroll_monthly_split）
-//   2) マッピング（store_overrides。適用開始月・移転前店舗を含む）
+//   2) マッピング（期間ごとの按分。store_override_periods／旧 store_overrides は「開始月〜継続中」の1期間）
+//      どの期間にも入らない月は baseStore（期間外の店舗）1店舗100%
 //   3) 社員番号ルール（千の位）
 // 月別調整は、マッピング保存/削除・人件費CSVの再取込・全月再計算のどれでも上書きしない。
 // 解除（その月の月別調整を削除）したときだけ、マッピング→社員番号ルールに戻る。
@@ -14,11 +15,38 @@ export interface StoreAssignment {
   ratio: number;
 }
 
+/** マッピングの1期間。開始 null＝最初から、終了 null＝継続中 */
+export interface MappingPeriod {
+  startYear: number | null;
+  startMonth: number | null;
+  endYear: number | null;
+  endMonth: number | null;
+  stores: StoreAssignment[];
+}
+
 export interface EmployeeMapping {
-  stores: StoreAssignment[]; // 適用開始月以降の按分先
+  periods: MappingPeriod[];
+  baseStore: string | null; // どの期間にも入らない月に使う店舗（旧: 移転前の店舗）
+}
+
+/** 旧 store_overrides の行（1従業員分） */
+export interface LegacyOverrideRow {
+  storeName: string;
+  ratio: number;
   effectiveYear: number | null;
   effectiveMonth: number | null;
-  baseStore: string | null; // 適用開始月より前に使う店舗
+  baseStore: string | null;
+}
+
+/** store_override_periods の行（1従業員分） */
+export interface PeriodOverrideRow {
+  startYear: number | null;
+  startMonth: number | null;
+  endYear: number | null;
+  endMonth: number | null;
+  storeName: string;
+  ratio: number;
+  baseStore: string | null;
 }
 
 /** PayrollData の金額・時間（100%換算で保持し、ratio は別フィールド） */
@@ -88,10 +116,85 @@ export interface PayrollRepo {
 const ymIndex = (year: number, month: number) => year * 12 + (month - 1);
 export const periodKey = (year: number, month: number) => `${year}-${month}`;
 
+const hasStart = (p: MappingPeriod) => p.startYear != null && p.startMonth != null;
+const hasEnd = (p: MappingPeriod) => p.endYear != null && p.endMonth != null;
+const startIndex = (p: MappingPeriod) =>
+  hasStart(p) ? ymIndex(p.startYear as number, p.startMonth as number) : -Infinity;
+const endIndex = (p: MappingPeriod) =>
+  hasEnd(p) ? ymIndex(p.endYear as number, p.endMonth as number) : Infinity;
+
+/** 期間がその年月を含むか（開始・終了とも含む） */
+export function periodContains(p: MappingPeriod, year: number, month: number): boolean {
+  const i = ymIndex(year, month);
+  return i >= startIndex(p) && i <= endIndex(p);
+}
+
+/** 期間を開始順に並べる（開始 null＝最初から が先頭） */
+export function sortPeriods(periods: MappingPeriod[]): MappingPeriod[] {
+  return [...periods].sort((a, b) => {
+    const x = startIndex(a);
+    const y = startIndex(b);
+    return x === y ? 0 : x < y ? -1 : 1;
+  });
+}
+
+/** 旧 store_overrides の行を「開始月（未設定＝最初から）〜継続中」の1期間として読む */
+export function mappingFromLegacyRows(rows: LegacyOverrideRow[]): EmployeeMapping | null {
+  if (rows.length === 0) return null;
+  const head = rows[0];
+  const eff = head.effectiveYear != null && head.effectiveMonth != null;
+  return {
+    periods: [
+      {
+        startYear: eff ? head.effectiveYear : null,
+        startMonth: eff ? head.effectiveMonth : null,
+        endYear: null,
+        endMonth: null,
+        stores: rows.map((r) => ({ storeName: r.storeName, ratio: r.ratio })),
+      },
+    ],
+    baseStore: head.baseStore ?? null,
+  };
+}
+
+/** store_override_periods の行を (開始年月) で束ねて期間にする */
+export function mappingFromPeriodRows(rows: PeriodOverrideRow[]): EmployeeMapping | null {
+  if (rows.length === 0) return null;
+  const byStart = new Map<string, MappingPeriod>();
+  for (const r of rows) {
+    const key = r.startYear != null && r.startMonth != null ? periodKey(r.startYear, r.startMonth) : "start";
+    let p = byStart.get(key);
+    if (!p) {
+      p = {
+        startYear: r.startYear ?? null,
+        startMonth: r.startMonth ?? null,
+        endYear: r.endYear ?? null,
+        endMonth: r.endMonth ?? null,
+        stores: [],
+      };
+      byStart.set(key, p);
+    }
+    p.stores.push({ storeName: r.storeName, ratio: r.ratio });
+  }
+  return {
+    periods: sortPeriods([...byStart.values()]),
+    baseStore: rows.find((r) => r.baseStore)?.baseStore ?? null,
+  };
+}
+
+/** 期間テーブルに行があればそれを、無ければ旧 store_overrides を使う */
+export function buildEmployeeMapping(
+  legacyRows: LegacyOverrideRow[],
+  periodRows: PeriodOverrideRow[],
+): EmployeeMapping | null {
+  return mappingFromPeriodRows(periodRows) ?? mappingFromLegacyRows(legacyRows);
+}
+
 /**
  * マッピングがある月に対して、どの店舗にどの比率で割り当てるかを返す。
- *  - 適用開始月以降（または適用開始月が未設定）→ マッピングの按分先
- *  - それより前 → 移転前の店舗1店舗100%（解決できなければ按分先のまま）
+ *  - その月を含む期間がある → その期間の按分先
+ *  - どの期間にも入らない → 期間外の店舗（baseStore）1店舗100%
+ *    （解決できなければ社員番号ルール→最初の期間の先頭店舗、それも無ければ最初の期間の按分）
  */
 export function assignmentsForMonth(
   mapping: EmployeeMapping,
@@ -99,17 +202,89 @@ export function assignmentsForMonth(
   year: number,
   month: number,
 ): StoreAssignment[] {
-  const split = mapping.stores.filter((s) => s.ratio > 0);
-  const hasEffective = mapping.effectiveYear != null && mapping.effectiveMonth != null;
-  const applySplit =
-    !hasEffective ||
-    ymIndex(year, month) >= ymIndex(mapping.effectiveYear as number, mapping.effectiveMonth as number);
+  const period = mapping.periods.find((p) => periodContains(p, year, month));
+  if (period) {
+    const split = period.stores.filter((s) => s.ratio > 0);
+    return split.length > 0 ? split : [];
+  }
 
-  if (applySplit) return split.length > 0 ? split : [];
-
-  const base = mapping.baseStore || homeStore || mapping.stores[0]?.storeName || null;
+  const first = sortPeriods(mapping.periods)[0];
+  const base = mapping.baseStore || homeStore || first?.stores[0]?.storeName || null;
   if (base) return [{ storeName: base, ratio: 100 }];
-  return split; // 移転前店舗を解決できない場合は按分をそのまま維持（消失させない）
+  return (first?.stores ?? []).filter((s) => s.ratio > 0); // 解決できない場合も消失させない
+}
+
+export interface PeriodInput {
+  startYear: number | null;
+  startMonth: number | null;
+  endYear: number | null;
+  endMonth: number | null;
+  stores: StoreAssignment[];
+}
+
+const fmtYm = (y: number | null, m: number | null, empty: string) =>
+  y != null && m != null ? `${y}年${m}月` : empty;
+
+/** 期間の表示用ラベル（例: 2026年10月〜2027年2月 / 最初から〜継続中） */
+export function periodLabel(p: { startYear: number | null; startMonth: number | null; endYear: number | null; endMonth: number | null }): string {
+  return `${fmtYm(p.startYear, p.startMonth, "最初から")}〜${fmtYm(p.endYear, p.endMonth, "継続中")}`;
+}
+
+function parseYm(y: unknown, m: unknown): { ok: true; year: number | null; month: number | null } | { ok: false } {
+  const empty = (v: unknown) => v == null || v === "";
+  if (empty(y) && empty(m)) return { ok: true, year: null, month: null };
+  const yy = Number(y);
+  const mm = Number(m);
+  if (!Number.isInteger(yy) || !Number.isInteger(mm) || yy < 2000 || yy > 2100 || mm < 1 || mm > 12) {
+    return { ok: false };
+  }
+  return { ok: true, year: yy, month: mm };
+}
+
+/**
+ * 期間の入力を検証して正規化する。
+ *  - 年月は「年・月とも指定」または「両方空」（開始の空＝最初から／終了の空＝継続中）
+ *  - 開始 ≦ 終了
+ *  - 各期間の按分は validateSplits（店舗重複不可・合計100±1）
+ *  - 期間どうしの重複不可
+ */
+export function validatePeriods(
+  input: unknown,
+): { ok: true; periods: PeriodInput[] } | { ok: false; error: string } {
+  if (!Array.isArray(input) || input.length === 0) return { ok: false, error: "期間を1つ以上登録してください" };
+  const periods: PeriodInput[] = [];
+  for (let i = 0; i < input.length; i++) {
+    const raw = (input[i] ?? {}) as Record<string, unknown>;
+    const label = `期間${i + 1}`;
+    const start = parseYm(raw.startYear, raw.startMonth);
+    const end = parseYm(raw.endYear, raw.endMonth);
+    if (!start.ok) return { ok: false, error: `${label}：開始の年月が正しくありません` };
+    if (!end.ok) return { ok: false, error: `${label}：終了の年月が正しくありません` };
+    if (
+      start.year != null && end.year != null &&
+      ymIndex(start.year, start.month as number) > ymIndex(end.year, end.month as number)
+    ) {
+      return { ok: false, error: `${label}：終了月が開始月より前になっています` };
+    }
+    const splits = validateSplits(raw.stores);
+    if (!splits.ok) return { ok: false, error: `${label}：${splits.error}` };
+    periods.push({
+      startYear: start.year,
+      startMonth: start.month,
+      endYear: end.year,
+      endMonth: end.month,
+      stores: splits.splits,
+    });
+  }
+  const sorted = sortPeriods(periods);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const cur = sorted[i];
+    if (startIndex(cur) <= endIndex(prev)) {
+      return { ok: false, error: `期間が重なっています（${periodLabel(prev)} と ${periodLabel(cur)}）` };
+    }
+  }
+  return { ok: true, periods: sorted };
 }
 
 /**

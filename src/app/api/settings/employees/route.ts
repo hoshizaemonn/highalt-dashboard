@@ -58,7 +58,12 @@ export async function GET() {
   const overrides = await prisma.storeOverride.findMany({
     orderBy: { employeeId: "asc" },
   });
-  for (const o of overrides) {
+  // 期間で登録した従業員（store_override_periods）も同様に拾う
+  const periodRows = await prisma.storeOverridePeriod.findMany({
+    orderBy: [{ employeeId: "asc" }, { id: "asc" }],
+    select: { employeeId: true, employeeName: true, storeName: true },
+  });
+  for (const o of [...overrides, ...periodRows]) {
     const idStr = String(o.employeeId);
     if (seen.has(idStr)) continue;
     seen.add(idStr);

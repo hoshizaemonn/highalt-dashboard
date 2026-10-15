@@ -7,6 +7,7 @@ import {
   assignmentsForMonth,
   clearMonthlySplit,
   groupMonthlySplitsByEmployee,
+  mappingFromLegacyRows,
   PAYROLL_VALUE_FIELDS,
   recomputeEmployeePayroll,
   resolveAssignments,
@@ -86,12 +87,12 @@ function seeded(): MemoryRepo {
   return repo;
 }
 
-const DUAL: EmployeeMapping = {
-  stores: [{ storeName: "店舗A", ratio: 50 }, { storeName: "店舗B", ratio: 50 }],
-  effectiveYear: null,
-  effectiveMonth: null,
-  baseStore: null,
-};
+const DUAL_STORES: StoreAssignment[] = [{ storeName: "店舗A", ratio: 50 }, { storeName: "店舗B", ratio: 50 }];
+const legacy = (effectiveYear: number | null, effectiveMonth: number | null, baseStore: string | null) =>
+  mappingFromLegacyRows(
+    DUAL_STORES.map((s) => ({ ...s, effectiveYear, effectiveMonth, baseStore })),
+  ) as EmployeeMapping;
+const DUAL: EmployeeMapping = legacy(null, null, null);
 
 /** CSV再取込と同じ判定（route.ts の resolveStore と同じ優先順位）で1か月を組み直す */
 async function reimportMonth(repo: MemoryRepo, year: number, month: number, mapping: EmployeeMapping | null) {
@@ -214,9 +215,9 @@ test("人件費データの無い月は月別調整を保存しない", async ()
 });
 
 test("適用開始月ロジックは従来どおり（開始月より前は移転前の店舗）", () => {
-  const m: EmployeeMapping = { ...DUAL, effectiveYear: 2026, effectiveMonth: 8, baseStore: "店舗Z" };
+  const m: EmployeeMapping = legacy(2026, 8, "店舗Z");
   assert.deepEqual(assignmentsForMonth(m, HOME, 2026, 7), [{ storeName: "店舗Z", ratio: 100 }]);
-  assert.deepEqual(assignmentsForMonth(m, HOME, 2026, 8), DUAL.stores);
+  assert.deepEqual(assignmentsForMonth(m, HOME, 2026, 8), DUAL_STORES);
   // 月別調整は適用開始月より前でも優先
   assert.deepEqual(
     resolveAssignments({ monthlySplits: [{ storeName: "店舗C", ratio: 100 }], mapping: m, homeStore: HOME, year: 2026, month: 7 }),
