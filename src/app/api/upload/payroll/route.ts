@@ -4,18 +4,17 @@ import { prisma } from "@/lib/prisma";
 import { getSession, requireAdminOrIngest } from "@/lib/auth";
 import { INGEST_ROLE } from "@/lib/permissions";
 import { checkPayrollHeader, payrollIngestBlockReasons, previousMonth } from "@/lib/payroll-ingest";
-import { THOUSAND_DIGIT_MAP } from "@/lib/constants";
 import {
   decodeFileBuffer,
   parseCSV,
   safeFloat,
 } from "@/lib/csv-utils";
-import { assignmentsForMonth, loadEmployeeMapping } from "@/lib/payroll-reallocate";
-
-interface StoreAssignment {
-  storeName: string;
-  ratio: number;
-}
+import { homeStoreFromId, loadEmployeeMapping } from "@/lib/payroll-reallocate";
+import {
+  groupMonthlySplitsByEmployee,
+  resolveAssignments,
+  type StoreAssignment,
+} from "@/lib/payroll-allocation";
 
 interface UnresolvedEmployee {
   employeeId: string;
@@ -26,34 +25,28 @@ interface UnresolvedEmployee {
 
 /**
  * Resolve an employee ID to store assignments for a specific month.
- * 1. Check store_overrides table（適用開始月・移転前店舗を考慮）
- * 2. Fall back to thousand-digit rule
+ * 優先順位: その月の月別調整 ＞ store_overrides（適用開始月・移転前店舗を考慮）＞ 社員番号ルール
+ * 月別調整は CSV を再取込しても消えない（ここで毎回優先して適用する）。
  */
 async function resolveStore(
   employeeId: string,
   year: number,
   month: number,
+  monthlySplitsByEmp: Map<string, StoreAssignment[]>,
 ): Promise<StoreAssignment[]> {
+  const monthlySplits = monthlySplitsByEmp.get(employeeId);
   const empId = parseInt(employeeId, 10);
-  if (isNaN(empId)) return [];
-
-  // 1. マッピングがあれば、その月に対する割当を返す
-  //    （適用開始月より前は移転前の店舗1本／以降は按分先）
-  const mapping = await loadEmployeeMapping(prisma, empId);
-  if (mapping) {
-    return assignmentsForMonth(mapping, empId, year, month);
+  if (isNaN(empId)) {
+    return resolveAssignments({ monthlySplits, mapping: null, homeStore: null, year, month });
   }
-
-  // 2. Thousand-digit rule
-  if (empId >= 1000) {
-    const thousandDigit = Math.floor(empId / 1000);
-    const store = THOUSAND_DIGIT_MAP[thousandDigit];
-    if (store) {
-      return [{ storeName: store, ratio: 100 }];
-    }
-  }
-
-  return [];
+  const mapping = monthlySplits?.length ? null : await loadEmployeeMapping(prisma, empId);
+  return resolveAssignments({
+    monthlySplits,
+    mapping,
+    homeStore: homeStoreFromId(empId),
+    year,
+    month,
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -183,6 +176,14 @@ export async function POST(request: NextRequest) {
       return null;
     }
 
+    // この月の「月別調整」（従業員別明細で保存した按分）。マッピングより優先する。
+    const monthlySplitsByEmp = groupMonthlySplitsByEmployee(
+      await prisma.payrollMonthlySplit.findMany({
+        where: { year, month },
+        select: { year: true, month: true, employeeId: true, storeName: true, ratio: true },
+      }),
+    );
+
     const records: PayrollRecord[] = [];
     const unresolved: UnresolvedEmployee[] = [];
     let currentSectionStore: string | null = null;
@@ -248,7 +249,7 @@ export async function POST(request: NextRequest) {
       const workersCompCo = col(95);
       const generalContributionCo = col(96);
 
-      let assignments = await resolveStore(empIdStr, year, month);
+      let assignments = await resolveStore(empIdStr, year, month, monthlySplitsByEmp);
 
       // Fallback: use CSV section header (e.g. 【東日本橋スタジオ】)
       if (assignments.length === 0 && currentSectionStore) {

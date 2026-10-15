@@ -2,11 +2,19 @@ import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { THOUSAND_DIGIT_MAP } from "@/lib/constants";
+import { homeStoreFromId } from "@/lib/payroll-reallocate";
+import {
+  groupMonthlySplits,
+  periodKey,
+  resolveAssignments,
+  type EmployeeMapping,
+  type StoreAssignment,
+} from "@/lib/payroll-allocation";
 
 /**
- * Recalculate store assignments for existing payroll data
- * based on the latest store_overrides + thousand-digit rule.
+ * Recalculate store assignments for existing payroll data.
+ * 優先順位: その月の月別調整 ＞ store_overrides（適用開始月・移転前店舗を考慮）＞ 社員番号ルール
+ * （月別調整がある月は、この再計算でも上書きしない）
  */
 export async function POST(request: NextRequest) {
   try {
@@ -32,13 +40,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ updated: 0, message: "データがありません" });
     }
 
-    // Get all store overrides
+    // Get all store overrides（従業員ごとのマッピング。適用開始月・移転前店舗も保持）
     const overrides = await prisma.storeOverride.findMany();
-    const overrideMap = new Map<number, { storeName: string; ratio: number }[]>();
+    const mappingByEmp = new Map<number, EmployeeMapping>();
     for (const o of overrides) {
-      const list = overrideMap.get(o.employeeId) || [];
-      list.push({ storeName: o.storeName, ratio: o.ratio });
-      overrideMap.set(o.employeeId, list);
+      const m = mappingByEmp.get(o.employeeId);
+      if (m) {
+        m.stores.push({ storeName: o.storeName, ratio: o.ratio });
+      } else {
+        mappingByEmp.set(o.employeeId, {
+          stores: [{ storeName: o.storeName, ratio: o.ratio }],
+          effectiveYear: o.effectiveYear ?? null,
+          effectiveMonth: o.effectiveMonth ?? null,
+          baseStore: o.baseStore ?? null,
+        });
+      }
+    }
+
+    // 月別調整（その月だけの按分）。再計算でも優先して残す。
+    const splitRows = await prisma.payrollMonthlySplit.findMany({
+      where: whereClause,
+      select: { year: true, month: true, employeeId: true, storeName: true, ratio: true },
+    });
+    const splitsByEmpPeriod = new Map<string, Map<string, StoreAssignment[]>>();
+    for (const empId of new Set(splitRows.map((r) => r.employeeId))) {
+      splitsByEmpPeriod.set(
+        empId,
+        groupMonthlySplits(splitRows.filter((r) => r.employeeId === empId)),
+      );
     }
 
     // Group by employee + month for correct per-month handling
@@ -61,21 +90,14 @@ export async function POST(request: NextRequest) {
         const rowMonth = rows[0].month;
         const empIdNum = parseInt(empId, 10);
 
-        // Determine assignments
-        let assignments: { storeName: string; ratio: number }[] = [];
-
-        // 1. Check overrides
-        if (!isNaN(empIdNum) && overrideMap.has(empIdNum)) {
-          assignments = overrideMap.get(empIdNum)!;
-        }
-        // 2. Thousand-digit rule
-        else if (!isNaN(empIdNum) && empIdNum >= 1000) {
-          const thousandDigit = Math.floor(empIdNum / 1000);
-          const store = THOUSAND_DIGIT_MAP[thousandDigit];
-          if (store) {
-            assignments = [{ storeName: store, ratio: 100 }];
-          }
-        }
+        // Determine assignments（月別調整 ＞ マッピング ＞ 社員番号ルール）
+        const assignments = resolveAssignments({
+          monthlySplits: splitsByEmpPeriod.get(empId)?.get(periodKey(rowYear, rowMonth)),
+          mapping: isNaN(empIdNum) ? null : (mappingByEmp.get(empIdNum) ?? null),
+          homeStore: isNaN(empIdNum) ? null : homeStoreFromId(empIdNum),
+          year: rowYear,
+          month: rowMonth,
+        });
 
         if (assignments.length === 0) continue;
 
