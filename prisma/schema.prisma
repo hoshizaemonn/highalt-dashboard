@@ -123,6 +123,27 @@ model PayrollData {
   @@map("payroll_data")
 }
 
+// ─── Payroll Monthly Split（月別の店舗按分調整）──────────────
+// 従業員別明細の「この月だけ別の店舗で働いた人の調整」で保存した按分。
+// 人件費の店舗割当は「その月の月別調整 ＞ マッピング（store_overrides）＞ 社員番号ルール」の順で決まる。
+// マッピング保存/削除・人件費CSVの再取込・全月再計算のいずれでも上書きされない。
+// 1従業員×1か月に複数行（店舗ごと）。行が無い月はマッピングに従う。
+
+model PayrollMonthlySplit {
+  id         Int      @id @default(autoincrement())
+  year       Int
+  month      Int
+  employeeId String   @map("employee_id")
+  storeName  String   @map("store_name")
+  ratio      Int
+  updatedBy  String   @map("updated_by")
+  updatedAt  DateTime @default(now()) @map("updated_at")
+
+  @@unique([year, month, employeeId, storeName])
+  @@index([employeeId])
+  @@map("payroll_monthly_split")
+}
+
 // ─── Expense Data ───────────────────────────────────────────
 
 model ExpenseData {

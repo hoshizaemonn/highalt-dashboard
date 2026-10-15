@@ -61,6 +61,7 @@ Vercel 本番の `DATABASE_URL` が設定された環境でこれらを実行す
 | `/api/upload/hacomono?type=ma002` | `year, month, storeName` (各行ごと) | 対象月・店舗単位 |
 | `/api/upload/budget` | `year, storeName`（`客単価` を除く） | 年度・店舗単位。客単価予算は別 API で保持 |
 | `/api/upload/payroll` | `year, month` | ⚠️ 店舗横断で月単位。全店舗分一括の CSV 前提 |
+| `/api/dashboard/payroll-ratio-adjust`（POST/DELETE） | `year, month, employeeId`（payroll_data と payroll_monthly_split の両方） | 月別調整の保存・解除。月別調整はマッピング保存/削除・CSV再取込・全月再計算で上書きされない |
 | `/api/upload/expense` | `year, month, storeName` | 月・店舗単位 |
 | `/api/budget/unit-price` | `category="客単価", storeName, year` | 年度・店舗単位、全12ヶ月に一括適用 |
 

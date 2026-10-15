@@ -1,81 +1,44 @@
-// 人件費の店舗按分ロジック（取込時・マッピング保存時・マッピング削除時で共用）。
+// 人件費の店舗按分ロジック（取込時・マッピング保存時・マッピング削除時・月別調整で共用）。
 //
-// 設計（松尾さん要望・2026-08）:
-//  - マッピング（store_overrides）を「唯一の正」とする。
+// 設計（松尾さん要望・2026-08 / 2026-10 月別調整を追加）:
+//  - 店舗割当の優先順位は「その月の月別調整（payroll_monthly_split）＞ マッピング（store_overrides）
+//    ＞ 社員番号ルール」。判定本体は payroll-allocation.ts（純粋関数・テストあり）。
 //  - マッピングは「適用開始年月（この月から按分/移転を適用）」を持つ。null＝全期間。
 //  - 適用開始月より前の月は「移転前の店舗（baseStore）」1店舗100%にする。
 //    baseStore は初回設定時に自動取得（既存データの最初の所属店舗→社員番号ルール）し編集可。
 //  - マッピング保存/削除のたびに、その従業員の全月を「元の100%金額」から再計算する。
+//    ただし月別調整がある月はそのまま残す（上書きしない）。
 //    （PayrollData の数値フィールドは常に100%換算・ratio は別保持。集計側で value×ratio/100）
-//
-// これにより「8月に入れたが7月からにしたい」「移転前は別店舗」も、開始月を変更して
-// 保存し直すだけで何度でも正しく組み直せる（各行が元金額を保持しているため可逆）。
 
 import { prisma } from "@/lib/prisma";
 import { THOUSAND_DIGIT_MAP } from "@/lib/constants";
 
-// prisma 本体と $transaction の tx は payrollData / storeOverride 部分が構造的に同一なので、
+import {
+  assignmentsForMonth as assignmentsForMonthCore,
+  clearMonthlySplit as clearMonthlySplitCore,
+  recomputeEmployeePayroll as recomputeCore,
+  saveMonthlySplit as saveMonthlySplitCore,
+  type EmployeeMapping,
+  type PayrollRepo,
+  type PayrollRowInput,
+  type StoreAssignment,
+} from "@/lib/payroll-allocation";
+
+export type { EmployeeMapping, StoreAssignment } from "@/lib/payroll-allocation";
+
+// prisma 本体と $transaction の tx は必要なデリゲートが構造的に同一なので、
 // 必要なデリゲートだけを持つ最小インターフェースで受ける。
 export interface PayrollTx {
   payrollData: typeof prisma.payrollData;
   storeOverride: typeof prisma.storeOverride;
+  payrollMonthlySplit: typeof prisma.payrollMonthlySplit;
 }
-
-export interface StoreAssignment {
-  storeName: string;
-  ratio: number;
-}
-
-export interface EmployeeMapping {
-  stores: StoreAssignment[]; // 適用開始月以降の按分先
-  effectiveYear: number | null;
-  effectiveMonth: number | null;
-  baseStore: string | null; // 適用開始月より前に使う店舗
-}
-
-const ymIndex = (year: number, month: number) => year * 12 + (month - 1);
 
 /** 社員番号の千の位から店舗を判定（2桁ID等・不明なら null） */
 export function homeStoreFromId(empId: number): string | null {
   if (!Number.isFinite(empId) || empId < 1000) return null;
   const thousandDigit = Math.floor(empId / 1000);
   return THOUSAND_DIGIT_MAP[thousandDigit] ?? null;
-}
-
-/** 適用開始月より前に使う店舗を解決する（baseStore → 社員番号 → 按分先の先頭） */
-function resolveBaseStore(mapping: EmployeeMapping, empId: number): string | null {
-  return (
-    mapping.baseStore ||
-    homeStoreFromId(empId) ||
-    mapping.stores[0]?.storeName ||
-    null
-  );
-}
-
-/**
- * ある月に対して、この従業員をどの店舗にどの比率で割り当てるかを返す。
- *  - 適用開始月以降（または適用開始月が未設定）→ マッピングの按分先
- *  - それより前 → 移転前の店舗1店舗100%（解決できなければ按分先のまま）
- */
-export function assignmentsForMonth(
-  mapping: EmployeeMapping,
-  empId: number,
-  year: number,
-  month: number,
-): StoreAssignment[] {
-  const split = mapping.stores.filter((s) => s.ratio > 0);
-  const hasEffective =
-    mapping.effectiveYear != null && mapping.effectiveMonth != null;
-  const applySplit =
-    !hasEffective ||
-    ymIndex(year, month) >=
-      ymIndex(mapping.effectiveYear as number, mapping.effectiveMonth as number);
-
-  if (applySplit) return split.length > 0 ? split : [];
-
-  const base = resolveBaseStore(mapping, empId);
-  if (base) return [{ storeName: base, ratio: 100 }];
-  return split; // 移転前店舗を解決できない場合は按分をそのまま維持（消失させない）
 }
 
 /** store_overrides から従業員のマッピングを読む（無ければ null） */
@@ -121,9 +84,81 @@ export async function captureBaseStore(
   return homeStoreFromId(empId);
 }
 
+/** 社員番号（文字列）から社員番号ルールの店舗を引く */
+export function homeStoreFromIdStr(empIdStr: string): string | null {
+  return homeStoreFromId(parseInt(empIdStr, 10));
+}
+
 /**
- * 従業員の全月の人件費を、与えられたマッピング（null＝店舗解除→homeへ）で再計算する。
- * 各月の既存行から100%換算の元値を1件取り出し、月ごとに割当を作り直す。
+ * ある月に対して、この従業員をどの店舗にどの比率で割り当てるかを返す（マッピングのみで判定）。
+ * 月別調整を含めた判定は payroll-allocation.ts の resolveAssignments を使う。
+ */
+export function assignmentsForMonth(
+  mapping: EmployeeMapping,
+  empId: number,
+  year: number,
+  month: number,
+): StoreAssignment[] {
+  return assignmentsForMonthCore(mapping, homeStoreFromId(empId), year, month);
+}
+
+/** prisma（または $transaction の tx）を PayrollRepo として使うアダプタ */
+export function prismaPayrollRepo(tx: PayrollTx): PayrollRepo {
+  return {
+    async findPayrollRows({ employeeId, year, month }) {
+      const rows = await tx.payrollData.findMany({
+        where: {
+          employeeId,
+          ...(year != null ? { year } : {}),
+          ...(month != null ? { month } : {}),
+        },
+        orderBy: [{ year: "asc" }, { month: "asc" }],
+      });
+      return rows as PayrollRowInput[];
+    },
+    async replacePayrollRows(employeeId, year, month, rows) {
+      await tx.payrollData.deleteMany({ where: { employeeId, year, month } });
+      if (rows.length > 0) {
+        await tx.payrollData.createMany({
+          data: rows.map((r) => ({ ...r, employeeId, year, month })),
+        });
+      }
+    },
+    async findMonthlySplits({ employeeId, year, month }) {
+      return tx.payrollMonthlySplit.findMany({
+        where: {
+          ...(employeeId != null ? { employeeId } : {}),
+          ...(year != null ? { year } : {}),
+          ...(month != null ? { month } : {}),
+        },
+        orderBy: [{ year: "asc" }, { month: "asc" }, { ratio: "desc" }, { storeName: "asc" }],
+        select: { year: true, month: true, employeeId: true, storeName: true, ratio: true },
+      });
+    },
+    async replaceMonthlySplits(employeeId, year, month, splits, updatedBy) {
+      await tx.payrollMonthlySplit.deleteMany({ where: { employeeId, year, month } });
+      await tx.payrollMonthlySplit.createMany({
+        data: splits.map((s) => ({
+          year,
+          month,
+          employeeId,
+          storeName: s.storeName,
+          ratio: Math.round(s.ratio),
+          updatedBy,
+          updatedAt: new Date(),
+        })),
+      });
+    },
+    async deleteMonthlySplits(employeeId, year, month) {
+      const r = await tx.payrollMonthlySplit.deleteMany({ where: { employeeId, year, month } });
+      return r.count;
+    },
+  };
+}
+
+/**
+ * 従業員の全月の人件費を、与えられたマッピング（null＝マッピング無し→社員番号ルール）で再計算する。
+ * その月に月別調整があれば月別調整を優先して残す。
  * 呼び出し側で $transaction 内から呼ぶこと（tx を渡す）。
  */
 export async function recomputeEmployeePayroll(
@@ -131,78 +166,29 @@ export async function recomputeEmployeePayroll(
   empId: number,
   empIdStr: string,
   mapping: EmployeeMapping | null,
+  scope?: { year: number; month?: number },
 ): Promise<number> {
-  const rows = await tx.payrollData.findMany({
-    where: { employeeId: empIdStr },
-    orderBy: [{ year: "asc" }, { month: "asc" }],
+  return recomputeCore(prismaPayrollRepo(tx), empIdStr, mapping, homeStoreFromId(empId), scope);
+}
+
+/** 月別調整を保存し、その月の人件費行を組み直す（$transaction 内から呼ぶ） */
+export async function saveMonthlySplit(
+  tx: PayrollTx,
+  params: { year: number; month: number; employeeId: string; splits: StoreAssignment[]; updatedBy: string },
+) {
+  return saveMonthlySplitCore(prismaPayrollRepo(tx), params);
+}
+
+/** 月別調整を解除し、その月をマッピング→社員番号ルールで組み直す（$transaction 内から呼ぶ） */
+export async function clearMonthlySplit(
+  tx: PayrollTx,
+  params: { year: number; month: number; employeeId: string },
+) {
+  const empId = parseInt(params.employeeId, 10);
+  const mapping = Number.isNaN(empId) ? null : await loadEmployeeMapping(tx, empId);
+  return clearMonthlySplitCore(prismaPayrollRepo(tx), {
+    ...params,
+    mapping,
+    homeStore: homeStoreFromId(empId),
   });
-  if (rows.length === 0) return 0;
-
-  // マッピングが無い（解除）場合は home 店舗1本に戻す
-  const effMapping: EmployeeMapping =
-    mapping ?? {
-      stores: [],
-      effectiveYear: null,
-      effectiveMonth: null,
-      baseStore: homeStoreFromId(empId),
-    };
-
-  // (year,month) ごとに 100%換算の元行を1件確保
-  const baseByPeriod = new Map<string, (typeof rows)[number]>();
-  for (const r of rows) {
-    const key = `${r.year}-${r.month}`;
-    if (!baseByPeriod.has(key)) baseByPeriod.set(key, r);
-  }
-
-  let created = 0;
-  for (const [key, base] of baseByPeriod) {
-    const [year, month] = key.split("-").map(Number);
-
-    let assignments: StoreAssignment[];
-    if (mapping === null) {
-      const home = homeStoreFromId(empId) ?? base.storeName;
-      assignments = [{ storeName: home, ratio: 100 }];
-    } else {
-      assignments = assignmentsForMonth(effMapping, empId, year, month);
-      if (assignments.length === 0) {
-        // 念のため：割当が空なら元の店舗を維持
-        assignments = [{ storeName: base.storeName, ratio: 100 }];
-      }
-    }
-
-    await tx.payrollData.deleteMany({ where: { employeeId: empIdStr, year, month } });
-    await tx.payrollData.createMany({
-      data: assignments.map((a) => ({
-        year,
-        month,
-        employeeId: empIdStr,
-        employeeName: base.employeeName,
-        contractType: base.contractType,
-        storeName: a.storeName,
-        ratio: Math.round(a.ratio),
-        workDaysWeekday: base.workDaysWeekday,
-        workDaysHoliday: base.workDaysHoliday,
-        workDaysLegalHoliday: base.workDaysLegalHoliday,
-        scheduledHours: base.scheduledHours,
-        overtimeHours: base.overtimeHours,
-        baseSalary: base.baseSalary,
-        positionAllowance: base.positionAllowance,
-        overtimePay: base.overtimePay,
-        commuteTaxable: base.commuteTaxable,
-        commuteNontax: base.commuteNontax,
-        taxableTotal: base.taxableTotal,
-        grossTotal: base.grossTotal,
-        healthInsuranceCo: base.healthInsuranceCo,
-        careInsuranceCo: base.careInsuranceCo,
-        pensionCo: base.pensionCo,
-        childContributionCo: base.childContributionCo,
-        pensionFundCo: base.pensionFundCo,
-        employmentInsuranceCo: base.employmentInsuranceCo,
-        workersCompCo: base.workersCompCo,
-        generalContributionCo: base.generalContributionCo,
-      })),
-    });
-    created += assignments.length;
-  }
-  return created;
 }

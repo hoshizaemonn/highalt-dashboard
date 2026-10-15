@@ -2,148 +2,97 @@ import { logError } from "@/lib/log";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
+import { validateSplits } from "@/lib/payroll-allocation";
+import { clearMonthlySplit, saveMonthlySplit } from "@/lib/payroll-reallocate";
 
 /**
- * 月単位の人件費按分調整 API
+ * 月単位の人件費按分調整 API（月別調整）
  *
- * 用途: 応援勤務・兼務などで「特定の月だけ複数店舗で按分したい」場合に、
+ * 用途: 応援勤務・ヘルプ・兼務などで「特定の月だけ複数店舗で按分したい」場合に、
  * その月の対象従業員の人件費を任意の比率で再分配する。
  *
- * リクエスト形式:
- *   POST /api/dashboard/payroll-ratio-adjust
- *   {
- *     year: 2026,
- *     month: 4,
- *     employeeId: "1234",
- *     splits: [
- *       { storeName: "東日本橋", ratio: 60 },
- *       { storeName: "春日",     ratio: 40 }
- *     ]
- *   }
+ * 調整内容は payroll_monthly_split に保存する。店舗割当の優先順位は
+ *   その月の月別調整 ＞ マッピング（従業員→店舗マッピング）＞ 社員番号ルール
+ * なので、あとからマッピングを保存/削除しても、人件費CSVを再取込しても、この月の調整は残る。
  *
- * 動作:
- *   1) その (year, month, employeeId) の既存 PayrollData 行を全件取得し、
- *      「100%換算の元の値」を 1 セットだけ復元する（ratio 100% 相当の生データ）。
- *   2) 既存行を全削除。
- *   3) splits の店舗ごとに新しい行を挿入（金額は 100% 換算のまま、ratio だけ各店舗の値）。
+ * POST   { year, month, employeeId, splits: [{ storeName, ratio }, ...] } … 保存
+ * DELETE ?year=&month=&employeeId=                                       … 解除（マッピングに戻す）
  *
  * 制約:
  *   - admin のみ実行可
- *   - splits の合計 ratio が 100 でなければエラー
- *   - 既存行が 1 件もない employeeId は対象外（拒否）
+ *   - splits の合計 ratio が 100 でなければエラー（±1 まで許容）／店舗の重複不可
+ *   - その月の人件費データが無い従業員は対象外（先にCSVを取込む）
  */
+
+function parseYm(year: unknown, month: unknown): { year: number; month: number } | null {
+  const y = Number(year);
+  const m = Number(month);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || y < 2000 || y > 2100 || m < 1 || m > 12) {
+    return null;
+  }
+  return { year: y, month: m };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdmin();
     if (auth.error) return auth.error;
 
-    const body = await request.json();
-    const { year, month, employeeId, splits } = body as {
-      year: number;
-      month: number;
-      employeeId: string;
-      splits: { storeName: string; ratio: number }[];
+    const body = (await request.json()) as {
+      year?: unknown;
+      month?: unknown;
+      employeeId?: unknown;
+      splits?: unknown;
     };
-
-    if (
-      !year ||
-      !month ||
-      !employeeId ||
-      !Array.isArray(splits) ||
-      splits.length === 0
-    ) {
+    const ym = parseYm(body.year, body.month);
+    const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
+    if (!ym || !employeeId) {
       return NextResponse.json(
         { error: "year, month, employeeId, splits は必須です" },
         { status: 400 },
       );
     }
-
-    // 合計 100% チェック（小数の累積誤差を許容するため誤差±1まで許可）
-    const sum = splits.reduce((s, x) => s + (x.ratio || 0), 0);
-    if (Math.abs(sum - 100) > 1) {
-      return NextResponse.json(
-        { error: `合計が100%になりません（現在 ${sum}%）` },
-        { status: 400 },
-      );
+    const checked = validateSplits(body.splits);
+    if (!checked.ok) {
+      return NextResponse.json({ error: checked.error }, { status: 400 });
     }
 
-    // 既存行を取得
-    const existing = await prisma.payrollData.findMany({
-      where: { year, month, employeeId },
-    });
-    if (existing.length === 0) {
+    const updatedBy = auth.session.displayName || auth.session.storeName || "admin";
+    const result = await prisma.$transaction((tx) =>
+      saveMonthlySplit(tx, { ...ym, employeeId, splits: checked.splits, updatedBy }),
+    );
+    if (!result.ok) {
       return NextResponse.json(
         { error: "該当する人件費データがありません。先にCSVを取込んでください。" },
         { status: 404 },
       );
     }
 
-    // 100%換算の生データを復元
-    // 既存の各行は (元の値) × (ratio / 100) を反映していたわけではなく、
-    // PayrollData の数値フィールドは「元の値そのまま」で ratio は別保持。
-    // 集計時に row.value × (ratio / 100) して使う仕様。
-    // よって元値の復元は最初の1行をそのまま使えばよい。
-    const base = existing[0];
-
-    // splits の中の比率が 0% の店舗は行を作らない
-    const validSplits = splits.filter((s) => s.ratio > 0);
-    if (validSplits.length === 0) {
-      return NextResponse.json(
-        { error: "比率が0%の店舗のみは保存できません" },
-        { status: 400 },
-      );
-    }
-
-    // 既存 → 新規 を1トランザクションで置換
-    await prisma.$transaction(async (tx) => {
-      await tx.payrollData.deleteMany({
-        where: { year, month, employeeId },
-      });
-      await tx.payrollData.createMany({
-        data: validSplits.map((s) => ({
-          year,
-          month,
-          employeeId,
-          employeeName: base.employeeName,
-          contractType: base.contractType,
-          storeName: s.storeName,
-          ratio: Math.round(s.ratio),
-          workDaysWeekday: base.workDaysWeekday,
-          workDaysHoliday: base.workDaysHoliday,
-          workDaysLegalHoliday: base.workDaysLegalHoliday,
-          scheduledHours: base.scheduledHours,
-          overtimeHours: base.overtimeHours,
-          baseSalary: base.baseSalary,
-          positionAllowance: base.positionAllowance,
-          overtimePay: base.overtimePay,
-          commuteTaxable: base.commuteTaxable,
-          commuteNontax: base.commuteNontax,
-          taxableTotal: base.taxableTotal,
-          grossTotal: base.grossTotal,
-          healthInsuranceCo: base.healthInsuranceCo,
-          careInsuranceCo: base.careInsuranceCo,
-          pensionCo: base.pensionCo,
-          childContributionCo: base.childContributionCo,
-          pensionFundCo: base.pensionFundCo,
-          employmentInsuranceCo: base.employmentInsuranceCo,
-          workersCompCo: base.workersCompCo,
-          generalContributionCo: base.generalContributionCo,
-        })),
-      });
-    });
-
-    return NextResponse.json({
-      ok: true,
-      employeeId,
-      year,
-      month,
-      splits: validSplits,
-    });
+    return NextResponse.json({ ok: true, employeeId, ...ym, splits: checked.splits });
   } catch (err) {
     logError("payroll-ratio-adjust error:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
+
+    const { searchParams } = request.nextUrl;
+    const ym = parseYm(searchParams.get("year"), searchParams.get("month"));
+    const employeeId = (searchParams.get("employeeId") ?? "").trim();
+    if (!ym || !employeeId) {
+      return NextResponse.json({ error: "year, month, employeeId は必須です" }, { status: 400 });
+    }
+
+    const { removed } = await prisma.$transaction((tx) =>
+      clearMonthlySplit(tx, { ...ym, employeeId }),
     );
+    return NextResponse.json({ ok: true, employeeId, ...ym, removed });
+  } catch (err) {
+    logError("payroll-ratio-adjust delete error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

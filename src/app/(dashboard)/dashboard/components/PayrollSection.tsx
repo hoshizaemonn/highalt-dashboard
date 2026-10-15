@@ -83,6 +83,8 @@ interface PayrollEmployee {
   overtimeHours: number;
   ratio: number;
   storeName: string;
+  /** この月に「月別調整」が保存されている（マッピングより優先中） */
+  monthlySplit?: boolean;
 }
 
 export interface PayrollDetailSectionProps {
@@ -168,18 +170,17 @@ export function PayrollDetailSection({
 
   // 各従業員の現在の按分（複数店舗で按分されている場合の集約用）
   // employeeId をキーに、現在の店舗別比率を保持
-  const employeeRatios = new Map<
-    string,
-    { name: string; splits: { storeName: string; ratio: number }[] }
-  >();
+  const employeeRatios: EmployeeRatioMap = new Map();
   for (const e of employees) {
     const existing = employeeRatios.get(e.employeeId);
     if (existing) {
       existing.splits.push({ storeName: e.storeName, ratio: e.ratio });
+      existing.monthlySplit = existing.monthlySplit || !!e.monthlySplit;
     } else {
       employeeRatios.set(e.employeeId, {
         name: e.employeeName,
         splits: [{ storeName: e.storeName, ratio: e.ratio }],
+        monthlySplit: !!e.monthlySplit,
       });
     }
   }
@@ -280,14 +281,18 @@ export function PayrollDetailSection({
 // admin のみ閲覧可能なテーブルからアクセスされる前提。
 // 「Aさんは今月だけ東日本橋50% / 春日50%」のような単発の按分を
 // CSVを再アップロードせずに直接編集できる。
+// 保存した按分は「月別調整」として別テーブルに残り、従業員→店舗マッピングの保存/削除や
+// 人件費CSVの再取込をしても上書きされない。「解除」でマッピングの按分に戻す。
+
+type EmployeeRatioMap = Map<
+  string,
+  { name: string; splits: { storeName: string; ratio: number }[]; monthlySplit: boolean }
+>;
 
 interface RatioAdjustListProps {
   year: number;
   month: number;
-  employeeRatios: Map<
-    string,
-    { name: string; splits: { storeName: string; ratio: number }[] }
-  >;
+  employeeRatios: EmployeeRatioMap;
   onSaved: () => void;
 }
 
@@ -298,7 +303,41 @@ function RatioAdjustList({
   onSaved,
 }: RatioAdjustListProps) {
   const [editing, setEditing] = useState<string | null>(null);
+  const [clearing, setClearing] = useState<string | null>(null);
+  const [clearError, setClearError] = useState<string | null>(null);
   const employees = Array.from(employeeRatios.entries());
+
+  const handleClear = async (empId: string) => {
+    if (
+      !window.confirm(
+        `${year}年${month}月のこの従業員の月別調整を解除し、従業員→店舗マッピングの按分に戻します。よろしいですか？`,
+      )
+    ) {
+      return;
+    }
+    setClearing(empId);
+    setClearError(null);
+    try {
+      const params = new URLSearchParams({
+        year: String(year),
+        month: String(month),
+        employeeId: empId,
+      });
+      const res = await fetch(`/api/dashboard/payroll-ratio-adjust?${params}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setClearError(data.error || "解除に失敗しました");
+        return;
+      }
+      onSaved();
+    } catch (e) {
+      setClearError(e instanceof Error ? e.message : "解除に失敗しました");
+    } finally {
+      setClearing(null);
+    }
+  };
   // フィルタ: 検索ボックスで人数が多い時に絞り込み
   const [filter, setFilter] = useState("");
   const filtered = employees.filter(([empId, info]) => {
@@ -347,14 +386,32 @@ function RatioAdjustList({
                 >
                   <span className="w-12 text-gray-400 text-xs tabular-nums">{empId}</span>
                   <span className="flex-1 text-gray-700 truncate">{info.name}</span>
+                  {info.monthlySplit && (
+                    <span
+                      className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 whitespace-nowrap"
+                      title="この月だけの按分が保存されています。マッピングを変更しても、CSVを取り込み直しても残ります。"
+                    >
+                      月別調整中
+                    </span>
+                  )}
                   <span
                     className={`text-xs ${isMulti ? "text-blue-700 font-medium" : "text-gray-500"}`}
                   >
                     {splitText}
                   </span>
+                  {info.monthlySplit && (
+                    <button
+                      onClick={() => handleClear(empId)}
+                      disabled={clearing !== null}
+                      className="ml-1 text-xs px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 inline-flex items-center gap-1"
+                    >
+                      {clearing === empId && <Loader2 size={12} className="animate-spin" />}
+                      解除
+                    </button>
+                  )}
                   <button
                     onClick={() => setEditing(empId)}
-                    className="ml-2 text-xs px-2.5 py-1 rounded bg-[#567FC0] hover:bg-[#4a6da8] text-white transition-colors"
+                    className="ml-1 text-xs px-2.5 py-1 rounded bg-[#567FC0] hover:bg-[#4a6da8] text-white transition-colors"
                   >
                     編集
                   </button>
@@ -363,8 +420,13 @@ function RatioAdjustList({
             })
           )}
         </div>
-        <p className="text-[11px] text-gray-400 mt-2">
-          ※ ここで保存した内容はその月のみ有効。来月以降は元のルールに戻ります。
+        {clearError && (
+          <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded mt-2">{clearError}</p>
+        )}
+        <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+          ※ ここで保存した内容は<strong>その月だけ</strong>に適用され、他の月は従業員→店舗マッピングに従います。<br />
+          ※ 保存後に従業員→店舗マッピングを変更したり、人件費CSVを取り込み直しても<strong>この月の調整は残ります</strong>。
+          マッピングの按分に戻したいときは「解除」を押してください。
         </p>
       </div>
       {editing && (

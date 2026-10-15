@@ -44,6 +44,17 @@ export async function GET(request: NextRequest) {
       orderBy: [{ storeName: "asc" }, { employeeId: "asc" }],
     });
 
+    // この月に「月別調整」が保存されている従業員（画面に「月別調整中」と解除ボタンを出す）
+    const employeeIds = [...new Set(rows.map((r) => r.employeeId))];
+    const splitRows =
+      employeeIds.length > 0
+        ? await prisma.payrollMonthlySplit.findMany({
+            where: { year, month, employeeId: { in: employeeIds } },
+            select: { employeeId: true },
+          })
+        : [];
+    const adjusted = new Set(splitRows.map((r) => r.employeeId));
+
     const employees = rows.map((row) => ({
       employeeId: row.employeeId,
       employeeName: row.employeeName ?? "",
@@ -59,6 +70,7 @@ export async function GET(request: NextRequest) {
       overtimeHours: row.overtimeHours,
       ratio: row.ratio,
       storeName: row.storeName,
+      monthlySplit: adjusted.has(row.employeeId),
     }));
 
     return NextResponse.json({ employees });
