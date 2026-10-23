@@ -3,7 +3,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireAdminOrIngest } from "@/lib/auth";
 import { INGEST_ROLE } from "@/lib/permissions";
-import { checkPayrollHeader, payrollIngestBlockReasons, previousMonth } from "@/lib/payroll-ingest";
+import {
+  checkPayrollHeader,
+  isExcludedContractType,
+  isHeadquartersEmployeeId,
+  payrollIngestBlockReasons,
+  previousMonth,
+  readPayrollCompanyAmounts,
+} from "@/lib/payroll-ingest";
 import {
   decodeFileBuffer,
   parseCSV,
@@ -125,7 +132,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Skip header row
+    // Skip header row（会社負担の列位置は見出しから引く。必須見出しが無い／重複なら headerCheck.ok=false）
     const headerCheck = checkPayrollHeader(allRows[0]);
     const dataRows = allRows.slice(1);
 
@@ -186,6 +193,8 @@ export async function POST(request: NextRequest) {
 
     const records: PayrollRecord[] = [];
     const unresolved: UnresolvedEmployee[] = [];
+    // 業務用ダッシュボードに載せない人（役員／本部）の人数。氏名は持たない
+    let excludedCount = 0;
     let currentSectionStore: string | null = null;
 
     for (const row of dataRows) {
@@ -227,33 +236,41 @@ export async function POST(request: NextRequest) {
       const taxableTotal = col(51);
       const grossTotal = col(55);
 
-      // クラウド給与CSV列マッピング（2026-06-06 修正）
-      // CSV末尾は次の順序になっている:
-      //   col(88) 標準報酬月額(健保) / col(89) 標準報酬月額(厚生年金) ← 集計に不要
-      //   col(90) 健康保険料(会社負担)
-      //   col(91) 介護保険料(会社負担)
-      //   col(92) 子ども子育て拠出金(会社負担)
-      //   col(93) 厚生年金保険料(会社負担)
-      //   col(94) 雇用保険料(会社負担)
-      //   col(95) 労災保険料(会社負担)
-      //   col(96) 一般拠出金(会社負担)
-      // 旧マッピングは col(89-96) を順に読んでいたため、健康保険料に標準報酬月額¥320,000等が
-      // 入り込み、厚生年金が全社0、法定福利費が大きくズレていた。
-      const healthInsuranceCo = col(90);
-      const careInsuranceCo = col(91);
-      const childContributionCo = col(92);
-      const pensionCo = col(93);
-      // 厚生年金基金はクラウド給与CSVに該当列が無いため固定0
-      const pensionFundCo = 0;
-      const employmentInsuranceCo = col(94);
-      const workersCompCo = col(95);
-      const generalContributionCo = col(96);
+      // 会社負担9項目は見出しから引いた列位置で読む（payroll-ingest.ts）。
+      // 位置固定だと、クラウド給与の列増減（2026年4月支給分から97→99列）で別項目を取り込む。
+      // 見出しが揃っていない場合は columns が null で、書き込まず後段で止める（下の headerCheck 参照）。
+      const company = headerCheck.columns
+        ? readPayrollCompanyAmounts(row, headerCheck.columns, safeFloat)
+        : null;
+      const {
+        healthInsuranceCo = 0,
+        careInsuranceCo = 0,
+        pensionCo = 0,
+        childContributionCo = 0,
+        pensionFundCo = 0,
+        employmentInsuranceCo = 0,
+        workersCompCo = 0,
+        generalContributionCo = 0,
+      } = company ?? {};
+
+      // 役員は店舗判定の前に除外（店舗未判定として数えない）
+      if (isExcludedContractType(contractType)) {
+        excludedCount++;
+        continue;
+      }
 
       let assignments = await resolveStore(empIdStr, year, month, monthlySplitsByEmp);
 
       // Fallback: use CSV section header (e.g. 【東日本橋スタジオ】)
       if (assignments.length === 0 && currentSectionStore) {
         assignments = [{ storeName: currentSectionStore, ratio: 100 }];
+      }
+
+      // 店舗が決まらず、番号が1000未満（社員番号ルール外）なら本部として除外。
+      // 1000以上で決まらない人は従来どおり店舗未判定（停止条件）。
+      if (assignments.length === 0 && isHeadquartersEmployeeId(empIdStr)) {
+        excludedCount++;
+        continue;
       }
 
       if (assignments.length === 0) {
@@ -371,6 +388,7 @@ export async function POST(request: NextRequest) {
         headerOk: headerCheck.ok,
         nameConflictCount: nameConflicts.length,
         unresolvedCount: unresolved.length,
+        excludedCount,
         existingCount,
         previousCount,
       };
@@ -389,6 +407,18 @@ export async function POST(request: NextRequest) {
       if (blockReasons.length > 0) return NextResponse.json(summary, { status: 409 });
     }
 
+    // 会社負担の見出しが揃っていないCSVは書き込まない（手動取込でも。0円で上書きしてしまうのを防ぐ）。
+    // 応答には見出し名だけを入れる（個人情報は入らない）。
+    if (!headerCheck.columns) {
+      return NextResponse.json(
+        {
+          error: "CSVの見出しに必要な会社負担の列が見つからない（または重複している）ため取り込みを止めました",
+          headerMismatches: headerCheck.mismatches,
+        },
+        { status: 400 },
+      );
+    }
+
     // If there are name conflicts and no override flag, return conflicts for user to resolve
     // （ingest はここに来る時点で氏名不一致0件。forceNames / nameResolutions は ingest では使わない）
     const forceNames = !isIngest && formData.get("forceNames") === "true";
@@ -396,6 +426,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         records: 0,
         unresolved,
+        excludedCount,
         nameConflicts,
         needsConfirmation: true,
       });
@@ -457,11 +488,12 @@ export async function POST(request: NextRequest) {
 
     if (isIngest) {
       // 自動取込の応答は件数だけ（Actions のログに氏名を残さない）
-      return NextResponse.json({ records: records.length, employees: csvEmployees.size, year, month });
+      return NextResponse.json({ records: records.length, employees: csvEmployees.size, excludedCount, year, month });
     }
     return NextResponse.json({
       records: records.length,
       unresolved,
+      excludedCount,
       nameConflicts: [],
     });
   } catch (error) {
