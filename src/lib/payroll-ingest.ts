@@ -102,6 +102,14 @@ export function resolvePayrollCompanyColumns(header: string[]): {
       if (spec.required) mismatches.push({ index: -1, field: spec.header, actual: "(見出しなし)" });
     }
   }
+  // 読む対象に入っていない「(会社)」負担の列（クラウド給与が新しい会社負担の項目を足した場合）は止める。
+  // 黙って読み飛ばすと法定福利費が過少になる（2026年4月の「子ども・子育て支援金(会社)」追加時と同じ事故）。
+  const known = new Set(PAYROLL_COMPANY_HEADERS.map((s) => normalizeHeaderCell(s.header)));
+  normalized.forEach((h, i) => {
+    if (/\(会社\)$/.test(h) && !known.has(h)) {
+      mismatches.push({ index: i, field: "未対応の会社負担の列", actual: h.slice(0, 40) });
+    }
+  });
   return { columns: mismatches.length === 0 ? columns : null, mismatches };
 }
 
@@ -211,4 +219,148 @@ export function payrollIngestBlockReasons(f: PayrollIngestFacts): string[] {
     );
   }
   return reasons;
+}
+
+// ─── 会社負担の列だけを CSV から取り直す（再取込の準備。DB は触らない純関数） ─────────────────────
+
+export const PAYROLL_COMPANY_FIELDS = [
+  "healthInsuranceCo",
+  "careInsuranceCo",
+  "pensionCo",
+  "childContributionCo",
+  "pensionFundCo",
+  "employmentInsuranceCo",
+  "workersCompCo",
+  "generalContributionCo",
+] as const;
+export type PayrollCompanyField = (typeof PAYROLL_COMPANY_FIELDS)[number];
+
+/** DB の payroll_data の1行（会社負担の補正に必要な列だけ。氏名は持たない） */
+export interface ExistingPayrollRow extends PayrollCompanyAmounts {
+  id: number;
+  employeeId: string;
+  ratio: number;
+  baseSalary: number;
+  grossTotal: number;
+}
+
+export interface CompanyColumnPlan {
+  headerOk: boolean;
+  mismatches: HeaderMismatch[];
+  /** 更新する行（会社負担のどれかが変わる行だけ）。店舗・按分率・基本給・総支給は含めない */
+  updates: Array<{ id: number; employeeId: string; values: PayrollCompanyAmounts }>;
+  /** 項目別の差額（新 − 旧）。兼務の行は ratio/100 を掛けて合算（＝ダッシュボードの集計と同じ） */
+  diffByField: Record<PayrollCompanyField, number>;
+  changedEmployeesByField: Record<PayrollCompanyField, number>;
+  diffTotal: number;
+  changedEmployees: number;
+  changedRows: number;
+  dbRows: number;
+  dbEmployees: number;
+  /** DB にあるが CSV に見つからない従業員数（0 でないと適用してはいけない） */
+  dbEmployeesMissingInCsv: number;
+  /** DB 行の基本給・総支給が CSV と食い違う行数（月のずれ・別人を疑う。0 でないと適用してはいけない） */
+  baseGrossMismatchRows: number;
+  /** CSV の従業員番号が重複している数（どちらが正しいか決められない。0 でないと適用してはいけない） */
+  duplicateCsvEmployees: number;
+  /** CSV にだけいる従業員数（役員除く）。DB に行を足さない（役員・本部は店舗PL対象外）ので参考値 */
+  csvOnlyEmployees: number;
+  excludedCount: number;
+  /** 適用を止める理由（空なら適用してよい）。氏名・金額は含めない */
+  blockers: string[];
+}
+
+/** CSV（全行）と DB の既存行から、会社負担の補正計画を作る（純関数・DB 書き込みなし）。
+ *  再取込（deleteMany→createMany）ではなく「会社負担8項目だけを行IDで更新」する前提の計画なので、
+ *  店舗割当・按分率（兼務）・月別調整・基本給・総支給は構造的に変わらない。 */
+export function planCompanyColumnCorrection(
+  allRows: string[][],
+  existing: ExistingPayrollRow[],
+  toNumber: (v: string | undefined) => number,
+): CompanyColumnPlan {
+  const header = allRows[0] ?? [];
+  const check = checkPayrollHeader(header);
+  const zero = () => Object.fromEntries(PAYROLL_COMPANY_FIELDS.map((f) => [f, 0])) as Record<PayrollCompanyField, number>;
+  const plan: CompanyColumnPlan = {
+    headerOk: check.ok,
+    mismatches: check.mismatches,
+    updates: [],
+    diffByField: zero(),
+    changedEmployeesByField: zero(),
+    diffTotal: 0,
+    changedEmployees: 0,
+    changedRows: 0,
+    dbRows: existing.length,
+    dbEmployees: new Set(existing.map((r) => r.employeeId)).size,
+    dbEmployeesMissingInCsv: 0,
+    baseGrossMismatchRows: 0,
+    duplicateCsvEmployees: 0,
+    csvOnlyEmployees: 0,
+    excludedCount: 0,
+    blockers: [],
+  };
+  if (!check.ok || !check.columns) {
+    plan.blockers.push("ヘッダ照合NG（会社負担の列が見つからない・重複・未対応の列がある）");
+    return plan;
+  }
+
+  const csv = new Map<string, { amounts: PayrollCompanyAmounts; base: number; gross: number }>();
+  for (const row of allRows.slice(1)) {
+    if (row.length < 10) continue;
+    const id = (row[0] ?? "").trim();
+    if (!id || id.startsWith("【")) continue;
+    if ((row[1] ?? "").trim() === "-") continue;
+    if (isExcludedContractType(row[5]?.trim() ?? "")) {
+      plan.excludedCount++;
+      continue;
+    }
+    if (csv.has(id)) {
+      plan.duplicateCsvEmployees++;
+      continue;
+    }
+    csv.set(id, {
+      amounts: readPayrollCompanyAmounts(row, check.columns, toNumber),
+      base: toNumber(row[27]),
+      gross: toNumber(row[55]),
+    });
+  }
+
+  const dbIds = new Set(existing.map((r) => r.employeeId));
+  plan.csvOnlyEmployees = [...csv.keys()].filter((id) => !dbIds.has(id)).length;
+  const missing = new Set<string>();
+  const changedEmp = new Set<string>();
+  const changedEmpByField = Object.fromEntries(PAYROLL_COMPANY_FIELDS.map((f) => [f, new Set<string>()])) as Record<PayrollCompanyField, Set<string>>;
+  for (const r of existing) {
+    const c = csv.get(r.employeeId);
+    if (!c) {
+      missing.add(r.employeeId);
+      continue;
+    }
+    if (Math.abs(r.baseSalary - c.base) > 0.5 || Math.abs(r.grossTotal - c.gross) > 0.5) plan.baseGrossMismatchRows++;
+    let changed = false;
+    for (const f of PAYROLL_COMPANY_FIELDS) {
+      const delta = c.amounts[f] - r[f];
+      if (Math.abs(delta) > 0.5) {
+        changed = true;
+        plan.diffByField[f] += delta * (r.ratio / 100);
+        changedEmpByField[f].add(r.employeeId);
+      }
+    }
+    if (changed) {
+      changedEmp.add(r.employeeId);
+      plan.updates.push({ id: r.id, employeeId: r.employeeId, values: c.amounts });
+    }
+  }
+  plan.dbEmployeesMissingInCsv = missing.size;
+  plan.changedEmployees = changedEmp.size;
+  plan.changedRows = plan.updates.length;
+  for (const f of PAYROLL_COMPANY_FIELDS) {
+    plan.changedEmployeesByField[f] = changedEmpByField[f].size;
+    plan.diffTotal += plan.diffByField[f];
+  }
+  if (plan.dbEmployeesMissingInCsv > 0) plan.blockers.push(`DBにいてCSVに見つからない従業員 ${plan.dbEmployeesMissingInCsv}名（月のずれを疑う）`);
+  if (plan.baseGrossMismatchRows > 0) plan.blockers.push(`基本給・総支給がCSVと食い違う行 ${plan.baseGrossMismatchRows}行（月のずれを疑う）`);
+  if (plan.duplicateCsvEmployees > 0) plan.blockers.push(`CSVの従業員番号が重複 ${plan.duplicateCsvEmployees}件`);
+  if (existing.length === 0) plan.blockers.push("対象月のDB行が0件");
+  return plan;
 }
