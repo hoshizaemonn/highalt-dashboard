@@ -9,6 +9,7 @@ import {
   previousMonth,
   readPayrollCompanyAmounts,
   resolvePayrollCompanyColumns,
+  planCompanyColumnCorrection,
   PAYROLL_HQ_EMPLOYEE_ID_MAX,
 // @ts-expect-error node --experimental-strip-types で直接実行するため .ts 拡張子が必要
 } from "./payroll-ingest.ts";
@@ -197,4 +198,102 @@ assert.ok(payrollIngestBlockReasons({ ...base, records: 0 }).some((r) => /0件/.
 for (const r of payrollIngestBlockReasons({ ...base, records: 1, nameConflictCount: 3, unresolvedCount: 2, existingCount: 5, headerOk: false })) {
   assert.ok(!/様|さん/.test(r), r);
 }
+
+// ─── 会社負担の補正計画（planCompanyColumnCorrection）。データはすべて架空 ───────────────────
+function csvRow(len: number, id: string, ct: string, vals: Record<number, number>): string[] {
+  const r = Array.from({ length: len }, () => "0");
+  r[0] = id; r[1] = "架空"; r[5] = ct; r[27] = "200000"; r[55] = "210000";
+  for (const [i, v] of Object.entries(vals)) r[Number(i)] = String(v);
+  return r;
+}
+const existingRow = (id: number, employeeId: string, ratio: number, v: Partial<Record<string, number>>) => ({
+  id, employeeId, ratio, baseSalary: 200000, grossTotal: 210000,
+  healthInsuranceCo: 0, careInsuranceCo: 0, pensionCo: 0, childContributionCo: 0, pensionFundCo: 0,
+  employmentInsuranceCo: 0, workersCompCo: 0, generalContributionCo: 0, ...v,
+});
+
+// (a) 97列版CSV。DBには旧コードのずれ（健保←介護, 介護←厚年, 厚年←基金）で入っている → 正しい位置に戻る
+{
+  const h = header97();
+  const rows = [h, csvRow(97, "1001", "正社員", { 89: 10000, 90: 2000, 91: 18000, 92: 500, 93: 0, 94: 600, 95: 300, 96: 10 })];
+  const ex = [existingRow(1, "1001", 100, { healthInsuranceCo: 2000, careInsuranceCo: 18000, pensionCo: 0, childContributionCo: 500, employmentInsuranceCo: 600, workersCompCo: 300, generalContributionCo: 10 })];
+  const plan = planCompanyColumnCorrection(rows, ex, num);
+  assert.deepEqual(plan.blockers, []);
+  assert.equal(plan.changedRows, 1);
+  assert.deepEqual(plan.updates[0].values, {
+    healthInsuranceCo: 10000, careInsuranceCo: 2000, pensionCo: 18000, childContributionCo: 500, pensionFundCo: 0,
+    employmentInsuranceCo: 600, workersCompCo: 300, generalContributionCo: 10,
+  });
+  assert.equal(plan.diffByField.healthInsuranceCo, 8000);
+  assert.equal(plan.diffByField.careInsuranceCo, -16000);
+  assert.equal(plan.diffByField.pensionCo, 18000);
+  assert.equal(plan.diffTotal, 10000); // 差額の合計 = 健保 - 介護 の分だけ法定福利費が増える
+}
+
+// (b) 99列版CSV。支援金は拠出金に合算、基金掛金は pensionFundCo、雇用/労災/一般拠出金は正しい列から
+{
+  const h = header99();
+  const rows = [h, csvRow(99, "2001", "正社員", { 90: 10000, 91: 2000, 92: 300, 93: 18000, 94: 500, 95: 70, 96: 600, 97: 400, 98: 10 })];
+  // DBは旧コードの読み違い（拠出金←支援金, 雇用←拠出金, 労災←基金, 一般←雇用）
+  const ex = [existingRow(5, "2001", 100, { healthInsuranceCo: 10000, careInsuranceCo: 2000, pensionCo: 18000, childContributionCo: 300, employmentInsuranceCo: 500, workersCompCo: 70, generalContributionCo: 600 })];
+  const plan = planCompanyColumnCorrection(rows, ex, num);
+  assert.deepEqual(plan.blockers, []);
+  assert.deepEqual(plan.updates[0].values, {
+    healthInsuranceCo: 10000, careInsuranceCo: 2000, pensionCo: 18000, childContributionCo: 800, pensionFundCo: 70,
+    employmentInsuranceCo: 600, workersCompCo: 400, generalContributionCo: 10,
+  });
+  assert.equal(plan.changedEmployeesByField.pensionFundCo, 1);
+}
+
+// (c) 兼務（同じ人の複数行）は、行ごとの更新・差額は ratio 按分。更新には店舗・ratio・基本給・総支給を含めない
+{
+  const rows = [header99(), csvRow(99, "3001", "正社員", { 90: 1000, 96: 100 })];
+  const ex = [
+    existingRow(11, "3001", 60, { healthInsuranceCo: 1000 }),
+    existingRow(12, "3001", 40, { healthInsuranceCo: 1000 }),
+  ];
+  const plan = planCompanyColumnCorrection(rows, ex, num);
+  assert.equal(plan.changedRows, 2);
+  assert.equal(plan.changedEmployees, 1);
+  assert.equal(plan.diffByField.employmentInsuranceCo, 100); // 100 × (0.6 + 0.4)
+  for (const u of plan.updates) {
+    assert.deepEqual(Object.keys(u).sort(), ["employeeId", "id", "values"]);
+    assert.deepEqual(Object.keys(u.values).sort(), [...["healthInsuranceCo","careInsuranceCo","pensionCo","childContributionCo","pensionFundCo","employmentInsuranceCo","workersCompCo","generalContributionCo"]].sort());
+  }
+}
+
+// (d) すでに正しい行は更新しない（再実行しても変化なし＝冪等）
+{
+  const rows = [header99(), csvRow(99, "3001", "正社員", { 90: 1000, 98: 5 })];
+  const ex = [existingRow(11, "3001", 100, { healthInsuranceCo: 1000, generalContributionCo: 5 })];
+  const plan = planCompanyColumnCorrection(rows, ex, num);
+  assert.equal(plan.changedRows, 0);
+  assert.equal(plan.diffTotal, 0);
+}
+
+// (e) 止める条件: 月のずれ（基本給が違う／CSVにいない）、役員は除外、CSVのみの人は参考値、重複は止める
+{
+  const base = [header99()];
+  const okCsv = [...base, csvRow(99, "4001", "正社員", {}), csvRow(99, "9", "役員", {}), csvRow(99, "5", "正社員", {})];
+  assert.equal(planCompanyColumnCorrection(okCsv, [existingRow(1, "4001", 100, {})], num).excludedCount, 1);
+  assert.equal(planCompanyColumnCorrection(okCsv, [existingRow(1, "4001", 100, {})], num).csvOnlyEmployees, 1);
+  const shifted = { ...existingRow(1, "4001", 100, {}), baseSalary: 190000 };
+  assert.match(planCompanyColumnCorrection(okCsv, [shifted], num).blockers.join(), /基本給・総支給/);
+  assert.match(planCompanyColumnCorrection(okCsv, [existingRow(1, "7777", 100, {})], num).blockers.join(), /CSVに見つからない/);
+  const dup = [...okCsv, csvRow(99, "4001", "正社員", {})];
+  assert.match(planCompanyColumnCorrection(dup, [existingRow(1, "4001", 100, {})], num).blockers.join(), /重複/);
+  assert.match(planCompanyColumnCorrection(okCsv, [], num).blockers.join(), /0件/);
+}
+
+// (f) 旧配置を位置固定で読む古い見出し（会社負担の見出しが無い）や、未知の「(会社)」列は止める＝黙って取り違えない
+{
+  const noHeaders = baseHeader(97);
+  assert.equal(checkPayrollHeader(noHeaders).ok, false);
+  assert.ok(planCompanyColumnCorrection([noHeaders, csvRow(97, "1", "正社員", {})], [existingRow(1, "1", 100, {})], num).blockers.length > 0);
+  const withNew = header99(); withNew.push("新しい保険料(会社)");
+  const r = checkPayrollHeader(withNew);
+  assert.equal(r.ok, false);
+  assert.ok(r.mismatches.some((m) => m.field === "未対応の会社負担の列" && m.index === 99));
+}
+
 console.log("PAYROLL INGEST TESTS PASSED");
