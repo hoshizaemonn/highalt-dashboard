@@ -9,7 +9,7 @@ import { requireSession, getSessionAllowedStores } from "@/lib/auth";
 import { expenseRowShareWithCategorySplit } from "@/lib/manual-expense-split";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
-import { signupsForMonth } from "@/lib/signup-count";
+import { sheetJoinedByMonth, signupsForMonthWithSheet } from "@/lib/signup-count";
 import { storeCompareTrialForMonth } from "@/lib/trial-join-rate";
 import { loadSalesDetailWithSplit } from "@/lib/option-sales-split-loader";
 
@@ -127,9 +127,11 @@ export async function GET(request: NextRequest) {
       // 体験シート取込データ（月次・全体・期間・年間ビューと同じ優先順位に揃える）
       prisma.trialSheetEntry.findMany({
         where: { year: { in: years } },
-        select: { year: true, month: true, storeName: true },
+        select: { year: true, month: true, storeName: true, resultType: true },
       }),
     ]);
+    // 体験シートがある店舗・月は、新規入会数を体験シートの入会（即日+後日）にする（星崎さん 2026-11-01）
+    const sheetJoinedAll = sheetJoinedByMonth(allTrialSheet);
     const allMonthlySummary = filterPlanSummaries(rawMonthlySummary, allMember);
 
     // 「実績データが入っている最終月」までに periods を自動キャップする（坪井さん要望）。
@@ -278,12 +280,16 @@ export async function GET(request: NextRequest) {
         );
         return (
           sum +
-          signupsForMonth(
+          signupsForMonthWithSheet(
             storeMember,
-            maRow ? maRow.newPlanSignups : 0,
+            new Map([[storeName, maRow ? maRow.newPlanSignups : 0]]),
             p.year,
             p.month,
             storeHasMaster,
+            (() => {
+              const j = sheetJoinedAll.get(`${p.year}-${p.month}`)?.get(storeName);
+              return j === undefined ? undefined : new Map([[storeName, j]]);
+            })(),
           )
         );
       }, 0);
