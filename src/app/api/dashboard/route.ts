@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { HQ_STORE, STORES, HQ_COMMON_COST_CATEGORY } from "@/lib/constants";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
-import { signupsForMonth } from "@/lib/signup-count";
+import { sheetJoinedByMonth, signupsForMonthWithSheet } from "@/lib/signup-count";
 
 const CACHE_TTL_MS = 30_000;
 import {
@@ -481,7 +481,7 @@ export async function GET(request: NextRequest) {
     };
     const trialSheetRows = await prisma.trialSheetEntry.findMany({
       where: trialSheetWhere,
-      select: { storeName: true, resultType: true },
+      select: { storeName: true, resultType: true, year: true, month: true },
     });
     // 体験入会率（即日+後日 ÷ 体験シート件数）。表示のみで既存の体験者数の計算には使わない。
     const trialJoin = summarizeTrialJoin(trialSheetRows);
@@ -676,21 +676,28 @@ export async function GET(request: NextRequest) {
     });
     const memberRows = filterPlanSummaries(rawMemberRows, memberDataRows);
     const hasMaster = memberDataRows.length > 0;
-    const signupMonthKeys = new Set(
-      memberRows.map((r) => `${r.year}-${r.month}`),
-    );
+    // 体験シートがある店舗・月は、新規入会数を体験シートの入会（即日+後日）にする（星崎さん 2026-11-01）
+    const sheetJoined = sheetJoinedByMonth(trialSheetRows);
+    const signupMonthKeys = new Set([
+      ...memberRows.map((r) => `${r.year}-${r.month}`),
+      ...sheetJoined.keys(),
+    ]);
     let newSignupsTotal = 0;
     for (const key of signupMonthKeys) {
       const [yy, mm] = key.split("-").map(Number);
-      const maVal = memberRows
-        .filter((r) => r.year === yy && r.month === mm)
-        .reduce((s, r) => s + r.newPlanSignups, 0);
-      newSignupsTotal += signupsForMonth(
-        memberDataRows.map((r) => ({ year: 0, month: 0, joinDate: r.joinDate })),
-        maVal,
+      const maByStore = new Map<string, number>();
+      for (const r of memberRows) {
+        if (r.year === yy && r.month === mm) {
+          maByStore.set(r.storeName, (maByStore.get(r.storeName) ?? 0) + r.newPlanSignups);
+        }
+      }
+      newSignupsTotal += signupsForMonthWithSheet(
+        memberDataRows,
+        maByStore,
         yy,
         mm,
         hasMaster,
+        sheetJoined.get(key),
       );
     }
 

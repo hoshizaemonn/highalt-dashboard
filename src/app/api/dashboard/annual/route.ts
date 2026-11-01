@@ -31,7 +31,7 @@ import {
 import { trialDateMatchesMonth } from "@/lib/csv-utils";
 import { getHiddenStores } from "@/lib/hidden-stores";
 import { memoCache } from "@/lib/memo-cache";
-import { signupsForMonth } from "@/lib/signup-count";
+import { sheetJoinedByMonth, signupsForMonthWithSheet } from "@/lib/signup-count";
 import { loadSalesDetailWithSplit, storeFilterPredicate } from "@/lib/option-sales-split-loader";
 
 const CACHE_TTL_MS = 30_000; // 30秒
@@ -298,9 +298,11 @@ export async function GET(request: NextRequest) {
       // 不正確。体験シートがある店舗・月はそれを最優先で使う）
       prisma.trialSheetEntry.findMany({
         where: { year: { in: years }, ...storeWhere },
-        select: { year: true, month: true, storeName: true },
+        select: { year: true, month: true, storeName: true, resultType: true },
       }),
     ]);
+    // 体験シートがある店舗・月は、新規入会数を体験シートの入会（即日+後日）にする（星崎さん 2026-11-01）
+    const sheetJoinedAll = sheetJoinedByMonth(allTrialSheet);
     // PL上書き用マップ: `${year}-${month}-${category}` -> 金額（全体時は店舗合算）
     const plExpMap = new Map<string, number>();
     for (const r of allPlActual) {
@@ -710,12 +712,13 @@ export async function GET(request: NextRequest) {
         plan_filter_complete: ms.length > 0 && ms.every(r => r.planFilterApplied),
         ma_plan_subscribers: ms.reduce((s, r) => s + r.planSubscribers, 0),
         // 新規入会数: ML001がある月は入会日時ベース、無い月はMA002（松尾さん②）
-        ma_new_signups: signupsForMonth(
+        ma_new_signups: signupsForMonthWithSheet(
           allMember,
-          ms.reduce((s, r) => s + r.newPlanSignups, 0),
+          ms.reduce((acc, r) => acc.set(r.storeName, (acc.get(r.storeName) ?? 0) + r.newPlanSignups), new Map<string, number>()),
           y,
           m,
           allMember.length > 0,
+          sheetJoinedAll.get(`${y}-${m}`),
         ),
         ma_cancellations: ms.reduce((s, r) => s + r.cancellations, 0),
         ma_suspensions: ms.reduce((s, r) => s + r.suspensions, 0),

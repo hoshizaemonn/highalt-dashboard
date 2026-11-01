@@ -58,3 +58,59 @@ export function signupsForMonth(
   return memberRows.filter((r) => joinDateInMonth(r.joinDate, year, month))
     .length;
 }
+
+// ─── 体験シート優先（星崎さん 2026-11-01: 体験シートが正） ───────────────
+// 体験シートの行がある店舗・月は、新規入会数を「体験シートの入会（即日+後日）」にする。
+// 体験シートの無い店舗・月は従来どおり（ML001 の入会日時 → MA002）。
+// 体験シートに載らない入会（別窓口など）は店長手動追記で足す運用。
+
+export interface SheetResultRow {
+  storeName: string;
+  year: number;
+  month: number;
+  resultType: string;
+}
+
+const SHEET_JOINED = new Set(["即日入会", "後日入会"]);
+
+/** 年月 → 店舗 → 体験シートの入会数（即日+後日）。体験シートの行がある店舗は、入会0でもキーを持つ */
+export function sheetJoinedByMonth(
+  rows: SheetResultRow[],
+): Map<string, Map<string, number>> {
+  const out = new Map<string, Map<string, number>>();
+  for (const r of rows) {
+    const key = `${r.year}-${r.month}`;
+    const byStore = out.get(key) ?? new Map<string, number>();
+    byStore.set(
+      r.storeName,
+      (byStore.get(r.storeName) ?? 0) + (SHEET_JOINED.has(r.resultType) ? 1 : 0),
+    );
+    out.set(key, byStore);
+  }
+  return out;
+}
+
+/**
+ * 体験シートがある店舗はその入会数、無い店舗は従来の signupsForMonth で数えて合算する。
+ * memberRows は店舗付きの会員マスタ行、maByStore は店舗ごとの MA002 新規契約数。
+ * 体験シートの無い店舗の扱い（hasMaster の判定含む）は従来と同じ。
+ */
+export function signupsForMonthWithSheet(
+  memberRows: { storeName: string; joinDate: string | null }[],
+  maByStore: Map<string, number>,
+  year: number,
+  month: number,
+  hasMaster: boolean,
+  sheetJoined: Map<string, number> | undefined,
+): number {
+  const sheetStores = new Set(sheetJoined ? sheetJoined.keys() : []);
+  const restRows = memberRows
+    .filter((r) => !sheetStores.has(r.storeName))
+    .map((r) => ({ year: 0, month: 0, joinDate: r.joinDate }));
+  let restMa = 0;
+  for (const [store, v] of maByStore) if (!sheetStores.has(store)) restMa += v;
+  const rest = signupsForMonth(restRows, restMa, year, month, hasMaster);
+  let sheet = 0;
+  if (sheetJoined) for (const v of sheetJoined.values()) sheet += v;
+  return rest + sheet;
+}
