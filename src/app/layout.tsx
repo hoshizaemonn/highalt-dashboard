@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
-import { Noto_Sans_JP } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const notoSansJP = Noto_Sans_JP({
+// Google Fonts をビルド時に取りに行くと失敗する（2026-11-09 の Deployment Failed）ため、
+// 同じ Noto Sans JP（latin・可変ウェイト）をリポジトリ内のファイルから読む。見た目は同じ。
+const notoSansJP = localFont({
+  src: "./fonts/NotoSansJP-latin.woff2",
   variable: "--font-noto-sans-jp",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  weight: "100 900",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
