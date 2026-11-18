@@ -1161,6 +1161,17 @@ export default function PeriodView({
           avg: Math.round(hqCommonSum / nMonths),
         });
 
+        // 店舗利益（松尾さん依頼 2026-11-18）= 営業利益 − 本部共通費
+        const storeProfitSum = totals.profit - hqCommonSum;
+        rows.push({
+          label: "店舗利益",
+          values: monthly.map((m) => m.operating_profit - (m.hq_common_cost || 0)),
+          total: storeProfitSum,
+          avg: Math.round(storeProfitSum / nMonths),
+          bold: true,
+          color: "text-green-700",
+        });
+
         // 新規入会数（山本様依頼: 月ごとの入会数を、この表でも合計付きで確認したい）
         const newSignupsSum = monthly.reduce((s, m) => s + (m.ma_new_signups || 0), 0);
         rows.push({

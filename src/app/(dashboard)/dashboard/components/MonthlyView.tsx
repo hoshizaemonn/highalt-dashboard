@@ -375,6 +375,23 @@ export default function MonthlyView({
               <td className="px-4 py-1.5 text-right">{formatYen(data.hq_common_cost ?? 0)}</td>
             </tr>
 
+            {/* 店舗利益（松尾さん依頼 2026-11-18）= 営業利益 − 本部共通費 */}
+            {(() => {
+              const storeProfit = data.operating_profit - (data.hq_common_cost ?? 0);
+              const cls = storeProfit >= 0 ? "text-green-700" : "text-red-700";
+              return (
+                <tr className="border-b font-bold">
+                  <td className={`px-4 py-2 ${cls}`}>
+                    <span className="inline-flex items-center gap-1">
+                      店舗利益
+                      <HelpHint text="営業利益 − 本部共通費。本部共通費を引いたあと、いくら利益が残るかを示します。" />
+                    </span>
+                  </td>
+                  <td className={`px-4 py-2 text-right ${cls}`}>{formatYen(storeProfit)}</td>
+                </tr>
+              );
+            })()}
+
             {/* タイムバリュー（営業利益 ÷ 総勤務時間 = 1時間あたりの稼ぎ） */}
             {data.payroll.total_hours > 0 && (
               <tr className="border-b">
