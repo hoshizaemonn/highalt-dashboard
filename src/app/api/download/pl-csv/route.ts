@@ -213,6 +213,9 @@ export async function GET(request: NextRequest) {
     // （営業利益率の計算にも影響させない）
     addRow("本部共通費", (m) => m.hqCommonCost ?? 0);
 
+    // 店舗利益（松尾さん依頼 2026-11-18）= 営業利益 − 本部共通費。営業利益率には影響させない。
+    addRow("店舗利益", (m) => opProfit[months.indexOf(m)] - (m.hqCommonCost ?? 0));
+
     // 営業利益率
     const opRate = opProfit.map((p, i) => {
       const sales = netSales[i];
